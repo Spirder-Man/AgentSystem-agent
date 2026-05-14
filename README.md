@@ -14,7 +14,7 @@
 │   ├── Services/             # 核心服务
 │   │   ├── LlmService.cs     # LLM服务接口
 │   │   ├── SessionService.cs # 会话管理
-│   │   ├── KnowledgeBaseService.cs # 知识库服务
+│   │   ├── KnowledgeBaseService.cs # 知识库服务（BM25检索）
 │   │   └── AuditService.cs   # 审计日志服务
 │   ├── Config/               # 配置文件
 │   └── Program.cs            # 应用入口
@@ -24,19 +24,17 @@
 
 ## 🛠️ 技术栈
 
-| 层级 | 技术 | 版本 |
-|------|------|------|
-| 语言 | C# | 12.0 |
-| 框架 | .NET | 8.0 |
-| AI框架 | Semantic Kernel | 1.x |
-| 向量数据库 | Milvus | 2.x |
-| 关系数据库 | PostgreSQL | 16 |
-| 数据库驱动 | Npgsql | 8.x |
+| 层级 | 技术 | 版本 | 状态 |
+|------|------|------|------|
+| 语言 | C# | 12.0 | ✅ 已实现 |
+| 框架 | .NET | 8.0 | ✅ 已实现 |
+| AI框架 | Semantic Kernel | 1.x | ✅ 已实现 |
+| 检索算法 | BM25 | - | ✅ 已实现 |
 
 ## ✨ 核心功能
 
 ### 1. 推理引擎模块
-- **RAG检索增强生成**：支持 BM25 + 向量混合检索
+- **RAG检索增强生成**：基于 BM25 算法实现文档检索
 - **CoT思维链推理**：支持同步/流式输出
 - **ReAct交互式推理**：支持工具调用与反馈循环
 - **合规规则验证**：集成化工行业合规知识库
@@ -47,9 +45,9 @@
 - 会话生命周期管理
 
 ### 3. 知识库服务
-- 支持文档解析与向量化
-- 支持 Milvus 向量检索
-- 支持 PostgreSQL 全文检索
+- 支持文档解析与加载
+- 基于 BM25 的倒排索引检索
+- 化工专业术语识别与优先级排序
 
 ### 4. 审计日志
 - 完整的操作日志记录
@@ -59,8 +57,6 @@
 
 ### 环境要求
 - .NET 8 SDK
-- PostgreSQL 16+
-- Milvus 2.x
 
 ### 安装步骤
 
@@ -70,9 +66,16 @@ git clone https://gitee.com/liuchao_yu/agent-system.git
 cd agent-system
 ```
 
-2. **配置数据库连接**
+2. **配置知识库路径**
 
-编辑 `Agent1/Config/AppConfig.cs`，配置 PostgreSQL 和 Milvus 连接信息。
+编辑 `Agent1/Config/AppConfig.cs`，配置知识库路径：
+
+```csharp
+public class ChemicalKnowledgeBaseConfig
+{
+    public string BasePath { get; set; } = @"d:\桌面\agent\化工知识库";
+}
+```
 
 3. **构建项目**
 ```bash
@@ -111,16 +114,20 @@ var result = await ragModule.RetrieveAndGenerateAsync(userQuery);
 
 ## 🔧 配置说明
 
-### 数据库配置
-```json
+### 知识库配置
+```csharp
+public class ChemicalKnowledgeBaseConfig
 {
-  "PostgreSql": {
-    "ConnectionString": "Host=localhost;Port=5432;Database=agentdb;Username=postgres;Password=password"
-  },
-  "Milvus": {
-    "Endpoint": "localhost:19530",
-    "CollectionName": "compliance_knowledge"
-  }
+    // 知识库基础路径
+    public string BasePath { get; set; } = @"d:\桌面\agent\化工知识库";
+    
+    // 知识源配置（支持优先级设置）
+    public List<KnowledgeSourceConfig> Sources { get; set; } = new()
+    {
+        new() { Name = "国标", Path = "国标", Priority = 100 },
+        new() { Name = "园区规则", Path = "园区规则", Priority = 80 },
+        new() { Name = "历史案例", Path = "历史案例", Priority = 60 }
+    };
 }
 ```
 
@@ -129,6 +136,14 @@ var result = await ragModule.RetrieveAndGenerateAsync(userQuery);
 - **当前阶段**: P0/P1 功能开发
 - **状态**: 开发中
 - **目标**: 等保三级合规要求
+
+## 📈 未来规划
+
+| 阶段 | 功能 | 状态 |
+|------|------|------|
+| P2 | 集成 Milvus 向量数据库 | ⏳ 待开发 |
+| P2 | 集成 PostgreSQL 关系数据库 | ⏳ 待开发 |
+| P3 | 分布式部署支持 | ⏳ 待规划 |
 
 ## 📝 贡献指南
 
