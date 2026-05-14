@@ -1,0 +1,67 @@
+﻿#region 程序集信息
+// 程序集：Microsoft.SemanticKernel.Abstractions, 版本1.74.0
+// 文件路径：用户本地NuGet包目录
+// 反编译工具：ICSharpCode.Decompiler
+#endregion
+
+using System;
+
+namespace Microsoft.SemanticKernel; // 命名空间：微软语义内核
+
+// 摘要:
+//     用于标记：**将一个类中的方法作为插件导入时**，该方法会被自动转为 语义内核的 KernelFunction（内核函数），
+	   并添加到 KernelPlugin（内核插件）中。
+//
+// 详细说明:
+//     1. 系统从对象中导入函数时，只会查找标记了此特性的方法；
+//        未标记的方法，也可以通过 委托/反射 手动导入。
+//     2. 方法的访问权限（public/private）不影响导入：**只要标记了此特性，无论方法是否公开，都会被导入**。
+//     3. 必须为方法添加 [Description] 描述特性：
+//        描述会用于大模型提示词、向量匹配，描述的质量直接影响AI规划器处理复杂任务的能力；
+//        方法的**每个参数**也必须添加 [Description] 描述，方便大模型理解参数含义。
+//     4. 函数支持任意数量的参数：
+//        参数值默认从 KernelArguments（调用参数）中按**名称匹配**获取；
+//        如果参数有默认值，未传参时会使用默认值；
+//        如果参数类型不匹配，系统会自动用类型转换器转换。
+//     5. 【特殊参数】以下类型的参数**无需手动传参**，语义内核会**自动注入**：
+//        - Kernel：当前调用的内核实例
+//        - KernelArguments：调用函数的参数集合
+//        - KernelFunction：当前函数本身
+//        - CancellationToken：取消令牌（用于中断操作）
+//        - 区域相关类型（CultureInfo/IFormatProvider）：内核的区域设置
+//        - 日志相关类型（ILoggerFactory/ILogger）：内核的日志服务
+//        - IAIServiceSelector：AI服务选择器
+//     6. 支持从内核的依赖注入容器中获取参数：
+//        用 [FromKernelServices] 标记参数，系统会自动从容器中解析服务；
+//        解析不到且参数非可选，函数调用会失败。
+//     7. 如果所有参数都无法赋值，函数调用失败。
+
+// 特性使用限制：只能标记在【方法】上，一个方法只能标记一次
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+
+// 密封类：不可被继承，专门用于标记方法为SK插件函数
+public sealed class KernelFunctionAttribute : Attribute
+{
+    // 摘要: 获取函数的自定义名称
+    // 说明: 如果为null，自动使用**被标记的方法名**作为函数名
+    public string? Name { get; }
+
+    // 无参构造函数：使用默认名称（方法原名）
+    public KernelFunctionAttribute()
+    {
+    }
+
+    // 带参构造函数：自定义函数名称
+    // 参数: name → 自定义的函数名
+    public KernelFunctionAttribute(string? name)
+    {
+        Name = name;
+    }
+}
+
+KernelFunctionAttribute 是语义内核（SK）的标记特性，作用是：把普通 C# 方法变成 AI 可调用的插件函数。
+
+✅ 私有方法也能被导入；
+✅ 必须写 [Description] 描述（方法 + 参数都要）；
+✅ 日志、内核、取消令牌等参数，SK 会自动注入，不用传参；
+✅ 可以自定义函数名：[KernelFunction("MyCustomFunction")]。

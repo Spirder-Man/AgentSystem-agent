@@ -1,0 +1,72 @@
+﻿
+断点 1：Kernel 初始化 + 工具插件注册（验证基础环境）
+
+Kernel kernel = kernelBuilder.Build(); // 这一行
+
+观察目标：
+调试窗口中查看 kernel.Plugins 是否包含 IndustrialTools 插件（验证你的工具类是否成功注册）；
+确认 kernel 对象是否正常创建（排除 Ollama 连接初始化问题）。
+调试操作：
+按 F10（逐行执行），看代码是否能走到这一行，若报错直接定位初始化失败原因（比如模型名写错、Ollama 未启动）。
+
+断点 2：模型思考阶段（验证 AI 思考内容生成）
+
+fullThought += chunk; // 思考过程拼接的这一行
+
+观察目标：
+实时查看 chunk 的值：模型每一步返回的思考内容（比如 “我需要调用温度传感器获取数据”）；
+查看 fullThought 的拼接过程：验证模型是否按 Prompt 要求思考 “需要哪些工具”。
+调试操作：
+按 F10 逐行看 chunk 如何拼接成完整思考内容，确认模型思考方向是否正确。
+
+断点 3：工具类实例化（验证工具对象创建）
+
+IndustrialTools industrialTools = new IndustrialTools(); // 这一行
+
+观察目标：
+验证 industrialTools 对象是否成功创建（无空指针）；
+这是「真实工具调用」的起点，确认代码进入工具调用阶段。
+调试操作：
+按 F10 执行到下一行，准备进入工具方法调用。
+
+断点 4：工具方法执行（核心！验证真实数据生成）
+
+string spindleTemp = industrialTools.GetSpindleTemperature(); // 这一行
+
+观察目标（关键！）：
+按 F11（进入方法），跳转到你的 IndustrialTools.cs 中的 GetSpindleTemperature() 方法内部；
+查看 temp 变量的随机值（比如 205℃），验证工具方法真的被执行，而非模型脑补；
+查看方法返回值（比如 “主轴实时温度：205℃”），确认工具数据格式正确。
+调试操作：
+在工具方法内部的 return 行再打一个断点，看最终返回的真实数据。
+
+断点 5：工具数据拼接（验证 Observation 数据格式）
+
+string observationData = $"""
+    工具调用结果：
+    1. {spindleTemp}
+    2. {tempThreshold}
+    """; // 这一行结束处
+
+观察目标：
+查看 observationData 的完整值：验证工具返回的真实数据是否被正确格式化；
+这是「喂给模型生成结论」的核心数据，确认没有拼接错误。
+调试操作：
+鼠标悬停在 observationData 上，看完整的拼接结果，确保包含真实的温度 / 阈值数据。
+
+断点 6：结论生成阶段（验证模型基于真实数据推理）
+
+Console.Write(chunk); // 结论流式输出的这一行
+
+观察目标：
+实时查看 chunk 的值：模型每一步生成的结论内容；
+验证模型是否基于 observationData 的真实数据推理（比如提到 “205℃超过 180℃阈值”），而非编造数据；
+确认结论格式符合要求（Thought→Action→Observation→Conclusion）。
+调试操作：
+按 F10 逐行看结论生成过程，对比工具数据和结论的关联性。
+
+可选断点：思考过程隐藏逻辑（验证 UI 交互）
+Console.WriteLine("【模型思考过程】→ 已思考完成（需调用温度传感器/安全阈值工具）"); // 这一行
+观察目标：
+验证思考过程是否被正确隐藏，UI 输出是否符合预期；
+确认代码执行到这一步时，模型思考阶段已完成，准备进入工具调用。
