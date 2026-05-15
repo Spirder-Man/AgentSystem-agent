@@ -31,6 +31,7 @@
 | AI框架 | Semantic Kernel | 1.x | ✅ 已实现 |
 | 检索算法 | BM25 | - | ✅ 已实现 |
 | 数据库 | PostgreSQL | 16.x | ✅ 已实现 |
+| ORM框架 | Entity Framework Core | 8.0.x | ✅ 已实现 |
 | 数据访问 | Npgsql + Dapper | 8.0.x | ✅ 已实现 |
 
 ## ✨ 核心功能
@@ -61,6 +62,12 @@
 - 审计日志存储
 - 检索日志追踪
 - 数据库连接验证功能
+
+### 6. ORM框架支持
+- Entity Framework Core 8.0 完整集成
+- 支持数据库迁移（Migrations）
+- LINQ 查询支持
+- 实体映射与关系配置
 
 ## 🚀 快速开始
 
@@ -159,6 +166,19 @@ public class DatabaseConfig
 - `sessions` - 会话记录表
 - `audit_logs` - 审计日志表（等保三级要求）
 - `search_logs` - 检索记录表
+
+### EF Core 数据库迁移
+
+```bash
+# 创建迁移
+dotnet ef migrations add InitialCreate --project Agent1
+
+# 更新数据库
+dotnet ef database update --project Agent1
+
+# 查看迁移历史
+dotnet ef migrations list --project Agent1
+```
 
 ## 📊 项目状态
 
