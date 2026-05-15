@@ -30,6 +30,8 @@
 | 框架 | .NET | 8.0 | ✅ 已实现 |
 | AI框架 | Semantic Kernel | 1.x | ✅ 已实现 |
 | 检索算法 | BM25 | - | ✅ 已实现 |
+| 数据库 | PostgreSQL | 16.x | ✅ 已实现 |
+| 数据访问 | Npgsql + Dapper | 8.0.x | ✅ 已实现 |
 
 ## ✨ 核心功能
 
@@ -53,10 +55,18 @@
 - 完整的操作日志记录
 - 符合等保三级要求
 
+### 5. 数据库服务
+- PostgreSQL 数据库连接与管理
+- 会话记录持久化
+- 审计日志存储
+- 检索日志追踪
+- 数据库连接验证功能
+
 ## 🚀 快速开始
 
 ### 环境要求
 - .NET 8 SDK
+- PostgreSQL 16+（可选，用于数据持久化）
 
 ### 安装步骤
 
@@ -131,6 +141,25 @@ public class ChemicalKnowledgeBaseConfig
 }
 ```
 
+### 数据库配置
+```csharp
+public class DatabaseConfig
+{
+    public string Provider { get; set; } = "PostgreSQL";
+    public string Host { get; set; } = "localhost";
+    public int Port { get; set; } = 5432;
+    public string DatabaseName { get; set; } = "chemical_park_ai_agent";
+    public string Username { get; set; } = "postgres";
+    public string Password { get; set; } = "your_password";
+}
+```
+
+### 数据库表结构
+系统自动创建以下数据表：
+- `sessions` - 会话记录表
+- `audit_logs` - 审计日志表（等保三级要求）
+- `search_logs` - 检索记录表
+
 ## 📊 项目状态
 
 - **当前阶段**: P0/P1 功能开发
@@ -142,7 +171,7 @@ public class ChemicalKnowledgeBaseConfig
 | 阶段 | 功能 | 状态 |
 |------|------|------|
 | P2 | 集成 Milvus 向量数据库 | ⏳ 待开发 |
-| P2 | 集成 PostgreSQL 关系数据库 | ⏳ 待开发 |
+| P2 | PostgreSQL 关系数据库 | ✅ 已实现 |
 | P3 | 分布式部署支持 | ⏳ 待规划 |
 
 ## 📝 贡献指南
