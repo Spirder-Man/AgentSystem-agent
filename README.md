@@ -15,6 +15,8 @@
 │   │   ├── LlmService.cs     # LLM服务接口
 │   │   ├── SessionService.cs # 会话管理
 │   │   ├── KnowledgeBaseService.cs # 知识库服务（BM25检索）
+│   │   ├── HybridKnowledgeBaseService.cs # 混合检索服务（BM25+向量）
+│   │   ├── DatabaseService.cs # 数据库服务（PostgreSQL + pgvector）
 │   │   └── AuditService.cs   # 审计日志服务
 │   ├── Config/               # 配置文件
 │   └── Program.cs            # 应用入口
@@ -31,6 +33,7 @@
 | AI框架 | Semantic Kernel | 1.x | ✅ 已实现 |
 | 检索算法 | BM25 | - | ✅ 已实现 |
 | 数据库 | PostgreSQL | 16.x | ✅ 已实现 |
+| 向量扩展 | pgvector | 0.7.x | ✅ 已实现 |
 | ORM框架 | Entity Framework Core | 8.0.x | ✅ 已实现 |
 | 数据访问 | Npgsql + Dapper | 8.0.x | ✅ 已实现 |
 
@@ -50,7 +53,10 @@
 ### 3. 知识库服务
 - 支持文档解析与加载
 - 基于 BM25 的倒排索引检索
+- 基于 pgvector 的向量语义检索
+- **混合检索模式**：BM25 + 向量检索融合，支持权重配置
 - 化工专业术语识别与优先级排序
+- 自动向量化与向量存储管理
 
 ### 4. 审计日志
 - 完整的操作日志记录
@@ -158,6 +164,20 @@ public class DatabaseConfig
     public string DatabaseName { get; set; } = "chemical_park_ai_agent";
     public string Username { get; set; } = "postgres";
     public string Password { get; set; } = "your_password";
+    public int ConnectionTimeout { get; set; } = 30;
+    public int MaxPoolSize { get; set; } = 100;
+}
+```
+
+### 向量检索配置
+```csharp
+public class VectorSearchConfig
+{
+    public int EmbeddingDimension { get; set; } = 1024;
+    public int HnswM { get; set; } = 16;
+    public int HnswEfConstruction { get; set; } = 200;
+    public double Bm25Weight { get; set; } = 0.5;
+    public double VectorWeight { get; set; } = 0.5;
 }
 ```
 
@@ -166,6 +186,7 @@ public class DatabaseConfig
 - `sessions` - 会话记录表
 - `audit_logs` - 审计日志表（等保三级要求）
 - `search_logs` - 检索记录表
+- `chemical_documents` - 化工文档表（含向量嵌入、全文索引、业务索引）
 
 ### EF Core 数据库迁移
 
