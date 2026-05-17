@@ -21,6 +21,19 @@
 │   ├── Config/               # 配置文件
 │   └── Program.cs            # 应用入口
 ├── ArchitectureTest/         # 架构测试模块
+├── docs/                     # 文档库
+│   ├── architecture/         # 架构设计文档
+│   ├── technical-principles/ # 技术原理解析
+│   ├── testing/              # 测试文档
+│   ├── troubleshooting/      # 故障排查文档
+│   ├── learning-notes/       # 学习笔记
+│   └── project/              # 项目基本文档
+├── knowledgebase/            # 化工合规知识库
+│   └── H166—危险化学品化工企业安全生产三级标准化管理制度消防台账资料档案/
+│       ├── 1.法律法规/       # 法律法规识别与评价
+│       ├── 2.机构与职责/     # 安全生产方针目标
+│       ├── 10.事故与应急/    # 应急预案与演练
+│       └── 11.检查与自评/    # 安全检查与自评
 └── Agent1.sln                # 解决方案文件
 ```
 
