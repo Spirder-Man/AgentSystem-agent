@@ -70,17 +70,20 @@ namespace Agent1
 
                 var history = _sessionService.GetFormattedHistory(_session.SessionId, 10);
 
-                string cotPrompt = $@"【角色】工业设备诊断专家
+                string cotPrompt = $@"示例：问题储罐温度超过180℃会有什么风险？
+推理过程：
+1. 查阈值：主轴安全温度≤180℃
+2. 判断：超过阈值属于过热
+3. 风险：可能导致轴承磨损、设备损坏
+答案：温度超过180℃会增加设备损坏风险，建议立即检查
+
+【角色】工业设备诊断专家
 【对话历史】
 {history}
 【当前问题】{userInput}
 【要求】
-1. 理解问题本质
-2. 分析已知条件
-3. 应用安全规则
-4. 得出结论
-
-请按步骤思考（Let's think step by step）。";
+1. 严格按照步骤思考
+2. 最后给出清晰的诊断结论";
 
                 Console.WriteLine("\n📊 当前对话历史: " + _sessionService.GetHistoryCount(_session.SessionId) + " 轮");
                 Console.WriteLine("💬 正在生成回复...");
@@ -123,17 +126,20 @@ namespace Agent1
                 //获取会话历史，最多10轮
                 var history = _sessionService.GetFormattedHistory(_session.SessionId, 10);
                 //构建CoT推理的提示词
-                string cotPrompt = $@"【角色】工业设备诊断专家
+                string cotPrompt = $@"示例：问题储罐温度超过180℃会有什么风险？
+推理过程：
+1. 查阈值：主轴安全温度≤180℃
+2. 判断：超过阈值属于过热
+3. 风险：可能导致轴承磨损、设备损坏
+答案：温度超过180℃会增加设备损坏风险，建议立即检查
+
+【角色】工业设备诊断专家
 【对话历史】
 {history}
 【当前问题】{userInput}
 【要求】
-1. 理解问题本质
-2. 分析已知条件
-3. 应用安全规则
-4. 得出结论
-
-请按步骤思考（Let's think step by step）。";
+1. 用标签包裹思考过程
+2. 在标签后给出结论";
 
                 //CoT推理过程中，流式输出推理结果，用绿色字体显示
                 //CoT推理过程中，流式输出推理结果，用绿色字体显示

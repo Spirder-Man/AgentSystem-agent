@@ -1,0 +1,28 @@
+
+# .NET
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+*.xml
+*.config
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# NuGet
+packages/
+*.nupkg
+
+# Logs
+*.log
+测试结果报告.txt
+
+# 临时文件
+*.tmp
+*.bak
