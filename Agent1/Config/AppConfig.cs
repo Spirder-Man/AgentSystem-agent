@@ -103,7 +103,11 @@ namespace Agent1.Config
             new() { Name = "Calculate",              Description = "数学计算",                       KeywordTriggers = new() { "计算", "等于" } },
         };
     }
-
+    // class（当前）	✅ 引用类型，可以在运行时修改；支持 JSON 反序列化；可以作为依赖注入的参数
+    // struct	❌ 值类型，每次传递都会复制整个列表（5条规则）；修改不会反映到原对象
+    // record	⚠️ 可以用，但 record 侧重于值相等比较，这里不需要；且 record 的 with 表达式会产生新副本，不符合"全局单例配置"的语义
+    // 纯静态字段	❌ 无法从 JSON 配置文件反序列化；无法依赖注入；难以单元测试时替换
+    // 设计依据：.NET Options 模式。微软官方推荐的配置方式就是 POCO class + 属性，配合 Microsoft.Extensions.Configuration 可以将 appsettings.json 自动绑定到这些类上。虽然当前项目还没接入 IConfiguration，但这是为未来扩展预留的标准接口。
     public class ToolDefinition
     {
         public string Name { get; set; } = string.Empty;

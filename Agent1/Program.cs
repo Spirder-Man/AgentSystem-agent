@@ -57,6 +57,54 @@ namespace Agent1
             // 预加载化工知识库
             await chemicalRAG.LoadKnowledgeBaseAsync();
 
+#region 完整的调用链路
+// 程序启动
+//   │
+//   ▼
+// ChemicalRAG.LoadKnowledgeBaseAsync()
+//   │  [ChemicalRAG.cs 第38-93行]
+//   │
+//   ├── 扫描 knowledgebase/国标/*.txt         ← 只读 .txt 文件！
+//   │   ├── GB15603-1995 常用化学危险品贮存通则.txt
+//   │   ├── GB30000-2013 化学品分类和标签规范.txt
+//   │   └── 危险化学品安全管理条例.txt
+//   │
+//   ├── 扫描 knowledgebase/园区规则/*.txt
+//   │   ├── 园区动火作业安全规范.txt
+//   │   └── 园区危化品存储管理规定.txt
+//   │
+//   ├── 扫描 knowledgebase/历史案例/*.txt
+//   │   ├── 2022年安全检查整改案例.txt
+//   │   └── 2023年储罐泄漏处置案例.txt
+//   │
+//   ▼
+// LoadAndSplitFile() 对每个 .txt 文件
+//   │  [ChemicalRAG.cs 第101-131行]
+//   │
+//   ├── File.ReadAllTextAsync(filePath)      ← 读入全文
+//   ├── SplitTextIntoChunks(content, 500)    ← 按 500 字符分块
+//   │
+//   ▼
+// _knowledgeBase.AddDocumentAsync(chunk, metadata)
+//   │  [HybridKnowledgeBaseService.cs 第27-57行]
+//   │
+//   ├── [内存路径] _bm25Service.AddDocumentAsync(chunk)
+//   │      → 存入 KnowledgeBaseService._documents 列表
+//   │      → 更新 _termDocFreq 倒排索引
+//   │      → 纯内存，进程重启就消失
+//   │
+//   └── [数据库路径] _databaseService.AddChemicalDocumentAsync(...)
+//          → INSERT INTO chemical_documents (content, embedding, ...)
+//          → 存入 PostgreSQL，持久化存储
+//          → 会调用 _llmService.GetEmbeddingAsync(content) 生成 768 维向量
+
+
+#endregion
+
+// 所以数据是在程序每次启动时，从 knowledgebase/ 下的 .txt 文件读入，同时写入内存和数据库。 
+// 因此 KnowledgeBaseService._documents 列表是空的只是因为还没运行过程序，
+//或者运行过但用的 KnowledgeBaseService（纯内存版）而非 HybridKnowledgeBaseService。
+
             while (true)
             {
                 Console.WriteLine("\n请选择功能:");

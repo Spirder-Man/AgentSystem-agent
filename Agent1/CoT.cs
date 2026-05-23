@@ -22,7 +22,7 @@ namespace Agent1
         /// <summary>
         /// 工具服务
         /// </summary>
-        private readonly IndustrialTools _tools;
+        private readonly ChemicalComplianceTools _tools; // P2: IndustrialTools → ChemicalComplianceTools
         /// <summary>
         /// 会话上下文
         /// </summary>
@@ -36,7 +36,7 @@ namespace Agent1
         {
             _llmService = llmService;
             _sessionService = sessionService;
-            _tools = new IndustrialTools();
+            _tools = new ChemicalComplianceTools(); // P2: 化工合规工具集
             _session = _sessionService.CreateSession(SessionType.IndustrialDiagnostic);
         //这里的会话服务和LLM服务的区别是，会话服务负责管理会话的上下文，而LLM服务负责生成推理结果
         }
@@ -70,20 +70,20 @@ namespace Agent1
 
                 var history = _sessionService.GetFormattedHistory(_session.SessionId, 10);
 
-                string cotPrompt = $@"示例：问题储罐温度超过180℃会有什么风险？
+                string cotPrompt = $@"示例：问题氧化剂与易燃液体能否同库储存？
 推理过程：
-1. 查阈值：主轴安全温度≤180℃
-2. 判断：超过阈值属于过热
-3. 风险：可能导致轴承磨损、设备损坏
-答案：温度超过180℃会增加设备损坏风险，建议立即检查
+1. 查禁忌表：氧化剂与易燃液体存在配伍禁忌（GB15603-1995 4.2.2）
+2. 判断：不可同库储存
+3. 风险：混合可能导致火灾/爆炸
+答案：氧化剂与易燃液体不可同库贮存，依据GB15603-1995第4.2.2条
 
-【角色】工业设备诊断专家
+【角色】化工园区危化品合规审核专家
 【对话历史】
 {history}
 【当前问题】{userInput}
 【要求】
 1. 严格按照步骤思考
-2. 最后给出清晰的诊断结论";
+2. 最后给出清晰的合规判断结论"; // P2: 工业设备诊断→化工合规审核
 
                 Console.WriteLine("\n📊 当前对话历史: " + _sessionService.GetHistoryCount(_session.SessionId) + " 轮");
                 Console.WriteLine("💬 正在生成回复...");
@@ -126,20 +126,20 @@ namespace Agent1
                 //获取会话历史，最多10轮
                 var history = _sessionService.GetFormattedHistory(_session.SessionId, 10);
                 //构建CoT推理的提示词
-                string cotPrompt = $@"示例：问题储罐温度超过180℃会有什么风险？
+                string cotPrompt = $@"示例：问题氧化剂与易燃液体能否同库储存？
 推理过程：
-1. 查阈值：主轴安全温度≤180℃
-2. 判断：超过阈值属于过热
-3. 风险：可能导致轴承磨损、设备损坏
-答案：温度超过180℃会增加设备损坏风险，建议立即检查
+1. 查禁忌表：氧化剂与易燃液体存在配伍禁忌（GB15603-1995 4.2.2）
+2. 判断：不可同库储存
+3. 风险：混合可能导致火灾/爆炸
+答案：氧化剂与易燃液体不可同库贮存，依据GB15603-1995第4.2.2条
 
-【角色】工业设备诊断专家
+【角色】化工园区危化品合规审核专家
 【对话历史】
 {history}
 【当前问题】{userInput}
 【要求】
 1. 用标签包裹思考过程
-2. 在标签后给出结论";
+2. 在标签后给出结论"; // P2: 工业设备诊断→化工合规审核
 
                 //CoT推理过程中，流式输出推理结果，用绿色字体显示
                 //CoT推理过程中，流式输出推理结果，用绿色字体显示
@@ -185,14 +185,14 @@ namespace Agent1
 
                 var history = _sessionService.GetFormattedHistory(_session.SessionId, 10);
 
-                string reactPrompt = $@"【角色】工业设备诊断专家
+                string reactPrompt = $@"【角色】化工园区危化品合规审核专家
 【对话历史】
 {history}
 【当前问题】{userInput}
 【要求】
 1. 遵循ReAct流程：Thought → Action → Observation → Final Answer
-2. 可用工具：GetSpindleTemperature(), GetTemperatureThreshold()
-3. 思考过程用标签包裹";
+2. 可用工具：CheckHazardCategory, CheckStorageCompatibility, GetSafetyDistance, GetCurrentTime, Calculate
+3. 思考过程用标签包裹"; // P2: 工业设备诊断→化工合规审核
 
                 Console.WriteLine("\n📊 当前对话历史: " + _sessionService.GetHistoryCount(_session.SessionId) + " 轮");
                 Console.WriteLine("💬 正在生成回复...");
@@ -210,7 +210,7 @@ namespace Agent1
 
         public async Task RunReActStreamTools()
         {
-            Console.WriteLine("\n====ReAct（工业级手动工具调用·多轮对话）====");
+            Console.WriteLine("\n====ReAct（化工合规手动工具调用·多轮对话）===="); // P2: 工业级→化工合规
             Console.WriteLine($"✅ 会话已创建，Session ID: {_session.SessionId}");
             Console.WriteLine("💡 输入 'exit' 或 'quit' 退出对话");
             Console.WriteLine("-----------------------------------");
@@ -236,14 +236,18 @@ namespace Agent1
                 Console.WriteLine("\n【Step 1 - Thought】模型分析需要调用的工具");
                 Console.ForegroundColor = ConsoleColor.DarkGray;
 
-                string thoughtPrompt = $@"你是工业设备诊断专家，现在需要分析以下问题：{userInput}
+                string thoughtPrompt = $@"你是化工园区危化品合规审核专家，现在需要分析以下问题：{userInput}
 
 可用工具：
-1. GetSpindleTemperature() - 获取机床主轴实时温度
-2. GetTemperatureThreshold() - 获取温度安全阈值
+1. CheckHazardCategory(危化品名称) - 查询危险类别及适用国标（GB 30000 系列）
+2. CheckStorageCompatibility(危化品A, 危化品B) - 检查两种危化品可否同库储存（GB15603）
+3. GetSafetyDistance(设施类型) - 查询安全间距要求（GB50160/GB50016）
+4. GetCurrentTime() - 获取当前时间
+5. Calculate(表达式) - 数学计算
 
-请输出你的思考过程，并明确说明需要调用哪些工具（只需列出工具名称，用逗号分隔）
-格式要求：先输出思考内容，最后用【工具调用】: 工具1,工具2 格式列出需要调用的工具。";
+请输出你的思考过程，最后必须单独一行以大写 TOOLS: 开头列出工具名，逗号分隔。
+格式示例：TOOLS:CheckHazardCategory,CheckStorageCompatibility
+（务必以 TOOLS: 开头，否则工具不会被调用！）"; // P2: 工业工具→化工合规工具
 
                 string thoughtResult = await _llmService.InvokeStreamWithRetryAsync(thoughtPrompt, ConsoleColor.DarkGray, "思考分析");
                 Console.ResetColor();
@@ -253,17 +257,17 @@ namespace Agent1
 
                 if (toolsToCall.Length == 0)
                 {
-                    toolsToCall = new string[] { "GetSpindleTemperature", "GetTemperatureThreshold" };
+                    toolsToCall = new string[] { "GetSafetyDistance" }; // P2: 兜底工具从主轴温度改为安全距离
                 }
 
-                Console.WriteLine("\n【Step 3 - Observation】调用真实工业工具获取数据");
+                Console.WriteLine("\n【Step 3 - Observation】调用化工合规工具获取数据"); // P2: 工业工具→化工合规工具
                 Console.ForegroundColor = ConsoleColor.Green;
 
                 Dictionary<string, string> toolResults = new Dictionary<string, string>();
 
                 foreach (string toolName in toolsToCall)
                 {
-                    string result = CallTool(_tools, toolName);
+                    string result = CallTool(_tools, toolName, userInput);
                     toolResults.Add(toolName, result);
                     Console.WriteLine($"✓ {toolName} → {result}");
                 }
@@ -275,7 +279,7 @@ namespace Agent1
                 var history = _sessionService.GetFormattedHistory(_session.SessionId, 10);
                 string observationSummary = string.Join("\n", toolResults.Select(kv => $"- {kv.Value}"));
 
-                string conclusionPrompt = $@"【角色】工业设备诊断专家
+                string conclusionPrompt = $@"【角色】化工园区危化品合规审核专家
 【对话历史】
 {history}
 【当前问题】{userInput}
@@ -283,10 +287,9 @@ namespace Agent1
 {observationSummary}
 【要求】
 1. 严格基于真实数据，禁止编造任何信息
-2. 分析温度是否异常（安全阈值：≤ 180℃）
-3. 指出可能的故障原因
-4. 给出具体的整改建议
-5. 输出格式清晰易读";
+2. 判断是否合规，引用具体法规条款（GB 30000、GB15603、GB50160）
+3. 指出违规点和对应的整改措施
+4. 输出格式清晰易读"; // P2: 工业设备诊断→化工合规审核
 
                 var answer = await _llmService.InvokeStreamWithRetryAsync(conclusionPrompt, ConsoleColor.Blue, "最终结论");
                 Console.ResetColor();
@@ -294,33 +297,46 @@ namespace Agent1
                 _sessionService.AddDialogTurn(_session.SessionId, "Assistant", answer);
 
                 Console.WriteLine("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                Console.WriteLine("✅ ReAct工业级工具调用流程执行完成！");
+                Console.WriteLine("✅ ReAct化工合规工具调用流程执行完成！"); // P2: 工业级→化工合规
                 Console.WriteLine("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             }
         }
 
         private string[] ParseToolCalls(string modelOutput)
         {
-            int startIndex = modelOutput.IndexOf("【工具调用】:");
-            if (startIndex == -1)
-                startIndex = modelOutput.IndexOf("[工具调用]:");
+            // 尝试多种前缀格式（TOOLS: 优先，LLM 更容易遵守这个格式）
+            string[] prefixes = { "TOOLS:", "tools:", "【工具调用】:", "[工具调用]:", "工具调用:" };
+            foreach (var prefix in prefixes)
+            {
+                int startIndex = modelOutput.LastIndexOf(prefix);
+                if (startIndex >= 0)
+                {
+                    string toolPart = modelOutput.Substring(startIndex + prefix.Length).Trim();
+                    // 只取第一行（避免后续无关内容干扰）
+                    string toolLine = toolPart.Split('\n')[0].Trim();
+                    return toolLine.Split(',')
+                        .Select(t => t.Trim())
+                        .Where(t => !string.IsNullOrEmpty(t) && !t.Contains("无") && !t.Contains("空") && !t.Equals("-"))
+                        .ToArray();
+                }
+            }
 
-            if (startIndex == -1)
-                return new string[0];
-
-            string toolPart = modelOutput.Substring(startIndex + 6).Trim();
-            return toolPart.Split(',')
-                          .Select(t => t.Trim())
-                          .Where(t => !string.IsNullOrEmpty(t) && !t.Contains("无") && !t.Contains("空") && !t.Equals("-"))
-                          .ToArray();
+            // 兜底：扫描末尾 200 字符中已知工具名
+            string[] knownTools = { "CheckHazardCategory", "CheckStorageCompatibility", "GetSafetyDistance", "GetCurrentTime", "Calculate" };
+            string tailText = modelOutput.Length > 200 ? modelOutput.Substring(modelOutput.Length - 200) : modelOutput;
+            var found = knownTools.Where(t => tailText.Contains(t)).ToList();
+            return found.ToArray();
         }
 
-        private string CallTool(IndustrialTools tools, string toolName)
+        private string CallTool(ChemicalComplianceTools tools, string toolName, string userInput) // P2: IndustrialTools→ChemicalComplianceTools
         {
             return toolName switch
             {
-                "GetSpindleTemperature" => tools.GetSpindleTemperature(),
-                "GetTemperatureThreshold" => tools.GetTemperatureThreshold(),
+                "CheckHazardCategory" => tools.CheckHazardCategory(userInput), // P2: 传入用户问题进行模糊匹配
+                "CheckStorageCompatibility" => tools.CheckStorageCompatibility(userInput, userInput),
+                "GetSafetyDistance" => tools.GetSafetyDistance(userInput),
+                "GetCurrentTime" => tools.GetCurrentTime(),
+                "Calculate" => tools.Calculate("1+1"),
                 _ => $"未知工具: {toolName}"
             };
         }

@@ -31,11 +31,16 @@ namespace Agent1.Services
                     plan.NeedsTools = true;
                     plan.ToolNames.Add(tool.Name);
                     Console.WriteLine($"\n🤔 分析中... 关键词触发工具: {tool.Name} ({tool.Description})");
-                    return plan;
+                    return plan; // 首次匹配就返回
                 }
             }
+            // 用户输入	路径 A (ToolService)	路径 B (RAG.cs LLM推理)
+            // "苯属于什么类别"	✅ 匹配"类别"→触发	✅ LLM也能推理出需要查类别
+            // "苯的储存要注意什么"	❌ 没有"同库""共存"等关键词	✅ LLM推理出需要查储存兼容性
+            // "这个化学品安不安全"	❌ 没有任何关键词匹配	✅ LLM推理出需要查危险类别
 
-            plan.NeedsTools = false;
+
+            plan.NeedsTools = false; // ← 全部遍历完都没匹配 → 不调用工
             Console.WriteLine("\n🤔 分析中... 不需要调用工具");
             return plan;
         }

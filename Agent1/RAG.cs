@@ -49,7 +49,7 @@ namespace Agent1
             // 化工合规知识（国标/园区规则/历史案例）已通过数据库预加载，避免工业数据污染
         }
         /// <summary>
-        /// 加载工业知识库
+        /// 加载工业知识库，终端6路径
         /// </summary>
         /// <returns>工业知识库</returns>
         // P1: LoadIndustrialKnowledgeBase() 已删除 —— 该方法加载的工业主轴/温度文件属于遗留数据，

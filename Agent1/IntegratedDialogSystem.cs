@@ -11,19 +11,19 @@ namespace Agent1
     public class IntegratedDialogSystem
     {
         private readonly Kernel _kernel;
-        private readonly IndustrialTools _industrialTools;
+        private readonly ChemicalComplianceTools _complianceTools; // P2: IndustrialTools → ChemicalComplianceTools
         private readonly SessionContext _session;
         private readonly CancellationTokenSource _cancellationTokenSource;
 
         public IntegratedDialogSystem(SessionContext session)
         {
             _session = session;
-            _industrialTools = new IndustrialTools();
+            _complianceTools = new ChemicalComplianceTools(); // P2: 化工合规工具集
             _cancellationTokenSource = new CancellationTokenSource();
 
             var kernelBuilder = Kernel.CreateBuilder();
             kernelBuilder.AddOllamaChatCompletion(ModelConfig.ModelId, ModelConfig.Endpoint);
-            kernelBuilder.Plugins.AddFromType<IndustrialTools>();
+            kernelBuilder.Plugins.AddFromType<ChemicalComplianceTools>(); // P2: IndustrialTools→ChemicalComplianceTools
             _kernel = kernelBuilder.Build();
         }
 
@@ -45,7 +45,7 @@ namespace Agent1
                 string thoughtPrompt = $"""
                 {customPrompt}
                 
-                你是工业设备诊断专家，拥有以下工具可用：
+                你是化工园区危化品合规审核专家，拥有以下工具可用：
                 {toolsList}
                 
                 当前对话上下文：
@@ -55,7 +55,7 @@ namespace Agent1
                 
                 请分析是否需要调用工具，如果需要，请列出工具名称。
                 格式：【工具调用】: 工具1,工具2
-                """;
+                """; // P2: 工业设备诊断→化工合规审核
 
                 Console.WriteLine("\n思考中...");
                 string thoughtResult = string.Empty;
@@ -182,12 +182,12 @@ namespace Agent1
         {
             var tools = new List<string>
             {
-                "1. GetSpindleTemperature() - 获取机床主轴实时温度",
-                "2. GetTemperatureThreshold() - 获取温度安全阈值",
-                "3. WebSearch(query) - 联网搜索最新信息",
+                "1. CheckHazardCategory(危化品名称) - 查询危险类别及适用国标（GB 30000 系列）",
+                "2. CheckStorageCompatibility(危化品A, 危化品B) - 检查两种危化品可否同库储存（GB15603）",
+                "3. GetSafetyDistance(设施类型) - 查询安全间距要求（GB50160/GB50016）",
                 "4. GetCurrentTime() - 获取当前时间",
-                "5. Calculate(expression) - 数学计算"
-            };
+                "5. Calculate(表达式) - 数学计算"
+            }; // P2: 工业工具→化工合规工具
             return string.Join("\n", tools);
         }
 
@@ -222,7 +222,7 @@ namespace Agent1
             string toolSummary = string.Join("\n", toolResults.Select(kv => $"- {kv.Value}"));
 
             string prompt = $"""
-            你是工业设备诊断专家，请基于以下信息输出诊断结论：
+            你是化工园区危化品合规审核专家，请基于以下信息输出诊断结论：
             
             {toc}
             
@@ -237,8 +237,8 @@ namespace Agent1
             【要求】
             1. 严格按照大纲结构输出
             2. 基于真实数据，禁止编造
-            3. 结论清晰，建议具体可落地
-            """;
+            3. 合规判断引用具体法规条款，结论清晰，建议具体可落地
+            """; // P2: 工业设备诊断→化工合规审核
 
             string result = string.Empty;
             await foreach (var chunk in _kernel.InvokePromptStreamingAsync<string>(prompt, cancellationToken: _cancellationTokenSource.Token))
@@ -255,11 +255,11 @@ namespace Agent1
             string toolSummary = string.Join("\n", toolResults.Select(kv => $"- {kv.Value}"));
 
             string reflectionPrompt = $"""
-            你是工业设备诊断专家，现在需要对初步结论进行严格检查：
+            你是化工园区危化品合规审核专家，现在需要对初步结论进行严格检查：
             
             【反思维度】
             1. 数据真实性：是否完全基于工具调用的真实数据？是否编造了数据？
-            2. 结论严谨性：判断是否符合阈值规则（安全阈值≤180℃）？原因是否有数据支撑？
+            2. 结论严谨性：合规判断是否引用了具体法规条款（GB 30000、GB15603、GB50160）？
             3. 建议落地性：整改建议是否具体可落地？
             4. 结构完整性：是否符合ToC大纲结构？
             
@@ -273,7 +273,7 @@ namespace Agent1
             1. 逐条指出问题（无问题则说明"无问题"）
             2. 给出具体纠错建议
             3. 最后用【纠错指令】: 具体修改方向 格式总结
-            """;
+            """; // P2: 工业设备诊断→化工合规审核
 
             string result = string.Empty;
             await foreach (var chunk in _kernel.InvokePromptStreamingAsync<string>(reflectionPrompt, cancellationToken: _cancellationTokenSource.Token))
@@ -291,7 +291,7 @@ namespace Agent1
             string toolSummary = string.Join("\n", toolResults.Select(kv => $"- {kv.Value}"));
 
             string prompt = $"""
-            你是工业设备诊断专家，请根据反思结果修正初步结论：
+            你是化工园区危化品合规审核专家，请根据反思结果修正初步结论：
             
             {toc}
             
@@ -309,9 +309,9 @@ namespace Agent1
             【要求】
             1. 严格修正所有反思指出的问题
             2. 完全基于真实工具数据
-            3. 结论严谨、建议具体可落地
+            3. 合规判断引用具体法规条款
             4. 按照ToC大纲格式输出
-            """;
+            """; // P2: 工业设备诊断→化工合规审核
 
             string result = string.Empty;
             await foreach (var chunk in _kernel.InvokePromptStreamingAsync<string>(prompt, cancellationToken: _cancellationTokenSource.Token))
@@ -327,12 +327,23 @@ namespace Agent1
         {
             return toolName switch
             {
-                "GetSpindleTemperature" => _industrialTools.GetSpindleTemperature(),
-                "GetTemperatureThreshold" => _industrialTools.GetTemperatureThreshold(),
-                "GetCurrentTime" => _industrialTools.GetCurrentTime(),
-                "WebSearch" => await _industrialTools.WebSearch("工业设备故障诊断"),
+                "CheckHazardCategory" => _complianceTools.CheckHazardCategory(""), // P2: 工业工具→化工合规工具
+                "CheckStorageCompatibility" => _complianceTools.CheckStorageCompatibility("", ""),
+                "GetSafetyDistance" => _complianceTools.GetSafetyDistance(""),
+                "GetCurrentTime" => _complianceTools.GetCurrentTime(),
+                "Calculate" => await HandleCalculateCall(toolName),
                 _ => await HandleDynamicToolCall(toolName)
             };
+        }
+
+        private Task<string> HandleCalculateCall(string toolCall) // P2: Calculate包装，保持原有动态解析能力
+        {
+            if (toolCall.StartsWith("Calculate(") && toolCall.EndsWith(")"))
+            {
+                string expression = toolCall.Substring(10, toolCall.Length - 11);
+                return Task.FromResult(_complianceTools.Calculate(expression));
+            }
+            return Task.FromResult(_complianceTools.Calculate("1+1"));
         }
 
         private async Task<string> HandleDynamicToolCall(string toolCall)
@@ -340,14 +351,9 @@ namespace Agent1
             if (toolCall.StartsWith("Calculate(") && toolCall.EndsWith(")"))
             {
                 string expression = toolCall.Substring(10, toolCall.Length - 11);
-                return _industrialTools.Calculate(expression);
+                return _complianceTools.Calculate(expression); // P2: IndustrialTools→ChemicalComplianceTools
             }
-            if (toolCall.StartsWith("WebSearch(") && toolCall.EndsWith(")"))
-            {
-                string query = toolCall.Substring(10, toolCall.Length - 11);
-                return await _industrialTools.WebSearch(query);
-            }
-            return $"未知工具调用格式: {toolCall}";
+            return $"未知工具调用格式: {toolCall}"; // P2: 移除 WebSearch（工业工具已废弃）
         }
 
         private string[] ParseToolCalls(string modelOutput)

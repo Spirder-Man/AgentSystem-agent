@@ -11,7 +11,17 @@ namespace Agent1
     /// </summary>
     public class ChemicalComplianceTools
     {
+        //为什么用 Dictionary 而不是 List？
+        	// Dictionary<string, string>	List<(string, string)>	string[]
+            // 按 Key 查找	O(1) 哈希查找	O(n) 遍历	O(n) 遍历
+            // 按 Value 查找	O(n) 遍历	O(n) 遍历	无法区分
+            // 去重保证	Key 天然唯一	需手动校验	无
+            // 语义表达	"这是键值映射表"	"这是一个列表"	"这只是一堆数据"
+//注意：但实际上，当前代码并没有利用 Dictionary 的 O(1) 优势——它用的是 foreach 遍历而非 TryGetValu
         // 危化品类别映射表（GB 30000 系列）
+
+// 所以当前用 Dictionary 更多是语义上的选择：Dictionary 天然表达了"这是键→值的映射关系"，
+// 而 List<Tuple> 表达的是"这是一组配对数据"。读代码的人看到 Dictionary 就能立刻理解数据之间的主从关系，这就是代码的可读性设计。
         private static readonly Dictionary<string, string> HazardCategories = new()
         {
             ["爆炸物"] = "GB 30000.2-2013",

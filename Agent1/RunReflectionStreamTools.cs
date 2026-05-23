@@ -62,8 +62,9 @@ namespace Agent1
 4. GetCurrentTime() - 获取当前时间
 5. Calculate(表达式) - 数学计算
 
-请输出你的思考过程，并明确说明需要调用哪些工具（只需列出工具名称，用逗号分隔）。
-格式要求：先输出思考内容，最后用【工具调用】: 工具1,工具2 格式列出需要调用的工具。";
+请输出你的思考过程，最后必须单独一行以大写 TOOLS: 开头列出工具名，逗号分隔。
+格式示例：TOOLS:CheckHazardCategory,CheckStorageCompatibility
+（务必以 TOOLS: 开头，否则工具不会被调用！）";
 
                 string thoughtResult = await _llmService.InvokeStreamWithRetryAsync(thoughtPrompt, ConsoleColor.DarkGray, "分析思考");
                 Console.ResetColor();
@@ -81,7 +82,7 @@ namespace Agent1
                 Dictionary<string, string> toolResults = new Dictionary<string, string>();
                 foreach (string toolName in toolsToCall)
                 {
-                    string result = CallTool(_complianceTools, toolName);
+                    string result = CallTool(_complianceTools, toolName, userInput);
                     toolResults.Add(toolName, result);
                     Console.WriteLine($"✓ {toolName} → {result}");
                 }
@@ -150,34 +151,44 @@ namespace Agent1
 
         private string[] ParseToolCalls(string modelOutput)
         {
-            int startIndex = modelOutput.IndexOf("【工具调用】:");
-            if (startIndex == -1)
-                startIndex = modelOutput.IndexOf("[工具调用]:");
+            // 尝试多种前缀格式（TOOLS: 优先，LLM 更容易遵守这个格式）
+            string[] prefixes = { "TOOLS:", "tools:", "【工具调用】:", "[工具调用]:", "工具调用:" };
+            foreach (var prefix in prefixes)
+            {
+                int startIndex = modelOutput.LastIndexOf(prefix);
+                if (startIndex >= 0)
+                {
+                    string toolPart = modelOutput.Substring(startIndex + prefix.Length).Trim();
+                    // 只取第一行（避免后续无关内容干扰）
+                    string toolLine = toolPart.Split('\n')[0].Trim();
+                    return toolLine.Split(',')
+                        .Select(t => t.Trim()
+                                      .Replace("(", "")
+                                      .Replace(")", "")
+                                      .Replace("：", "")
+                                      .Replace(":", "")
+                                      .Trim())
+                        .Where(t => !string.IsNullOrEmpty(t))
+                        .ToArray();
+                }
+            }
 
-            if (startIndex == -1)
-                return new string[0];
-
-            string toolPart = modelOutput.Substring(startIndex + 6).Trim();
-            return toolPart.Split(',')
-                          .Select(t => t.Trim()
-                                        .Replace("(", "")
-                                        .Replace(")", "")
-                                        .Replace("：", "")
-                                        .Replace(":", "")
-                                        .Trim())
-                          .Where(t => !string.IsNullOrEmpty(t))
-                          .ToArray();
+            // 兜底：扫描末尾 200 字符中已知工具名
+            string[] knownTools = { "CheckHazardCategory", "CheckStorageCompatibility", "GetSafetyDistance", "GetCurrentTime", "Calculate" };
+            string tailText = modelOutput.Length > 200 ? modelOutput.Substring(modelOutput.Length - 200) : modelOutput;
+            var found = knownTools.Where(t => tailText.Contains(t)).ToList();
+            return found.ToArray();
         }
 
-        private string CallTool(ChemicalComplianceTools tools, string toolName)
+        private string CallTool(ChemicalComplianceTools tools, string toolName, string userInput)
         {
             return toolName.Trim()
                 .Replace("(", "").Replace(")", "")
                 .Replace("：", "").Replace(":", "") switch
             {
-                "CheckHazardCategory" => tools.CheckHazardCategory(""),
-                "CheckStorageCompatibility" => tools.CheckStorageCompatibility("", ""),
-                "GetSafetyDistance" => tools.GetSafetyDistance(""),
+                "CheckHazardCategory" => tools.CheckHazardCategory(userInput),
+                "CheckStorageCompatibility" => tools.CheckStorageCompatibility(userInput, userInput),
+                "GetSafetyDistance" => tools.GetSafetyDistance(userInput),
                 "GetCurrentTime" => tools.GetCurrentTime(),
                 "Calculate" => tools.Calculate("1+1"),
                 _ => $"未知工具: {toolName}"
