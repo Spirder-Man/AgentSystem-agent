@@ -20,12 +20,12 @@ namespace Agent1
             _llmService = llmService;
             _sessionService = sessionService;
             _complianceTools = new ChemicalComplianceTools();
-            _session = _sessionService.CreateSession(SessionType.IndustrialDiagnostic);
+            _session = _sessionService.CreateSession(SessionType.ChemicalCompliance);
         }
 
         public async Task RunReflectionStreamTool()
         {
-            Console.WriteLine("\n====Reflection（工业级自我纠错·多轮对话）====");
+            Console.WriteLine("\n====Reflection（化工合规自我纠错·多轮对话）====");
             Console.WriteLine($"✅ 会话已创建，Session ID: {_session.SessionId}");
             Console.WriteLine("💡 输入 'exit' 或 'quit' 退出对话");
             Console.WriteLine("-----------------------------------");
@@ -144,7 +144,7 @@ namespace Agent1
 
                 Console.ResetColor();
                 Console.WriteLine("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                Console.WriteLine("✅ Reflection工业级自我纠错流程执行完成！");
+                Console.WriteLine("✅ Reflection化工合规自我纠错流程执行完成！");
                 Console.WriteLine("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             }
         }

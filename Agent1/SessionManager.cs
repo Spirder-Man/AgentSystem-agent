@@ -29,7 +29,7 @@ namespace Agent1
     public enum SessionType
     {
         General,
-        IndustrialDiagnostic
+        ChemicalCompliance
     }
 
     public class SessionManager

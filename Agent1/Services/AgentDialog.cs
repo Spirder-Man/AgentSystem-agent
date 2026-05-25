@@ -108,10 +108,10 @@ namespace Agent1.Services
                 return memoryAnswer;
             }
 
-            if (intent == IntentType.IndustrialDiagnostic)
+            if (intent == IntentType.ChemicalCompliance)
             {
-                Console.WriteLine("   → 执行工业诊断业务");
-                return await ExecuteIndustrialDiagnosticAsync(input, context);
+                Console.WriteLine("   → 执行化工合规业务");
+                return await ExecuteChemicalComplianceAsync(input, context);
             }
             else
             {
@@ -120,7 +120,7 @@ namespace Agent1.Services
             }
         }
 
-        private async Task<string> ExecuteIndustrialDiagnosticAsync(string input, PipelineContext context)
+        private async Task<string> ExecuteChemicalComplianceAsync(string input, PipelineContext context)
         {
             Console.WriteLine("\n   【Step 1 - Thought】ReAct推理 - 分析问题");
             Console.ForegroundColor = ConsoleColor.DarkGray;

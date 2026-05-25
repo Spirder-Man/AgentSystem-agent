@@ -8,15 +8,15 @@ namespace Agent1
     {
         Unknown = 0,
         SimpleChat = 1,
-        IndustrialDiagnostic = 2
+        ChemicalCompliance = 2
     }
 
     public static class IntentRouter
     {
-        private static readonly string[] IndustrialKeywords = new[]
+        private static readonly string[] ComplianceKeywords = new[]
         {
-            "温度", "机床", "主轴", "异常", "故障", "阈值", 
-            "诊断", "检查", "传感器", "数据", "参数"
+            "危化品", "化学品", "合规", "储存", "国标", "法规",
+            "安全距离", "危险类别", "禁忌", "储罐", "间距", "泄露"
         };
 
         private static readonly string[] SimpleChatKeywords = new[]
@@ -33,8 +33,8 @@ namespace Agent1
 
             var lower = userInput.ToLower();
 
-            if (IndustrialKeywords.Any(k => lower.Contains(k)))
-                return IntentType.IndustrialDiagnostic;
+            if (ComplianceKeywords.Any(k => lower.Contains(k)))
+                return IntentType.ChemicalCompliance;
 
             return IntentType.SimpleChat;
         }

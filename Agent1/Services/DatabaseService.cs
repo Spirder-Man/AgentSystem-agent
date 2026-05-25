@@ -196,6 +196,28 @@ namespace Agent1.Services
                 }
 
                 Console.WriteLine("   ✅ 化工文档表创建成功");
+
+                // K7: 扩展元数据字段（兼容已有表，逐列 ADD IF NOT EXISTS）
+                var extensionColumns = new[]
+                {
+                    "ALTER TABLE chemical_documents ADD COLUMN IF NOT EXISTS regulation_number VARCHAR(100);",
+                    "ALTER TABLE chemical_documents ADD COLUMN IF NOT EXISTS chapter_title VARCHAR(200);",
+                    "ALTER TABLE chemical_documents ADD COLUMN IF NOT EXISTS clause_number VARCHAR(50);",
+                    "ALTER TABLE chemical_documents ADD COLUMN IF NOT EXISTS page_number INT;",
+                    "ALTER TABLE chemical_documents ADD COLUMN IF NOT EXISTS chunk_index INT;",
+                    "ALTER TABLE chemical_documents ADD COLUMN IF NOT EXISTS extraction_quality VARCHAR(20);",
+                };
+
+                foreach (var alterSql in extensionColumns)
+                {
+                    try
+                    {
+                        using var alterCmd = new NpgsqlCommand(alterSql, connection);
+                        await alterCmd.ExecuteNonQueryAsync();
+                    }
+                    catch { /* 列可能已存在 */ }
+                }
+                Console.WriteLine("   ✅ 扩展元数据字段就绪");
             }
             catch (Exception ex)
             {

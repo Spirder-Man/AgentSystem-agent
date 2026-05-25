@@ -44,7 +44,7 @@ namespace Agent1
             _sessionService = sessionService;
             _complianceTools = new ChemicalComplianceTools(); // P1: 化工合规工具集（危险类别/储存禁忌/安全距离）
             _knowledgeBase = new KnowledgeBaseService();  // 初始化知识库服务（PostgreSQL + pgvector + BM25）
-            _session = _sessionService.CreateSession(SessionType.IndustrialDiagnostic);
+            _session = _sessionService.CreateSession(SessionType.ChemicalCompliance);
             // 注意：不再调用 LoadIndustrialKnowledgeBase()，知识库由 KnowledgeBaseService 统一管理，
             // 化工合规知识（国标/园区规则/历史案例）已通过数据库预加载，避免工业数据污染
         }

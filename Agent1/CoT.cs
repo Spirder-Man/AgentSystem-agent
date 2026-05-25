@@ -37,7 +37,7 @@ namespace Agent1
             _llmService = llmService;
             _sessionService = sessionService;
             _tools = new ChemicalComplianceTools(); // P2: 化工合规工具集
-            _session = _sessionService.CreateSession(SessionType.IndustrialDiagnostic);
+            _session = _sessionService.CreateSession(SessionType.ChemicalCompliance);
         //这里的会话服务和LLM服务的区别是，会话服务负责管理会话的上下文，而LLM服务负责生成推理结果
         }
 

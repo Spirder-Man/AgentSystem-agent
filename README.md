@@ -17,6 +17,10 @@
 │   │   ├── KnowledgeBaseService.cs # 知识库服务（BM25检索）
 │   │   ├── HybridKnowledgeBaseService.cs # 混合检索服务（BM25+向量）
 │   │   ├── DatabaseService.cs # 数据库服务（PostgreSQL + pgvector）
+│   │   ├── PdfExtractor.cs   # PDF 文档提取器（PdfPig）
+│   │   ├── DocExtractor.cs   # DOC/DOCX 文档提取器（OpenXml）
+│   │   ├── TextCleaner.cs    # 文本清洗服务
+│   │   ├── SemanticChunker.cs # 语义分块服务
 │   │   └── AuditService.cs   # 审计日志服务
 │   ├── Config/               # 配置文件
 │   └── Program.cs            # 应用入口
@@ -41,11 +45,13 @@
 |------|------|------|------|
 | 语言 | C# | 12.0 | ✅ 已实现 |
 | 框架 | .NET | 8.0 | ✅ 已实现 |
-| AI框架 | Semantic Kernel | 1.x | ✅ 已实现 |
-| 检索算法 | BM25 | - | ✅ 已实现 |
+| AI框架 | Semantic Kernel | 1.74.0 | ✅ 已实现 |
+| PDF 解析 | PdfPig | 0.1.9 | ✅ 已实现 |
+| DOCX 解析 | DocumentFormat.OpenXml | 3.2.0 | ✅ 已实现 |
+| 检索算法 | BM25 + pgvector 混合 | - | ✅ 已实现 |
 | 数据库 | PostgreSQL | 16.x | ✅ 已实现 |
 | 向量扩展 | pgvector | 0.7.x | ✅ 已实现 |
-| 向量数据库 | Milvus | 2.x | ⏳ 规划中 |
+| 本地 LLM | Ollama | latest | ✅ 已实现 |
 
 ## ✨ 核心功能
 
@@ -141,11 +147,23 @@ MIT License
 
 ---
 
-**文档版本**：v1.1  
-**最后更新**：2026年5月20日  
-**状态**：P1 阶段完成，P2 待处理
+**文档版本**：v1.2  
+**最后更新**：2026年5月25日  
+**状态**：P4 知识库多格式管道完成
 
-## 📋 近期更新 (P0 + P1)
+## 📋 近期更新 (P3 + P4)
+
+### P4：多格式知识库管道（2026-05-23）
+- **新增** `Services/PdfExtractor.cs` — 基于 PdfPig 的 PDF 文本提取
+- **新增** `Services/DocExtractor.cs` — 基于 OpenXml 的 DOCX 全文提取
+- **新增** `Services/TextCleaner.cs` — 国标 PDF 封面噪声过滤、目录删除
+- **新增** `Services/SemanticChunker.cs` — 按条款/条目自适应语义分块
+- **改造** `ChemicalRAG.cs` — 5 个新方法串联完整管道
+- **扩展** `DatabaseService.cs` — 6 个元数据列
+- **效果**：知识库覆盖从 7 个 TXT → 41 个 PDF + 1097 个 DOC
+
+### P3：领域语义重命名（2026-05-22）
+- 全量替换 Industrial→ChemicalCompliance，6 个文件修改
 
 ### P0：工业工具 → 化工合规工具替换（2026-05-19）
 - **新增** `Agent1/ChemicalComplianceTools.cs` — 化工合规工具集，含 5 个工具：

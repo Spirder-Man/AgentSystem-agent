@@ -13,6 +13,10 @@
     <PackageReference Include="Npgsql" Version="8.0.5" />
     <PackageReference Include="Dapper" Version="2.1.35" />
     <PackageReference Include="Pgvector" Version="0.3.2" />
+    <!-- K1: PDF 文本提取（国标 PDF 解析） -->
+    <PackageReference Include="PdfPig" Version="0.1.9" />
+    <!-- K3: DOCX 格式解析（H166 制度模板） -->
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.2.0" />
   </ItemGroup>
 
 </Project>
