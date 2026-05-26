@@ -344,6 +344,75 @@ namespace Agent1.Services
             }
         }
 
+        // P0修复：完整元数据入库方法 — 补全全部字段 + 脏数据熔断 + 向量维度校验
+        public async Task AddChemicalDocumentAsync(ChemicalDocumentRecord record)
+        {
+            try
+            {
+                // ── 脏数据熔断 ──
+                if (record.IsDirty)
+                {
+                    Console.WriteLine($"   🚫 脏数据拦截: 来源={record.SourceFile ?? "未知"}, 质量={record.ExtractionQuality ?? "未知"}, 内容长度={record.Content?.Length ?? 0}");
+                    return;
+                }
+
+                // ── 向量维度校验 ──
+                if (record.Embedding != null && record.Embedding.Length != _vectorConfig.EmbeddingDimension)
+                {
+                    Console.WriteLine($"   🚫 向量维度异常拦截: 期望{_vectorConfig.EmbeddingDimension}维, 实际{record.Embedding.Length}维, 来源={record.SourceFile ?? "未知"}");
+                    record.Embedding = null; // 降级：向量设为 null，仍写入文本
+                }
+
+                using var connection = CreateConnection();
+                await connection.OpenAsync();
+
+                // P0修复：INSERT 补全全部元数据字段
+                var sql = @"
+                    INSERT INTO chemical_documents (
+                        content, embedding, regulation_type, priority,
+                        source_file, chemical_type,
+                        regulation_number, chapter_title, clause_number,
+                        page_number, chunk_index, extraction_quality
+                    )
+                    VALUES (
+                        @content, @embedding::vector, @regulationType, @priority,
+                        @sourceFile, @chemicalType,
+                        @regulationNumber, @chapterTitle, @clauseNumber,
+                        @pageNumber, @chunkIndex, @extractionQuality
+                    );
+                ";
+
+                using var command = new NpgsqlCommand(sql, connection);
+                command.Parameters.AddWithValue("@content", record.Content);
+                if (record.Embedding != null)
+                {
+                    var vectorString = "[" + string.Join(",", record.Embedding.Select(x => x.ToString("G", System.Globalization.CultureInfo.InvariantCulture))) + "]";
+                    command.Parameters.AddWithValue("@embedding", vectorString);
+                }
+                else
+                {
+                    command.Parameters.AddWithValue("@embedding", DBNull.Value);
+                }
+                command.Parameters.AddWithValue("@regulationType", record.RegulationType);
+                command.Parameters.AddWithValue("@priority", record.Priority);
+                command.Parameters.AddWithValue("@sourceFile", record.SourceFile ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@chemicalType", record.ChemicalType ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@regulationNumber", record.RegulationNumber ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@chapterTitle", record.ChapterTitle ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@clauseNumber", record.ClauseNumber ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@pageNumber", record.PageNumber ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@chunkIndex", record.ChunkIndex ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@extractionQuality", record.ExtractionQuality ?? (object)DBNull.Value);
+
+                await command.ExecuteNonQueryAsync();
+                Console.WriteLine($"   ✅ 化工文档添加成功 (类型: {record.RegulationType}, 法规号: {record.RegulationNumber ?? "无"}, 质量: {record.ExtractionQuality ?? "无"})");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ❌ 化工文档添加失败: {ex.Message}");
+            }
+        }
+
         // 向量检索
         public async Task<List<RetrievedChunk>> VectorSearchAsync(string query, float[] queryEmbedding, int topK = 5)
         {

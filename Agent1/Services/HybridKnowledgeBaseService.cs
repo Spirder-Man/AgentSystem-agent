@@ -34,6 +34,13 @@ namespace Agent1.Services
                 var priority = "中";
                 string? sourceFile = null;
                 string? chemicalType = null;
+                // P0修复：从 metadata 提取全链路元数据
+                string? regulationNumber = null;
+                string? chapterTitle = null;
+                string? clauseNumber = null;
+                string? extractionQuality = null;
+                int? pageNumber = null;
+                int? chunkIndex = null;
 
                 if (metadata != null)
                 {
@@ -45,10 +52,40 @@ namespace Agent1.Services
                         sourceFile = metadata["SourceFile"]?.ToString();
                     if (metadata.ContainsKey("ChemicalType"))
                         chemicalType = metadata["ChemicalType"]?.ToString();
+                    if (metadata.ContainsKey("RegulationNumber"))
+                        regulationNumber = metadata["RegulationNumber"]?.ToString();
+                    if (metadata.ContainsKey("ChapterTitle"))
+                        chapterTitle = metadata["ChapterTitle"]?.ToString();
+                    if (metadata.ContainsKey("ClauseNumber"))
+                        clauseNumber = metadata["ClauseNumber"]?.ToString();
+                    if (metadata.ContainsKey("ExtractionQuality"))
+                        extractionQuality = metadata["ExtractionQuality"]?.ToString();
+                    if (metadata.ContainsKey("PageNumber") && metadata["PageNumber"] is int pn)
+                        pageNumber = pn;
+                    if (metadata.ContainsKey("ChunkIndex") && metadata["ChunkIndex"] is int ci)
+                        chunkIndex = ci;
                 }
 
                 var embedding = await _llmService.GetEmbeddingAsync(content);
-                await _databaseService.AddChemicalDocumentAsync(content, regulationType, priority, sourceFile, chemicalType, embedding);
+
+                // P0修复：构建完整记录，携带全部元数据（脏数据熔断由 DatabaseService 执行）
+                var record = new ChemicalDocumentRecord
+                {
+                    Content = content,
+                    RegulationType = regulationType,
+                    Priority = priority,
+                    SourceFile = sourceFile,
+                    ChemicalType = chemicalType,
+                    RegulationNumber = regulationNumber,
+                    ChapterTitle = chapterTitle,
+                    ClauseNumber = clauseNumber,
+                    ExtractionQuality = extractionQuality,
+                    PageNumber = pageNumber,
+                    ChunkIndex = chunkIndex,
+                    Embedding = embedding
+                };
+
+                await _databaseService.AddChemicalDocumentAsync(record);
             }
             catch (Exception ex)
             {
@@ -100,7 +137,18 @@ namespace Agent1.Services
             try
             {
                 var embedding = await _llmService.GetEmbeddingAsync(content);
-                await _databaseService.AddChemicalDocumentAsync(content, regulationType, priority, null, chemicalType, embedding);
+
+                // P0修复：构建完整记录
+                var record = new ChemicalDocumentRecord
+                {
+                    Content = content,
+                    RegulationType = regulationType,
+                    Priority = priority,
+                    ChemicalType = chemicalType,
+                    Embedding = embedding
+                };
+
+                await _databaseService.AddChemicalDocumentAsync(record);
             }
             catch (Exception ex)
             {

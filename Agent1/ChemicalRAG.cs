@@ -224,7 +224,12 @@ namespace Agent1
                         await _knowledgeBase.AddDocumentAsync(c.Content, new Dictionary<string, object>
                         {
                             ["RegulationType"] = "企业制度", ["Priority"] = "低",
-                            ["SourceFile"] = result.FileName, ["ParentDir"] = result.ParentDirectory ?? ""
+                            ["SourceFile"] = result.FileName, ["ParentDir"] = result.ParentDirectory ?? "",
+                            ["RegulationNumber"] = c.RegulationNumber ?? "",
+                            ["ChapterTitle"] = c.ChapterTitle ?? "",
+                            ["ClauseNumber"] = c.ClauseNumber ?? "",
+                            ["ChunkIndex"] = c.ChunkIndex,
+                            ["ExtractionQuality"] = result.ExtractionMethod == "FilenameOnly" ? "partial" : "good"
                         });
                         _totalChunks++;
                     }
@@ -274,7 +279,8 @@ namespace Agent1
                         ["RegulationNumber"] = c.RegulationNumber ?? "",
                         ["ChapterTitle"] = c.ChapterTitle ?? "",
                         ["ClauseNumber"] = c.ClauseNumber ?? "",
-                        ["ChunkIndex"] = c.ChunkIndex.ToString()
+                        ["ChunkIndex"] = c.ChunkIndex,
+                        ["ExtractionQuality"] = pdfResult.Quality
                     });
                     _totalChunks++;
                 }
@@ -307,7 +313,12 @@ namespace Agent1
                     {
                         await _knowledgeBase.AddDocumentAsync(c.Content, new Dictionary<string, object>
                         {
-                            ["RegulationType"] = regulationType, ["Priority"] = priority, ["SourceFile"] = fileName
+                            ["RegulationType"] = regulationType, ["Priority"] = priority, ["SourceFile"] = fileName,
+                            ["RegulationNumber"] = c.RegulationNumber ?? "",
+                            ["ChapterTitle"] = c.ChapterTitle ?? "",
+                            ["ClauseNumber"] = c.ClauseNumber ?? "",
+                            ["ChunkIndex"] = c.ChunkIndex,
+                            ["ExtractionQuality"] = docResult.ExtractionMethod == "FilenameOnly" ? "partial" : "good"
                         });
                         _totalChunks++;
                     }
