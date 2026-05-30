@@ -106,9 +106,9 @@ docs/
 - Docker Desktop（⭐ 推荐，数据库免安装）**或** PostgreSQL 16 + pgvector 手动安装
 - Ollama（本地 LLM 推理，需拉取 `deepseek-r1:local7b` 和 `nomic-embed-text:latest`）
 
-### 方式一：Docker 一键启动（⭐ 推荐）
+### 方式一：Docker 一键启动（需先安装 Docker Desktop）
 
-不需要手动安装 PostgreSQL，30 秒内完成：
+如果你已安装 Docker Desktop，30 秒内完成：
 
 ```bash
 # 1. 克隆项目
@@ -127,7 +127,7 @@ dotnet run --project Agent1
 cp .env.example .env    # 编辑密码后 docker-compose 会自动读取
 ```
 
-### 方式二：手动安装数据库
+### 方式二：手动安装数据库（不需要 Docker）
 
 如果你没有 Docker 或想手动管理 PostgreSQL：
 
