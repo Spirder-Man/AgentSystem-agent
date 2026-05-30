@@ -14,6 +14,12 @@ public class ToolServiceTests
         return mock.Object;
     }
 
+    private static IKnowledgeBaseService CreateKbStub()
+    {
+        var mock = new Mock<IKnowledgeBaseService>();
+        return mock.Object;
+    }
+
     private static List<ToolDefinition> CreateChemicalToolDefinitions()
     {
         return new List<ToolDefinition>
@@ -30,8 +36,9 @@ public class ToolServiceTests
     public async Task AnalyzeAndPlanToolsAsync_DetectsTools()
     {
         var llm = CreateLlmStub();
+        var kb = CreateKbStub();
         var tools = CreateChemicalToolDefinitions();
-        var service = new ToolService(llm, tools);
+        var service = new ToolService(llm, kb, tools);
 
         var hazardPlan = await service.AnalyzeAndPlanToolsAsync("苯属于什么危险类别", "");
         hazardPlan.NeedsTools.Should().BeTrue();

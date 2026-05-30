@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -5,40 +6,94 @@ using Agent1.Config;
 
 namespace Agent1.Services
 {
+    /// <summary>
+    /// Phase 2a: 统一工具调度中心 —— LLM 语义工具选择 + 异步 RAG 工具执行
+    /// LLM 优先，关键词兜底；异步 RAG 方法优先，同步硬编码兜底
+    /// </summary>
     public class ToolService : IToolService
     {
         private readonly ChemicalComplianceTools _tools;
         private readonly ILlmService _llmService;
+        private readonly IKnowledgeBaseService _kbService;
         private readonly List<ToolDefinition> _toolDefinitions;
 
-        public ToolService(ILlmService llmService, List<ToolDefinition> toolDefinitions)
+        public ToolService(ILlmService llmService, IKnowledgeBaseService kbService, List<ToolDefinition>? toolDefinitions)
         {
-            _tools = new ChemicalComplianceTools();
             _llmService = llmService;
+            _kbService = kbService;
             _toolDefinitions = toolDefinitions ?? new List<ToolDefinition>();
+            _tools = new ChemicalComplianceTools(kbService, llmService); // RAG-backed 构造
         }
 
         public async Task<ToolPlan> AnalyzeAndPlanToolsAsync(string userInput, string history)
         {
-            var lowerInput = userInput.ToLower();
             var plan = new ToolPlan();
 
-            // 配置驱动的关键词匹配
-            foreach (var tool in _toolDefinitions)
+            // ═══ Step 1: LLM 语义工具选择（主路径） ═══
+            try
             {
-                if (tool.KeywordTriggers.Any(kw => lowerInput.Contains(kw.ToLower())))
+                var toolDesc = string.Join("\n", _toolDefinitions.Select((t, i) =>
+                    $"{i + 1}. {t.Name} — {t.Description}"));
+
+                var prompt = $@"你是工具调用规划器。用户问题是化工合规相关，请严格根据可用工具列表判断需要哪些工具。
+
+可用工具：
+{toolDesc}
+
+用户问题：{userInput}
+
+规则：只输出需要的工具名，英文逗号分隔。如果不需要任何工具，只输出一个「无」字。不要任何解释。
+工具：";
+
+                var llmResult = await _llmService.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Gray, "LLM工具规划");
+                llmResult = llmResult.Trim().Replace("。", "").Replace(".", "");
+
+                if (!string.IsNullOrEmpty(llmResult) &&
+                    !llmResult.Equals("无", StringComparison.OrdinalIgnoreCase) &&
+                    !llmResult.Equals("none", StringComparison.OrdinalIgnoreCase))
                 {
-                    plan.NeedsTools = true;
-                    plan.ToolNames.Add(tool.Name);
-                    Console.WriteLine($"\n🤔 分析中... 关键词触发工具: {tool.Name} ({tool.Description})");
-                    // 不再首次匹配即return，继续收集所有匹配工具
+                    var candidates = llmResult.Split(',', '，')
+                        .Select(t => t.Trim())
+                        .Where(t => !string.IsNullOrEmpty(t))
+                        .Distinct()
+                        .ToList();
+
+                    foreach (var candidate in candidates)
+                    {
+                        // 宽松匹配：精确匹配 或 候选包含已知工具名
+                        var matched = _toolDefinitions.FirstOrDefault(td =>
+                            td.Name.Equals(candidate, StringComparison.OrdinalIgnoreCase) ||
+                            candidate.IndexOf(td.Name, StringComparison.OrdinalIgnoreCase) >= 0);
+
+                        if (matched != null && !plan.ToolNames.Contains(matched.Name))
+                        {
+                            plan.NeedsTools = true;
+                            plan.ToolNames.Add(matched.Name);
+                            Console.WriteLine($"\n🤖 LLM 选择工具: {matched.Name} ({matched.Description})");
+                        }
+                    }
                 }
             }
-            // 用户输入	路径 A (ToolService)	路径 B (RAG.cs LLM推理)
-            // "苯属于什么类别"	✅ 匹配"类别"→触发	✅ LLM也能推理出需要查类别
-            // "苯的储存要注意什么"	❌ 没有"同库""共存"等关键词	✅ LLM推理出需要查储存兼容性
-            // "这个化学品安不安全"	❌ 没有任何关键词匹配	✅ LLM推理出需要查危险类别
-            // 如果没有匹配到任何工具，标记为不需要工具调用
+            catch
+            {
+                Console.WriteLine("   ⚠️ LLM 工具规划失败，降级到关键词匹配");
+            }
+
+            // ═══ Step 2: 关键词兜底（LLM 未匹配到任何工具时） ═══
+            if (plan.ToolNames.Count == 0)
+            {
+                var lowerInput = userInput.ToLower();
+                foreach (var tool in _toolDefinitions)
+                {
+                    if (tool.KeywordTriggers.Any(kw => lowerInput.Contains(kw.ToLower())))
+                    {
+                        plan.NeedsTools = true;
+                        plan.ToolNames.Add(tool.Name);
+                        Console.WriteLine($"\n🔑 关键词触发工具: {tool.Name} ({tool.Description})");
+                    }
+                }
+            }
+
             if (plan.ToolNames.Count == 0)
             {
                 plan.NeedsTools = false;
@@ -83,27 +138,28 @@ namespace Agent1.Services
             return results;
         }
 
-        private Task<string> CallToolAsync(string toolName, string userInput)
+        private async Task<string> CallToolAsync(string toolName, string userInput)
         {
             var cleaned = toolName.Trim()
                 .Replace("(", "").Replace(")", "")
                 .Replace("：", "").Replace(":", "");
 
-            return Task.FromResult(cleaned switch
+            // 优先调用异步 RAG 版本，GetCurrentTime/Calculate 仍为同步
+            return cleaned switch
             {
-                "CheckHazardCategory" => _tools.CheckHazardCategory(RAG.ExtractSubstanceStatic(userInput)),
-                "CheckStorageCompatibility" => CallStorageCheck(userInput),
-                "GetSafetyDistance" => _tools.GetSafetyDistance(RAG.ExtractFacilityTypeStatic(userInput)),
+                "CheckHazardCategory" => await _tools.CheckHazardCategoryAsync(RAG.ExtractSubstanceStatic(userInput)),
+                "CheckStorageCompatibility" => await CallStorageCheckAsync(userInput),
+                "GetSafetyDistance" => await _tools.GetSafetyDistanceAsync(RAG.ExtractFacilityTypeStatic(userInput)),
                 "GetCurrentTime" => _tools.GetCurrentTime(),
                 "Calculate" => _tools.Calculate(userInput),
                 _ => $"未知工具: {toolName}"
-            });
+            };
         }
 
-        private string CallStorageCheck(string userInput)
+        private async Task<string> CallStorageCheckAsync(string userInput)
         {
             var (a, b) = RAG.ExtractTwoSubstancesStatic(userInput);
-            return _tools.CheckStorageCompatibility(a, b);
+            return await _tools.CheckStorageCompatibilityAsync(a, b);
         }
 
         public string GetToolDescriptions()

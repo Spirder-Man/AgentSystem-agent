@@ -63,11 +63,19 @@ namespace Agent1
             services.AddSingleton<ISessionService, SessionService>();
             services.AddSingleton<IMemoryService, MemoryService>();
             services.AddSingleton<ILlmService, LlmService>();
+            // Phase 2a: ChemicalComplianceTools 双模注册（RAG 构造优先，KnowledgeBaseService 稍后注册但 DI 延迟解析）
+            services.AddSingleton<ChemicalComplianceTools>(sp =>
+            {
+                var kb = sp.GetRequiredService<IKnowledgeBaseService>();
+                var llm = sp.GetRequiredService<ILlmService>();
+                return new ChemicalComplianceTools(kb, llm);
+            });
             services.AddSingleton<IToolService>(sp =>
             {
                 var llm = sp.GetRequiredService<ILlmService>();
+                var kb = sp.GetRequiredService<IKnowledgeBaseService>();
                 var tools = AppConfig.Instance.ChemicalTool?.Tools;
-                return new ToolService(llm, tools);
+                return new ToolService(llm, kb, tools);
             });
             services.AddSingleton<AgentDialog>();
             services.AddSingleton<IKnowledgeBaseService>(sp =>

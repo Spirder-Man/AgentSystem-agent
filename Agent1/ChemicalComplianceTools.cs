@@ -2,26 +2,41 @@ using Microsoft.SemanticKernel;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
+using System.Threading.Tasks;
+using Agent1.Services;
 
 namespace Agent1
 {
     /// <summary>
     /// 化工园区危化品合规审核专用工具集
-    /// 替代原有的 IndustrialTools（机床温度/主轴阈值等工业制造场景工具）
+    /// Phase 2a: 双模工具 —— 有 IKnowledgeBaseService 走 RAG 检索，无则降级到硬编码字典（方案 A 兜底）
     /// </summary>
     public class ChemicalComplianceTools
     {
-        //为什么用 Dictionary 而不是 List？
-        	// Dictionary<string, string>	List<(string, string)>	string[]
-            // 按 Key 查找	O(1) 哈希查找	O(n) 遍历	O(n) 遍历
-            // 按 Value 查找	O(n) 遍历	O(n) 遍历	无法区分
-            // 去重保证	Key 天然唯一	需手动校验	无
-            // 语义表达	"这是键值映射表"	"这是一个列表"	"这只是一堆数据"
-//注意：但实际上，当前代码并没有利用 Dictionary 的 O(1) 优势——它用的是 foreach 遍历而非 TryGetValu
-        // 危化品类别映射表（GB 30000 系列）
+        private readonly IKnowledgeBaseService? _kbService;
+        private readonly ILlmService? _llmService;
 
-// 所以当前用 Dictionary 更多是语义上的选择：Dictionary 天然表达了"这是键→值的映射关系"，
-// 而 List<Tuple> 表达的是"这是一组配对数据"。读代码的人看到 Dictionary 就能立刻理解数据之间的主从关系，这就是代码的可读性设计。
+        /// <summary>完整构造：启用 RAG 检索模式（方案 B 入口）</summary>
+        public ChemicalComplianceTools(IKnowledgeBaseService kbService, ILlmService llmService)
+        {
+            _kbService = kbService;
+            _llmService = llmService;
+        }
+
+        /// <summary>无参构造：降级到硬编码字典模式（方案 A 兜底 / RAG.cs 旧流程兼容）</summary>
+        public ChemicalComplianceTools()
+        {
+            _kbService = null;
+            _llmService = null;
+        }
+
+        /// <summary>是否启用了 RAG 检索</summary>
+        private bool UseRag => _kbService != null && _llmService != null;
+
+        // ════════════════════════════════════════
+        // 硬编码字典（方案 A 降级兜底 + 旧代码兼容）
+        // ════════════════════════════════════════
         private static readonly Dictionary<string, string> HazardCategories = new()
         {
             ["爆炸物"] = "GB 30000.2-2013",
@@ -46,7 +61,6 @@ namespace Agent1
             ["生殖毒性"] = "GB 30000.24-2013",
         };
 
-        // 危化品存储禁忌表（常见配伍禁忌，依据 GB15603）
         private static readonly Dictionary<string, List<string>> StorageIncompatibilities = new()
         {
             ["氧化剂"] = new() { "易燃液体", "易燃固体", "还原剂", "有机过氧化物" },
@@ -56,7 +70,6 @@ namespace Agent1
             ["爆炸品"] = new() { "一切其他类别" },
         };
 
-        // 安全距离参考表（GB50160/GB50016 简化）
         private static readonly Dictionary<string, int> SafetyDistances = new()
         {
             ["储罐-储罐"] = 15,
@@ -67,6 +80,10 @@ namespace Agent1
             ["甲类仓库-建筑"] = 20,
             ["甲类仓库-明火点"] = 30,
         };
+
+        // ════════════════════════════════════════
+        // 同步方法：硬编码字典（旧代码兼容 / 方案 A 降级）
+        // ════════════════════════════════════════
 
         [KernelFunction, Description("查询指定危化品属于哪个危险类别，返回对应的国标编号（GB 30000 系列）")]
         public string CheckHazardCategory(string substanceName)
@@ -84,16 +101,10 @@ namespace Agent1
         {
             foreach (var kvp in StorageIncompatibilities)
             {
-                bool aMatchesCategory = substanceA.Contains(kvp.Key);
-                bool bMatchesCategory = substanceB.Contains(kvp.Key);
                 bool aIsIncompatible = kvp.Value.Any(s => substanceB.Contains(s));
                 bool bIsIncompatible = kvp.Value.Any(s => substanceA.Contains(s));
-
                 if (aIsIncompatible || bIsIncompatible)
-                {
-                    string incompatibleClass = aIsIncompatible ? kvp.Key : kvp.Key;
-                    return $"⚠️ 禁用：「{substanceA}」与「{substanceB}」存在配伍禁忌——{incompatibleClass}类不可与之同库贮存。依据：GB15603-1995 第4.2.2条 禁忌物料不得同库贮存";
-                }
+                    return $"⚠️ 禁用：「{substanceA}」与「{substanceB}」存在配伍禁忌——{kvp.Key}类不可与之同库贮存。依据：GB15603-1995 第4.2.2条 禁忌物料不得同库贮存";
             }
             return $"✅ 「{substanceA}」与「{substanceB}」在常见禁忌表中未发现直接冲突，但仍建议按照 GB15603 分类贮存原则进行核实（knowledgebase/国标/GB15603 已收录全文）";
         }
@@ -104,14 +115,62 @@ namespace Agent1
             var key = facilityType.Trim();
             if (SafetyDistances.TryGetValue(key, out int distance))
                 return $"「{key}」的最小安全间距为 {distance} 米";
-
-            var matched = SafetyDistances.Keys
-                .Where(k => k.Contains(key) || key.Contains(k))
-                .ToList();
+            var matched = SafetyDistances.Keys.Where(k => k.Contains(key) || key.Contains(k)).ToList();
             if (matched.Count > 0)
                 return $"已匹配「{matched[0]}」：最小安全间距为 {SafetyDistances[matched[0]]} 米";
-
             return $"未找到「{key}」的精确安全距离数值，建议在 knowledgebase/国标/ 目录下查阅 GB50160《石油化工企业设计防火规范》和 GB50016《建筑设计防火规范》全文";
+        }
+
+        // ════════════════════════════════════════
+        // 异步方法：RAG 检索 + LLM 生成（方案 B 主力）
+        // ════════════════════════════════════════
+
+        public async Task<string> CheckHazardCategoryAsync(string substanceName)
+        {
+            if (!UseRag) return CheckHazardCategory(substanceName);
+
+            var chunks = await _kbService!.RetrieveChemicalRegulationAsync(
+                $"{substanceName} 危险类别 分类 规范",
+                regulationType: "国标", topK: 3);
+
+            if (chunks.Count == 0)
+                return $"未在知识库中找到「{substanceName}」的危险类别信息，建议查阅 GB 30000 系列标准全文";
+
+            var context = string.Join("\n---\n", chunks.Select(c => c.Content));
+            var prompt = $"根据以下知识库内容判断「{substanceName}」属于哪个危险类别及对应国标。直接给出结果，格式：「XX」属于「XX类别」，适用标准：GB XXXXX-XXXX\n\n{context}";
+            return await _llmService!.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Gray, "RAG-CheckHazard");
+        }
+
+        public async Task<string> CheckStorageCompatibilityAsync(string substanceA, string substanceB)
+        {
+            if (!UseRag) return CheckStorageCompatibility(substanceA, substanceB);
+
+            var chunks = await _kbService!.RetrieveChemicalRegulationAsync(
+                $"{substanceA} {substanceB} 同库储存 配伍禁忌",
+                regulationType: "国标", topK: 3);
+
+            if (chunks.Count == 0)
+                return $"未在知识库中找到「{substanceA}」与「{substanceB}」的储存兼容性信息，建议查阅 GB15603 全文";
+
+            var context = string.Join("\n---\n", chunks.Select(c => c.Content));
+            var prompt = $"根据以下知识库内容判断「{substanceA}」与「{substanceB}」是否可以同库储存。直接给出结果，包含禁止/允许结论及依据标准。\n\n{context}";
+            return await _llmService!.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Gray, "RAG-CheckStorage");
+        }
+
+        public async Task<string> GetSafetyDistanceAsync(string facilityType)
+        {
+            if (!UseRag) return GetSafetyDistance(facilityType);
+
+            var chunks = await _kbService!.RetrieveChemicalRegulationAsync(
+                $"{facilityType} 安全间距 距离 要求",
+                regulationType: "国标", topK: 3);
+
+            if (chunks.Count == 0)
+                return $"未在知识库中找到「{facilityType}」的安全距离信息，建议查阅 GB50160 和 GB50016 全文";
+
+            var context = string.Join("\n---\n", chunks.Select(c => c.Content));
+            var prompt = $"根据以下知识库内容查询「{facilityType}」的安全间距要求。直接给出结果，必须包含具体数值（米）及依据标准。如果知识库中无明确数值，诚实说明。\n\n{context}";
+            return await _llmService!.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Gray, "RAG-GetDistance");
         }
 
         [KernelFunction, Description("获取当前时间和日期")]

@@ -120,115 +120,41 @@ namespace Agent1.Services
             }
         }
 
+        /// <summary>
+        /// Phase 2a: 化工合规业务执行 —— 统一走 ToolService 调度（LLM 工具选择 + RAG 工具执行）
+        /// </summary>
         private async Task<string> ExecuteChemicalComplianceAsync(string input, PipelineContext context)
         {
-            Console.WriteLine("\n   【Step 1 - Thought】ReAct推理 - 分析问题");
-            Console.ForegroundColor = ConsoleColor.DarkGray;
-            
-            string thoughtPrompt = $@"你是化工园区危化品合规审核专家，现在需要分析以下问题：{input}
+            // Step 1+2: ToolService 统一分析 + 执行工具（LLM 语义选择，关键词兜底）
+            Console.WriteLine("\n   【Step 1 - 工具规划与执行】ToolService 统一调度");
+            var plan = await _toolService.AnalyzeAndPlanToolsAsync(input, context.History);
+            var toolResults = await _toolService.ExecuteToolsAsync(plan, input);
 
-可用工具：
-1. CheckHazardCategory(危化品名称) - 查询危险类别及适用国标
-2. CheckStorageCompatibility(危化品A, 危化品B) - 检查可否同库储存
-3. GetSafetyDistance(设施类型) - 查询安全间距要求（储罐间距、消防通道等）
-4. GetCurrentTime() - 获取当前时间
-5. Calculate(表达式) - 数学计算
-
-请输出你的思考过程，并明确说明需要调用哪些工具（只需列出工具名称，用逗号分隔）
-格式要求：先输出思考内容，最后用【工具调用】: 工具1,工具2 格式列出需要调用的工具。";
-
-            string thoughtResult = await _llmService.InvokeStreamWithRetryAsync(thoughtPrompt, ConsoleColor.DarkGray, "ReAct思考分析");
-            Console.ResetColor();
-
-            Console.WriteLine("\n   【Step 2 - Action】ReAct推理 - 调用工具");
-            string[] toolsToCall = ParseToolCalls(thoughtResult);
-
-            if (toolsToCall.Length == 0)
-            {
-                toolsToCall = new string[] { "GetSafetyDistance" };
-            }
-
-            Console.WriteLine("\n   【Step 3 - Observation】ReAct推理 - 获取工具数据");
-            Console.ForegroundColor = ConsoleColor.Green;
-
-            var toolResults = new Dictionary<string, string>();
-            var complianceTools = new ChemicalComplianceTools();
-
-            foreach (string toolName in toolsToCall)
-            {
-                string result = CallTool(complianceTools, toolName, input);
-                toolResults.Add(toolName, result);
-                Console.WriteLine($"✓ {toolName} → {result}");
-            }
-            Console.ResetColor();
-
-            Console.WriteLine("\n   【Step 4 - Conclusion】ReAct推理 - 生成最终结论");
+            // Step 3: LLM 基于工具结果生成最终结论
+            Console.WriteLine("\n   【Step 2 - 结论生成】基于工具数据输出合规建议");
             Console.ForegroundColor = ConsoleColor.Blue;
 
-            var observationSummary = string.Join("\n", toolResults.Select(kv => $"- {kv.Value}"));
+            var toolSummary = toolResults.Count > 0
+                ? string.Join("\n", toolResults.Select(kv => $"- [{kv.Key}] {kv.Value}"))
+                : "（本次未调用工具，以下结论基于通用知识）";
 
-            string conclusionPrompt = $@"【角色】化工园区危化品合规审核专家
+            var conclusionPrompt = $@"【角色】化工园区危化品合规审核专家
 【对话历史】
 {context.History}
 【当前问题】{input}
 【工具调用结果】
-{observationSummary}
+{toolSummary}
 【要求】
 1. 严格基于工具返回的真实数据，禁止编造任何信息
 2. 判断是否合规，引用具体法规条款
 3. 指出违规点和对应的整改措施
 4. 输出格式清晰易读，分条目列出";
 
-            var answer = await _llmService.InvokeStreamWithRetryAsync(conclusionPrompt, ConsoleColor.Blue, "ReAct最终结论");
+            var answer = await _llmService.InvokeStreamWithRetryAsync(conclusionPrompt, ConsoleColor.Blue, "合规结论");
             Console.ResetColor();
 
             _memoryService.ExtractAndStoreKeyFacts(input, answer);
-            
             return answer;
-        }
-
-        private string[] ParseToolCalls(string modelOutput)
-        {
-            string marker = "【工具调用】:";
-            int startIndex = modelOutput.IndexOf(marker);
-            if (startIndex == -1)
-            {
-                marker = "[工具调用]:";
-                startIndex = modelOutput.IndexOf(marker);
-            }
-
-            if (startIndex == -1)
-                return new string[0];
-
-            string toolPart = modelOutput.Substring(startIndex + marker.Length).Trim();
-            return toolPart.Split(',')
-                          .Select(t => t.Trim())
-                          .Where(t => !string.IsNullOrEmpty(t) && !t.Contains("无") && !t.Contains("空") && !t.Equals("-"))
-                          .ToArray();
-        }
-
-        private string CallTool(ChemicalComplianceTools tools, string toolName, string userInput)
-        {
-            // 从用户输入中提取参数，不再传空字符串
-            var cleaned = toolName.Trim()
-                .Replace("(", "").Replace(")", "")
-                .Replace("：", "").Replace(":", "");
-
-            return cleaned switch
-            {
-                "CheckHazardCategory" => tools.CheckHazardCategory(RAG.ExtractSubstanceStatic(userInput)),
-                "CheckStorageCompatibility" => CallStorageCheck(tools, userInput),
-                "GetSafetyDistance" => tools.GetSafetyDistance(RAG.ExtractFacilityTypeStatic(userInput)),
-                "GetCurrentTime" => tools.GetCurrentTime(),
-                "Calculate" => tools.Calculate(userInput),
-                _ => $"未知工具: {toolName}"
-            };
-        }
-
-        private string CallStorageCheck(ChemicalComplianceTools tools, string userInput)
-        {
-            var (a, b) = RAG.ExtractTwoSubstancesStatic(userInput);
-            return tools.CheckStorageCompatibility(a, b);
         }
 
         private async Task<string> ExecuteGeneralChatAsync(string input, PipelineContext context)

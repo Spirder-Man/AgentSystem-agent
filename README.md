@@ -52,6 +52,8 @@
 | 数据库 | PostgreSQL | 16.x | ✅ 已实现 |
 | 向量扩展 | pgvector | 0.7.x | ✅ 已实现 |
 | 本地 LLM | Ollama | latest | ✅ 已实现 |
+| DI 容器 | Microsoft.Extensions.DI | 8.0+ | ✅ 已实现 |
+| 结构化日志 | Serilog | 4.0+ | ✅ 已实现 |
 
 ## ✨ 核心功能
 
@@ -102,24 +104,54 @@ docs/
 ### 环境要求
 - .NET 8 SDK
 - PostgreSQL 16 + pgvector 扩展
-- Ollama（本地LLM推理）
+- Ollama（本地 LLM 推理，需拉取 `deepseek-r1:local7b` 和 `nomic-embed-text:latest`）
 
-### 运行方式
+### 1. 配置
+
+所有配置集中在 `Agent1/appsettings.json`，无需修改代码。
+
+**数据库连接**（敏感信息通过环境变量注入，禁止硬编码）：
 
 ```bash
-# 克隆项目
-git clone <repository-url>
+# 1. 复制环境变量模板
+cp .env.example .env
+
+# 2. 编辑 .env 填入你的数据库密码
+#    Windows 记事本: notepad .env
+#    VSCode: code .env
+```
+
+或直接通过 PowerShell 设置（永久生效，需重启终端）：
+
+```powershell
+[System.Environment]::SetEnvironmentVariable("DB_PASSWORD", "你的数据库密码", "User")
+[System.Environment]::SetEnvironmentVariable("DB_USERNAME", "postgres", "User")
+```
+
+> ⚠️ **安全提醒**：
+> - 密码通过 `DB_PASSWORD` 环境变量注入，**绝不**写入 `appsettings.json` 或提交到 Git
+> - 生产环境建议创建专用数据库账号并授予最小权限，而非使用 `postgres` 超级用户
+> - 本地开发使用 `postgres` + 环境变量即可，这是个人项目的合理折中
+
+**LLM 模型**（默认值可直接使用，也可按需调整）：
+
+```json
+// appsettings.json 关键配置项
+"Llm": { "ModelId": "deepseek-r1:local7b", "Endpoint": "http://localhost:11434" },
+"KnowledgeBase": { "BasePath": "d:\\桌面\\agent\\项目\\Agent1\\knowledgebase" },
+"VectorSearch": { "EmbeddingModelId": "nomic-embed-text:latest" },
+"Database": { "Host": "localhost", "Port": 5432, "DatabaseName": "chemical_park_ai_agent" }
+```
+
+### 2. 运行
+
+```bash
 cd Agent1
-
-# 安装依赖
 dotnet restore
-
-# 配置数据库连接
-# 编辑 Config/AppConfig.cs
-
-# 运行项目
 dotnet run --project Agent1
 ```
+
+启动后按菜单选择功能（推荐首选「8. 化工合规自查」或「9. 化工合规RAG测试」验证环境）。
 
 ## 📚 学习路径
 
@@ -147,9 +179,9 @@ MIT License
 
 ---
 
-**文档版本**：v1.2  
-**最后更新**：2026年5月25日  
-**状态**：P4 知识库多格式管道完成
+**文档版本**：v2.0  
+**最后更新**：2026年5月30日  
+**状态**：Phase 2a 工具调用架构重构完成，工具已对接 RAG 知识库
 
 ## 📋 近期更新 (P3 + P4)
 
@@ -183,6 +215,13 @@ MIT License
   - 新增 `ParseToolCalls` 标记行限制匹配 + 智能参数提取（`ExtractSubstance`/`ExtractFacilityType` 等）
   - 强化 Step5 校验 Prompt 格式约束，防止 LLM 自我复制
 
+### Phase 2a：工具调用架构重构 — LLM 统一调度（2026-05-30）
+- **双模工具链**：`ChemicalComplianceTools` 支持 RAG 检索（主路径）+ 硬编码字典（降级兜底）
+- **LLM 语义工具选择**：`ToolService.AnalyzeAndPlanToolsAsync` 改为 LLM 驱动，关键词匹配保留为兜底
+- **统一调用入口**：消除 `AgentDialog` 与 `ToolService` 中重复的 `CallTool` 逻辑（删除 ~90 行硬编码代码）
+- **工具真正接入 RAG**：`CheckHazardCategory` / `CheckStorageCompatibility` / `GetSafetyDistance` 改为从知识库检索 GB30000/GB15603/GB50160 全文，不再依赖硬编码字典
+
 ### 编译状态
-✅ `dotnet build`：0 错误，21 警告（全部为既有的 nullable 引用类型警告）
+✅ `dotnet build`：0 错误，20 警告（全部为既有的 nullable 引用类型警告）
+✅ `dotnet test`：2/2 通过
 
