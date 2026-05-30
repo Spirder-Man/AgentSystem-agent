@@ -38,10 +38,13 @@ namespace Agent1.Services
             // "苯属于什么类别"	✅ 匹配"类别"→触发	✅ LLM也能推理出需要查类别
             // "苯的储存要注意什么"	❌ 没有"同库""共存"等关键词	✅ LLM推理出需要查储存兼容性
             // "这个化学品安不安全"	❌ 没有任何关键词匹配	✅ LLM推理出需要查危险类别
+            // 如果没有匹配到任何工具，标记为不需要工具调用
+            if (plan.ToolNames.Count == 0)
+            {
+                plan.NeedsTools = false;
+                Console.WriteLine("\n🤔 分析中... 不需要调用工具");
+            }
 
-
-            plan.NeedsTools = false; // ← 全部遍历完都没匹配 → 不调用工
-            Console.WriteLine("\n🤔 分析中... 不需要调用工具");
             return plan;
         }
 

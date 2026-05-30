@@ -86,7 +86,8 @@ namespace Agent1.Config
         public int Port { get; set; } = 5432;
         public string DatabaseName { get; set; } = "chemical_park_ai_agent";
         public string Username { get; set; } = "postgres";
-        public string Password { get; set; } = "7758521";
+        // 密码通过 appsettings.json 或环境变量 DB_PASSWORD 注入，禁止硬编码
+        public string Password { get; set; } = "";
         public int ConnectionTimeout { get; set; } = 30;
         public int MaxPoolSize { get; set; } = 20;
     }

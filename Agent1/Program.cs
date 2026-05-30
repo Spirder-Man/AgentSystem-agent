@@ -2,6 +2,10 @@ using System;
 using System.Threading.Tasks;
 using Agent1.Services;
 using Agent1.Config;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Serilog;
 
 namespace Agent1
 {
@@ -9,50 +13,106 @@ namespace Agent1
     {
         static async Task Main(string[] args)
         {
+            // ═══════════════════════════════════════════════════
+            // Phase 1: 配置外部化 — appsettings.json + 环境变量
+            // ═══════════════════════════════════════════════════
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(AppContext.BaseDirectory)
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                .AddEnvironmentVariables()
+                .Build();
+
+            // 加载全局配置（环境变量可覆盖敏感信息如 DB_PASSWORD）
+            AppConfig.Load(configuration);
+
+            // ═══════════════════════════════════════════════════
+            // Phase 1: 结构化日志 — Serilog
+            // ═══════════════════════════════════════════════════
+            Log.Logger = new LoggerConfiguration()
+                .WriteTo.Console()
+                .WriteTo.File("logs/agent1-.log", rollingInterval: RollingInterval.Day)
+                .CreateLogger();
+
+            var loggerFactory = LoggerFactory.Create(builder =>
+            {
+                builder.AddSerilog(dispose: true);
+            });
+            var logger = loggerFactory.CreateLogger<Program>();
+
+            logger.LogInformation("══════════════════════════════════════════");
+            logger.LogInformation("        化工园区危化品合规审核AI Agent");
+            logger.LogInformation("══════════════════════════════════════════");
             Console.WriteLine("══════════════════════════════════════════");
             Console.WriteLine("        化工园区危化品合规审核AI Agent");
             Console.WriteLine("══════════════════════════════════════════\n");
 
-            // 数据库服务
-            var databaseService = new DatabaseService(AppConfig.Instance);
-            
-            // 测试数据库连接
+            // ═══════════════════════════════════════════════════
+            // Phase 1: 依赖注入容器 — Microsoft.Extensions.DI
+            // ═══════════════════════════════════════════════════
+            var services = new ServiceCollection();
+
+            // 注册配置（单例）
+            services.AddSingleton(AppConfig.Instance);
+
+            // 注册日志
+            services.AddSingleton(loggerFactory);
+            services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
+
+            // 注册核心服务（单例，控制台应用生命周期等同于整个进程）
+            services.AddSingleton<IDatabaseService, DatabaseService>();
+            services.AddSingleton<ISessionService, SessionService>();
+            services.AddSingleton<IMemoryService, MemoryService>();
+            services.AddSingleton<ILlmService, LlmService>();
+            services.AddSingleton<IToolService>(sp =>
+            {
+                var llm = sp.GetRequiredService<ILlmService>();
+                var tools = AppConfig.Instance.ChemicalTool?.Tools;
+                return new ToolService(llm, tools);
+            });
+            services.AddSingleton<AgentDialog>();
+            services.AddSingleton<IKnowledgeBaseService>(sp =>
+            {
+                var db = sp.GetRequiredService<IDatabaseService>();
+                var llm = sp.GetRequiredService<ILlmService>();
+                return new HybridKnowledgeBaseService(db, llm, AppConfig.Instance);
+            });
+            services.AddSingleton<IIntegrationService, IntegrationService>();
+            services.AddSingleton<IAuditService, AuditService>();
+            services.AddSingleton<IModuleFactory, ModuleFactory>();
+            services.AddSingleton<ModuleDispatcher>();
+
+            var serviceProvider = services.BuildServiceProvider();
+
+            // 从 DI 容器解析服务
+            var databaseService = serviceProvider.GetRequiredService<IDatabaseService>();
+            var sessionService = serviceProvider.GetRequiredService<ISessionService>();
+            var memoryService = serviceProvider.GetRequiredService<IMemoryService>();
+            var llmService = serviceProvider.GetRequiredService<ILlmService>();
+            var toolService = serviceProvider.GetRequiredService<IToolService>();
+            var agentDialog = serviceProvider.GetRequiredService<AgentDialog>();
+            var knowledgeBaseService = serviceProvider.GetRequiredService<IKnowledgeBaseService>();
+            var integrationService = serviceProvider.GetRequiredService<IIntegrationService>();
+            var auditService = serviceProvider.GetRequiredService<IAuditService>();
+            var moduleFactory = serviceProvider.GetRequiredService<IModuleFactory>();
+            var dispatcher = serviceProvider.GetRequiredService<ModuleDispatcher>();
+
+            // 数据库连接初始化
+            logger.LogInformation("📦 正在测试数据库连接...");
             Console.WriteLine("📦 正在测试数据库连接...");
             if (await databaseService.TestConnectionAsync())
             {
+                logger.LogInformation("✅ 数据库连接成功");
                 Console.WriteLine("✅ 数据库连接成功！");
                 await databaseService.InitializeDatabaseAsync();
                 Console.WriteLine("✅ 数据库表初始化完成！");
             }
             else
             {
+                logger.LogWarning("⚠️ 数据库连接失败，请检查配置");
                 Console.WriteLine("⚠️ 数据库连接失败，请检查配置");
             }
 
-            var sessionService = new SessionService();
-            var memoryService = new MemoryService();
-            var llmService = new LlmService();
-            var toolService = new ToolService(llmService, AppConfig.Instance.ChemicalTool?.Tools);
-            var agentDialog = new AgentDialog(sessionService, memoryService, llmService, toolService);
-            
-            // 化工专用服务
-            var knowledgeBaseService = new HybridKnowledgeBaseService(databaseService, llmService, AppConfig.Instance);
-            
-            var integrationService = new IntegrationService();
-            var auditService = new AuditService();
             var chemicalRAG = new ChemicalRAG(AppConfig.Instance.KnowledgeBase.BasePath, knowledgeBaseService);
-
-            var moduleFactory = new ModuleFactory(
-                sessionService,
-                memoryService,
-                llmService,
-                toolService,
-                agentDialog,
-                knowledgeBaseService,
-                integrationService,
-                auditService);
-            
-            var dispatcher = new ModuleDispatcher(moduleFactory);
 
             // 预加载化工知识库
             await chemicalRAG.LoadKnowledgeBaseAsync();
@@ -213,7 +273,7 @@ namespace Agent1
             Console.WriteLine("\n✅ 化工合规RAG测试结束！");
         }
 
-        static async Task RunDatabaseValidation(DatabaseService databaseService)
+        static async Task RunDatabaseValidation(IDatabaseService databaseService)
         {
             Console.WriteLine("\n========================================");
             Console.WriteLine("       数据库连接验证");

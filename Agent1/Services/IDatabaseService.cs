@@ -6,6 +6,8 @@ namespace Agent1.Services
     {
         Task<IDbConnection> GetConnectionAsync();
         Task<bool> TestConnectionAsync();
+        Task<string> GetDatabaseInfoAsync();
+        Task<List<string>> GetTableNamesAsync();
         Task InitializeDatabaseAsync();
 
         // 文档管理（P0修复：接收完整 ChemicalDocumentRecord，承载全链路元数据）
