@@ -160,12 +160,37 @@ namespace Agent1.Services
             }
 
             // 生成最终结论（基于所有轮次的 Observation）
+            // Phase 2c: 上下文过长时自动截断（保留最近 2500 字符）
             Console.WriteLine("\n   【结论生成】基于多轮工具数据输出合规建议");
             Console.ForegroundColor = ConsoleColor.Blue;
 
-            var toolSummary = accumulatedObservations.Count > 0
+            var rawSummary = accumulatedObservations.Count > 0
                 ? string.Join("\n", accumulatedObservations)
                 : "（本次未调用工具，以下结论基于通用知识）";
+
+            // 上下文压缩：超过 2500 字符时只保留尾部最新结果
+            const int maxContextChars = 2500;
+            var toolSummary = rawSummary.Length > maxContextChars
+                ? "...(前序结果已省略)\n" + rawSummary.Substring(rawSummary.Length - maxContextChars)
+                : rawSummary;
+
+            // Phase 2c: 把所有轮次的工具结果存入记忆（领域事实缓存）
+            if (accumulatedObservations.Count > 0)
+            {
+                var allToolResults = new Dictionary<string, string>();
+                foreach (var obs in accumulatedObservations)
+                {
+                    // Observation 格式: "[ToolName] result"
+                    var bracketEnd = obs.IndexOf(']');
+                    if (bracketEnd > 1 && obs.StartsWith("["))
+                    {
+                        var toolName = obs.Substring(1, bracketEnd - 1);
+                        var result = obs.Substring(bracketEnd + 2);
+                        allToolResults[toolName] = result;
+                    }
+                }
+                _memoryService.StoreToolFacts(input, allToolResults);
+            }
 
             var conclusionPrompt = $@"【角色】化工园区危化品合规审核专家
 【对话历史】
