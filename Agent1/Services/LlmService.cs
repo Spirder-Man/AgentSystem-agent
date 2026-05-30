@@ -288,7 +288,9 @@ namespace Agent1.Services
             var results = new List<float[]>();
             foreach (var text in texts)
             {
-                results.Add(await GetEmbeddingAsync(text));
+                var emb = await GetEmbeddingAsync(text);
+                if (emb != null)
+                    results.Add(emb);
             }
             return results.ToArray();
         }

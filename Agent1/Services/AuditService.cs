@@ -26,7 +26,13 @@ namespace Agent1.Services
 
         public Task<List<AuditLog>> GetAuditLogsAsync(DateTime? startTime, DateTime? endTime, string? userId = null)
         {
-            var query = _auditLogs.AsEnumerable();
+            List<AuditLog> snapshot;
+            lock (_lock)
+            {
+                snapshot = _auditLogs.ToList();
+            }
+
+            var query = snapshot.AsEnumerable();
 
             if (startTime.HasValue)
                 query = query.Where(l => l.CreateTime >= startTime.Value);
@@ -40,7 +46,13 @@ namespace Agent1.Services
 
         public Task<string> ExportAuditReportAsync(DateTime startTime, DateTime endTime)
         {
-            var logs = _auditLogs
+            List<AuditLog> snapshot;
+            lock (_lock)
+            {
+                snapshot = _auditLogs.ToList();
+            }
+
+            var logs = snapshot
                 .Where(l => l.CreateTime >= startTime && l.CreateTime <= endTime)
                 .OrderByDescending(l => l.CreateTime)
                 .ToList();

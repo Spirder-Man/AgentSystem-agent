@@ -231,6 +231,11 @@ namespace Agent1.Services
             try
             {
                 var embedding = await _llmService.GetEmbeddingAsync(query);
+                if (embedding == null)
+                {
+                    Console.WriteLine("   ⚠️ 向量嵌入失败，降级为空结果");
+                    return new List<RetrievedChunk>();
+                }
                 var results = await _databaseService.VectorSearchAsync(query, embedding, topK);
                 return results;
             }

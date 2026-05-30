@@ -156,7 +156,7 @@ namespace Agent1.Services
 
             foreach (string toolName in toolsToCall)
             {
-                string result = CallTool(complianceTools, toolName);
+                string result = CallTool(complianceTools, toolName, input);
                 toolResults.Add(toolName, result);
                 Console.WriteLine($"✓ {toolName} → {result}");
             }
@@ -189,33 +189,46 @@ namespace Agent1.Services
 
         private string[] ParseToolCalls(string modelOutput)
         {
-            int startIndex = modelOutput.IndexOf("【工具调用】:");
+            string marker = "【工具调用】:";
+            int startIndex = modelOutput.IndexOf(marker);
             if (startIndex == -1)
-                startIndex = modelOutput.IndexOf("[工具调用]:");
+            {
+                marker = "[工具调用]:";
+                startIndex = modelOutput.IndexOf(marker);
+            }
 
             if (startIndex == -1)
                 return new string[0];
 
-            string toolPart = modelOutput.Substring(startIndex + 6).Trim();
+            string toolPart = modelOutput.Substring(startIndex + marker.Length).Trim();
             return toolPart.Split(',')
                           .Select(t => t.Trim())
                           .Where(t => !string.IsNullOrEmpty(t) && !t.Contains("无") && !t.Contains("空") && !t.Equals("-"))
                           .ToArray();
         }
 
-        private string CallTool(ChemicalComplianceTools tools, string toolName)
+        private string CallTool(ChemicalComplianceTools tools, string toolName, string userInput)
         {
-            return toolName.Trim()
+            // 从用户输入中提取参数，不再传空字符串
+            var cleaned = toolName.Trim()
                 .Replace("(", "").Replace(")", "")
-                .Replace("：", "").Replace(":", "") switch
+                .Replace("：", "").Replace(":", "");
+
+            return cleaned switch
             {
-                "CheckHazardCategory" => tools.CheckHazardCategory(""),
-                "CheckStorageCompatibility" => tools.CheckStorageCompatibility("", ""),
-                "GetSafetyDistance" => tools.GetSafetyDistance(""),
+                "CheckHazardCategory" => tools.CheckHazardCategory(RAG.ExtractSubstanceStatic(userInput)),
+                "CheckStorageCompatibility" => CallStorageCheck(tools, userInput),
+                "GetSafetyDistance" => tools.GetSafetyDistance(RAG.ExtractFacilityTypeStatic(userInput)),
                 "GetCurrentTime" => tools.GetCurrentTime(),
-                "Calculate" => tools.Calculate("1+1"),
+                "Calculate" => tools.Calculate(userInput),
                 _ => $"未知工具: {toolName}"
             };
+        }
+
+        private string CallStorageCheck(ChemicalComplianceTools tools, string userInput)
+        {
+            var (a, b) = RAG.ExtractTwoSubstancesStatic(userInput);
+            return tools.CheckStorageCompatibility(a, b);
         }
 
         private async Task<string> ExecuteGeneralChatAsync(string input, PipelineContext context)

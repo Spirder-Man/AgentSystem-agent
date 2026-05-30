@@ -94,7 +94,7 @@ namespace Agent1
                     {
                         Console.WriteLine($"\n正在调用: {toolName}...");
                         Console.ForegroundColor = ConsoleColor.Cyan;
-                        string result = await CallToolAsync(toolName);
+                        string result = await CallToolAsync(toolName, userInput);
                         toolResults.Add(toolName, result);
                         Console.WriteLine(result);
                         Console.ResetColor();
@@ -323,27 +323,38 @@ namespace Agent1
             return result;
         }
 
-        private async Task<string> CallToolAsync(string toolName)
+        private async Task<string> CallToolAsync(string toolName, string userInput)
         {
-            return toolName switch
+            // 从用户输入中提取参数
+            var cleaned = toolName.Trim()
+                .Replace("(", "").Replace(")", "")
+                .Replace("：", "").Replace(":", "");
+
+            return cleaned switch
             {
-                "CheckHazardCategory" => _complianceTools.CheckHazardCategory(""), // P2: 工业工具→化工合规工具
-                "CheckStorageCompatibility" => _complianceTools.CheckStorageCompatibility("", ""),
-                "GetSafetyDistance" => _complianceTools.GetSafetyDistance(""),
+                "CheckHazardCategory" => _complianceTools.CheckHazardCategory(RAG.ExtractSubstanceStatic(userInput)),
+                "CheckStorageCompatibility" => CallStorageCheck(userInput),
+                "GetSafetyDistance" => _complianceTools.GetSafetyDistance(RAG.ExtractFacilityTypeStatic(userInput)),
                 "GetCurrentTime" => _complianceTools.GetCurrentTime(),
-                "Calculate" => await HandleCalculateCall(toolName),
+                "Calculate" => await HandleCalculateCall(toolName, userInput),
                 _ => await HandleDynamicToolCall(toolName)
             };
         }
 
-        private Task<string> HandleCalculateCall(string toolCall) // P2: Calculate包装，保持原有动态解析能力
+        private string CallStorageCheck(string userInput)
+        {
+            var (a, b) = RAG.ExtractTwoSubstancesStatic(userInput);
+            return _complianceTools.CheckStorageCompatibility(a, b);
+        }
+
+        private Task<string> HandleCalculateCall(string toolCall, string userInput) // P2: Calculate包装，保持原有动态解析能力
         {
             if (toolCall.StartsWith("Calculate(") && toolCall.EndsWith(")"))
             {
                 string expression = toolCall.Substring(10, toolCall.Length - 11);
                 return Task.FromResult(_complianceTools.Calculate(expression));
             }
-            return Task.FromResult(_complianceTools.Calculate("1+1"));
+            return Task.FromResult(_complianceTools.Calculate(userInput));
         }
 
         private async Task<string> HandleDynamicToolCall(string toolCall)
@@ -358,14 +369,18 @@ namespace Agent1
 
         private string[] ParseToolCalls(string modelOutput)
         {
-            int startIndex = modelOutput.IndexOf("【工具调用】:");
+            string marker = "【工具调用】:";
+            int startIndex = modelOutput.IndexOf(marker);
             if (startIndex == -1)
-                startIndex = modelOutput.IndexOf("[工具调用]:");
+            {
+                marker = "[工具调用]:";
+                startIndex = modelOutput.IndexOf(marker);
+            }
 
             if (startIndex == -1)
                 return new string[0];
 
-            string toolPart = modelOutput.Substring(startIndex + 6).Trim()
+            string toolPart = modelOutput.Substring(startIndex + marker.Length).Trim()
                                         .Replace("(", "")
                                         .Replace(")", "")
                                         .Replace("：", "")

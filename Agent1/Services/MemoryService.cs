@@ -42,23 +42,7 @@ namespace Agent1.Services
                 }
             }
 
-            if ((lower.Contains("刚才") || lower.Contains("刚刚") || lower.Contains("之前"))
-                && lower.Contains("温度"))
-            {
-                if (_keyFacts.ContainsKey("主轴温度"))
-                {
-                    return $"你好！之前检查的温度是 {_keyFacts["主轴温度"]}。还有什么需要我帮你的吗？";
-                }
-            }
-
-            if (lower.Contains("阈值") || lower.Contains("安全"))
-            {
-                if (_keyFacts.ContainsKey("安全阈值"))
-                {
-                    return $"安全阈值是 {_keyFacts["安全阈值"]}。";
-                }
-            }
-
+            // 化工合规场景暂不缓存领域数据，保留框架供后续扩展
             return null;
         }
 
@@ -111,23 +95,7 @@ namespace Agent1.Services
                 }
             }
 
-            if (lowerResponse.Contains("温度"))
-            {
-                var match = System.Text.RegularExpressions.Regex.Match(assistantResponse, @"(\d+(\.\d+)?)\s*℃");
-                if (match.Success)
-                {
-                    _keyFacts["主轴温度"] = match.Value;
-                }
-            }
-
-            if (lowerResponse.Contains("阈值"))
-            {
-                var match = System.Text.RegularExpressions.Regex.Match(assistantResponse, @"≤?\s*(\d+(\.\d+)?)\s*℃");
-                if (match.Success)
-                {
-                    _keyFacts["安全阈值"] = match.Value;
-                }
-            }
+            // 化工合规场景暂不提取领域key fact，保留框架供后续扩展
         }
 
         public void ClearMemory()

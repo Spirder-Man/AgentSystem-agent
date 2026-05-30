@@ -31,7 +31,7 @@ namespace Agent1.Services
                     plan.NeedsTools = true;
                     plan.ToolNames.Add(tool.Name);
                     Console.WriteLine($"\n🤔 分析中... 关键词触发工具: {tool.Name} ({tool.Description})");
-                    return plan; // 首次匹配就返回
+                    // 不再首次匹配即return，继续收集所有匹配工具
                 }
             }
             // 用户输入	路径 A (ToolService)	路径 B (RAG.cs LLM推理)
@@ -45,7 +45,7 @@ namespace Agent1.Services
             return plan;
         }
 
-        public async Task<Dictionary<string, string>> ExecuteToolsAsync(ToolPlan plan)
+        public async Task<Dictionary<string, string>> ExecuteToolsAsync(ToolPlan plan, string userInput)
         {
             var results = new Dictionary<string, string>();
 
@@ -61,7 +61,7 @@ namespace Agent1.Services
                 Console.Write($"\n🔧 调用 {toolName}... ");
                 try
                 {
-                    var result = await CallToolAsync(toolName);
+                    var result = await CallToolAsync(toolName, userInput);
                     Console.ForegroundColor = ConsoleColor.Green;
                     Console.WriteLine("成功!");
                     Console.WriteLine($"    结果: {result}");
@@ -80,21 +80,27 @@ namespace Agent1.Services
             return results;
         }
 
-        private Task<string> CallToolAsync(string toolName)
+        private Task<string> CallToolAsync(string toolName, string userInput)
         {
-            toolName = toolName.Trim()
+            var cleaned = toolName.Trim()
                 .Replace("(", "").Replace(")", "")
                 .Replace("：", "").Replace(":", "");
 
-            return Task.FromResult(toolName switch
+            return Task.FromResult(cleaned switch
             {
-                "CheckHazardCategory" => _tools.CheckHazardCategory(""),
-                "CheckStorageCompatibility" => _tools.CheckStorageCompatibility("", ""),
-                "GetSafetyDistance" => _tools.GetSafetyDistance(""),
+                "CheckHazardCategory" => _tools.CheckHazardCategory(RAG.ExtractSubstanceStatic(userInput)),
+                "CheckStorageCompatibility" => CallStorageCheck(userInput),
+                "GetSafetyDistance" => _tools.GetSafetyDistance(RAG.ExtractFacilityTypeStatic(userInput)),
                 "GetCurrentTime" => _tools.GetCurrentTime(),
-                "Calculate" => _tools.Calculate("1+1"),
+                "Calculate" => _tools.Calculate(userInput),
                 _ => $"未知工具: {toolName}"
             });
+        }
+
+        private string CallStorageCheck(string userInput)
+        {
+            var (a, b) = RAG.ExtractTwoSubstancesStatic(userInput);
+            return _tools.CheckStorageCompatibility(a, b);
         }
 
         public string GetToolDescriptions()

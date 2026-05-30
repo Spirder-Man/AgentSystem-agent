@@ -138,7 +138,7 @@ namespace Agent1
 需要调用的工具：无
 （格式说明：工具名用英文逗号分隔，不要带括号或参数，不要输出其他内容）"; // 修复2: 强化输出格式约束，确保LLM在最后一行输出标记
 
-                Console.WriteLine($"   💭 Thought Prompt调试: {thoughtPrompt}");
+                // Console.WriteLine($"   💭 Thought Prompt调试: {thoughtPrompt}");  // 调试用
                 
                 string thoughtResult = await _llmService.InvokeStreamWithRetryAsync(thoughtPrompt, ConsoleColor.DarkGray, "分析思考");
                 Console.WriteLine($"\n   💭 LLM完整思考结果: {thoughtResult}");
@@ -292,7 +292,7 @@ namespace Agent1
             if (string.IsNullOrEmpty(modelOutput))
                 return new string[0];
 
-            Console.WriteLine($"   🔧 ParseToolCalls调试: 原始输出长度={modelOutput.Length}");
+            // Console.WriteLine($"   🔧 ParseToolCalls调试: 原始输出长度={modelOutput.Length}");
 
             // 【修复1】先查找显式标记「需要调用的工具：」，只在标记行中匹配，避免全文本误扫描
             // 旧逻辑用 modelOutput.Contains(toolName) 全文扫描，LLM在思考过程中列举所有工具名会导致全被误匹配
@@ -345,6 +345,59 @@ namespace Agent1
         // 旧的 CallTool 直接把整个问句当参数传给工具（如 "氧化剂和易燃液体能一起存吗"），
         // 导致 CheckHazardCategory 和 GetSafetyDistance 等无法匹配到正确的实体名。
         // 以下方法从用户自然语言输入中提取物质名称/设施类型，显著提升工具命中率。
+
+        /// <summary>从用户输入中提取单个物质名称</summary>
+        public static string ExtractSubstanceStatic(string userInput)
+        {
+            return userInput
+                .Replace("属于什么危险类别", "").Replace("是什么类别", "")
+                .Replace("的危化品", "").Replace("是什么", "")
+                .Replace("属于什么", "").Replace("什么", "")
+                .Replace("是多少", "").Replace("能不能", "")
+                .Replace("吗", "").Replace("？", "").Replace("?", "").Trim();
+        }
+
+        /// <summary>从用户输入中提取两个物质名称（按 和/与/、 分割）</summary>
+        public static (string a, string b) ExtractTwoSubstancesStatic(string userInput)
+        {
+            var separators = new[] { "和", "与", "跟", "、" };
+            foreach (var sep in separators)
+            {
+                if (userInput.Contains(sep))
+                {
+                    var parts = userInput.Split(new[] { sep }, 2, StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length >= 2)
+                    {
+                        string a = CleanSubstanceStatic(parts[0]);
+                        string b = CleanSubstanceStatic(parts[1]);
+                        if (!string.IsNullOrWhiteSpace(a) && !string.IsNullOrWhiteSpace(b))
+                            return (a, b);
+                    }
+                }
+            }
+            return (ExtractSubstanceStatic(userInput), "");
+        }
+
+        /// <summary>清理物质名称中的问句残留词</summary>
+        private static string CleanSubstanceStatic(string text)
+        {
+            return text.Replace("能一起存", "").Replace("可以一起", "").Replace("能不能", "")
+                       .Replace("可以", "").Replace("吗", "").Replace("？", "").Replace("?", "")
+                       .Replace("怎么", "").Replace("如何", "").Trim();
+        }
+
+        /// <summary>从用户输入推断设施类型</summary>
+        public static string ExtractFacilityTypeStatic(string userInput)
+        {
+            if (userInput.Contains("液化烃")) return "液化烃储罐-储罐";
+            if (userInput.Contains("仓库") && userInput.Contains("明火")) return "甲类仓库-明火点";
+            if (userInput.Contains("仓库") && userInput.Contains("建筑")) return "甲类仓库-建筑";
+            if (userInput.Contains("储罐") && userInput.Contains("建筑")) return "储罐-建筑";
+            if (userInput.Contains("储罐") && userInput.Contains("消防")) return "储罐-消防通道";
+            if (userInput.Contains("储罐") && userInput.Contains("边界")) return "储罐-厂区边界";
+            if (userInput.Contains("储罐")) return "储罐-储罐";
+            return userInput;
+        }
 
         /// <summary>从用户输入中提取单个物质名称</summary>
         private string ExtractSubstance(string userInput)

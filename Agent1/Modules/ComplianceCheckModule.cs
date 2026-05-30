@@ -92,7 +92,7 @@ namespace Agent1.Modules
             int maxRefs = Math.Min(references.Count, 3);
             for (int i = 0; i < maxRefs; i++)
             {
-                var content = references[i].Content;
+                var content = references[i].Content ?? "";
                 if (content.Length > 400)
                     content = content.Substring(0, 400) + "...";
                 sb.AppendLine($"{i + 1}. {content}");

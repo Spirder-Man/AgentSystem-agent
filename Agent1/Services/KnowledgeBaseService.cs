@@ -294,12 +294,12 @@ namespace Agent1.Services
             "禁忌物料", "氧化剂", "易燃液体", "易燃固体", "泄漏", "应急"
         };
         
-        // 化工规则优先级（用于重排序）
+        // 化工规则优先级（用于重排序，key 匹配 Metadata["Priority"] 的值）
         private static readonly Dictionary<string, int> _priorityLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
         {
-            { "国标", 3 },
-            { "园区规则", 2 },
-            { "历史案例", 1 }
+            { "高", 3 },
+            { "中", 2 },
+            { "低", 1 }
         };
         
         public Task AddChemicalRegulationAsync(string content, string regulationType, string priority, string? chemicalType = null)
@@ -316,10 +316,10 @@ namespace Agent1.Services
             return AddDocumentAsync(content, metadata);
         }
         
-        public Task<List<RetrievedChunk>> RetrieveChemicalRegulationAsync(string query, string? chemicalType = null, string? regulationType = null, int topK = 5)
+        public async Task<List<RetrievedChunk>> RetrieveChemicalRegulationAsync(string query, string? chemicalType = null, string? regulationType = null, int topK = 5)
         {
             // 第一步：BM25检索
-            var allResults = RetrieveAsync(query, topK * 2).Result;
+            var allResults = await RetrieveAsync(query, topK * 2);
             
             // 第二步：化工场景过滤
             var filteredResults = allResults.Where(r =>
@@ -355,7 +355,7 @@ namespace Agent1.Services
             
             Console.WriteLine($"   🔬 化工合规检索: 查询='{query}', 危化品={chemicalType ?? "全部"}, 法规类型={regulationType ?? "全部"}, 召回={rerankedResults.Count}条");
             
-            return Task.FromResult(rerankedResults);
+            return rerankedResults;
         }
         
         public async Task LoadChemicalKnowledgeBaseAsync(string knowledgeBasePath)
