@@ -1,0 +1,36 @@
+# ==========================================
+# AgentSystem - Docker Compose 配置
+# 一键启动 PostgreSQL 16 + pgvector
+# ==========================================
+# 使用方式：
+#   1. cp .env.example .env     （首次或根据需要修改密码）
+#   2. docker-compose up -d     （启动数据库）
+#   3. dotnet run               （启动应用）
+#   4. docker-compose down      （停止数据库）
+# ==========================================
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: chemical_agent_db
+    restart: unless-stopped
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${DB_NAME:-chemical_park_ai_agent}
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-agent_dev_2024}
+    volumes:
+      # 数据持久化（容器重启不丢失数据）
+      - postgres_data:/var/lib/postgresql/data
+      # 启动时自动执行建表脚本
+      - ./init_database.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_NAME:-chemical_park_ai_agent}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    name: chemical_agent_postgres_data

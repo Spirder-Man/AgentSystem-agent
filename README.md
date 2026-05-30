@@ -103,10 +103,48 @@ docs/
 
 ### 环境要求
 - .NET 8 SDK
-- PostgreSQL 16 + pgvector 扩展
+- Docker Desktop（⭐ 推荐，数据库免安装）**或** PostgreSQL 16 + pgvector 手动安装
 - Ollama（本地 LLM 推理，需拉取 `deepseek-r1:local7b` 和 `nomic-embed-text:latest`）
 
-### 1. 配置
+### 方式一：Docker 一键启动（⭐ 推荐）
+
+不需要手动安装 PostgreSQL，30 秒内完成：
+
+```bash
+# 1. 克隆项目
+git clone https://gitee.com/liuchao_yue/agent-system.git
+cd agent-system
+
+# 2. 启动数据库（首次自动建库 + 执行建表脚本 + 启用 pgvector）
+docker-compose up -d
+
+# 3. 启动应用
+dotnet run --project Agent1
+```
+
+配置文件 `docker-compose.yml` 已内置默认密码，开箱即用。如需自定义：
+```bash
+cp .env.example .env    # 编辑密码后 docker-compose 会自动读取
+```
+
+### 方式二：手动安装数据库
+
+如果你没有 Docker 或想手动管理 PostgreSQL：
+
+### 1. 初始化数据库
+
+先创建数据库并导入建表脚本：
+
+```sql
+-- PostgreSQL 中执行
+CREATE DATABASE chemical_park_ai_agent;
+```
+
+```bash
+psql -U postgres -d chemical_park_ai_agent -f init_database.sql
+```
+
+### 2. 配置
 
 所有配置集中在 `Agent1/appsettings.json`，无需修改代码。
 
