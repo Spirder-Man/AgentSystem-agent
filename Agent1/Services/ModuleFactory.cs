@@ -42,8 +42,8 @@ namespace Agent1.Services
             {
                 ModuleType.CoTSolid => new CoTSolidModule(_llmService, _sessionService),
                 ModuleType.CoTStream => new CoTStreamModule(_llmService, _sessionService),
-                ModuleType.ReActSolid => new ReActSolidModule(_llmService, _sessionService),
-                ModuleType.ReActStream => new ReActStreamModule(_llmService, _sessionService),
+                ModuleType.ReActSolid => new ReActSolidModule(_llmService, _sessionService, _agentDialog),
+                ModuleType.ReActStream => new ReActStreamModule(_llmService, _sessionService, _agentDialog),
                 ModuleType.Reflection => new ReflectionModule(_llmService, _sessionService),
                 ModuleType.RAG => new RAGModule(_llmService, _sessionService),
                 ModuleType.UnifiedDialog => new UnifiedDialogModule(_agentDialog),

@@ -10,9 +10,9 @@ namespace Agent1.Modules
 
         private readonly CoT _cot;
 
-        public ReActStreamModule(ILlmService llmService, ISessionService sessionService)
+        public ReActStreamModule(ILlmService llmService, ISessionService sessionService, AgentDialog? agentDialog = null)
         {
-            _cot = new CoT(llmService, sessionService);
+            _cot = new CoT(llmService, sessionService, agentDialog);
         }
 
         public async Task RunAsync()

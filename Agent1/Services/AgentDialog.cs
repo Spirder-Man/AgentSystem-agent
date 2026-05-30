@@ -121,28 +121,57 @@ namespace Agent1.Services
         }
 
         /// <summary>
-        /// Phase 2a: 化工合规业务执行 —— 统一走 ToolService 调度（LLM 工具选择 + RAG 工具执行）
+        /// Phase 2b: 真正的多轮 ReAct 循环 — Thought→Action→Observation 可迭代多轮
         /// </summary>
         private async Task<string> ExecuteChemicalComplianceAsync(string input, PipelineContext context)
         {
-            // Step 1+2: ToolService 统一分析 + 执行工具（LLM 语义选择，关键词兜底）
-            Console.WriteLine("\n   【Step 1 - 工具规划与执行】ToolService 统一调度");
-            var plan = await _toolService.AnalyzeAndPlanToolsAsync(input, context.History);
-            var toolResults = await _toolService.ExecuteToolsAsync(plan, input);
+            const int maxRounds = 3;
+            var accumulatedObservations = new List<string>();
 
-            // Step 3: LLM 基于工具结果生成最终结论
-            Console.WriteLine("\n   【Step 2 - 结论生成】基于工具数据输出合规建议");
+            for (int round = 1; round <= maxRounds; round++)
+            {
+                Console.WriteLine($"\n   【ReAct Round {round}/{maxRounds}】");
+
+                // Step 1: Thought — LLM 判断需要什么工具（同时考虑之前轮次的 Observation）
+                var observationContext = accumulatedObservations.Count > 0
+                    ? "\n【前面轮次的工具调用结果】\n" + string.Join("\n---\n", accumulatedObservations)
+                    : "";
+
+                var plan = await _toolService.AnalyzeAndPlanToolsAsync(input, context.History + observationContext);
+
+                if (plan.ToolNames.Count == 0)
+                {
+                    // LLM 认为不需要更多工具了 → 生成最终结论
+                    Console.WriteLine("   → LLM 判断信息足够，生成结论");
+                    break;
+                }
+
+                // Step 2: Action — 执行工具
+                Console.WriteLine($"   → 本轮调用工具: {string.Join(", ", plan.ToolNames)}");
+                var roundResults = await _toolService.ExecuteToolsAsync(plan, input);
+
+                // Step 3: Observation — 记录结果，进入下一轮
+                foreach (var kv in roundResults)
+                {
+                    var obs = $"[{kv.Key}] {kv.Value}";
+                    accumulatedObservations.Add(obs);
+                    Console.WriteLine($"   ✓ {kv.Key} 完成");
+                }
+            }
+
+            // 生成最终结论（基于所有轮次的 Observation）
+            Console.WriteLine("\n   【结论生成】基于多轮工具数据输出合规建议");
             Console.ForegroundColor = ConsoleColor.Blue;
 
-            var toolSummary = toolResults.Count > 0
-                ? string.Join("\n", toolResults.Select(kv => $"- [{kv.Key}] {kv.Value}"))
+            var toolSummary = accumulatedObservations.Count > 0
+                ? string.Join("\n", accumulatedObservations)
                 : "（本次未调用工具，以下结论基于通用知识）";
 
             var conclusionPrompt = $@"【角色】化工园区危化品合规审核专家
 【对话历史】
 {context.History}
 【当前问题】{input}
-【工具调用结果】
+【多轮工具调用结果】
 {toolSummary}
 【要求】
 1. 严格基于工具返回的真实数据，禁止编造任何信息

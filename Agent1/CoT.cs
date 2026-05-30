@@ -20,9 +20,9 @@ namespace Agent1
         /// </summary>
         private readonly ISessionService _sessionService;
         /// <summary>
-        /// 工具服务
+        /// Phase 2b: AgentDialog（统一 ReAct 循环）
         /// </summary>
-        private readonly ChemicalComplianceTools _tools; // P2: IndustrialTools → ChemicalComplianceTools
+        private readonly AgentDialog? _agentDialog;
         /// <summary>
         /// 会话上下文
         /// </summary>
@@ -32,11 +32,12 @@ namespace Agent1
         /// </summary>
         /// <param name="llmService">LLM服务</param>
         /// <param name="sessionService">会话服务</param>
-        public CoT(ILlmService llmService, ISessionService sessionService)
+        /// <param name="agentDialog">Phase 2b: AgentDialog（ReAct 统一循环），null 时走旧逻辑</param>
+        public CoT(ILlmService llmService, ISessionService sessionService, AgentDialog? agentDialog = null)
         {
             _llmService = llmService;
             _sessionService = sessionService;
-            _tools = new ChemicalComplianceTools(); // P2: 化工合规工具集
+            _agentDialog = agentDialog;
             _session = _sessionService.CreateSession(SessionType.ChemicalCompliance);
         //这里的会话服务和LLM服务的区别是，会话服务负责管理会话的上下文，而LLM服务负责生成推理结果
         }
@@ -210,10 +211,44 @@ namespace Agent1
 
         public async Task RunReActStreamTools()
         {
-            Console.WriteLine("\n====ReAct（化工合规手动工具调用·多轮对话）===="); // P2: 工业级→化工合规
+            // Phase 2b: 优先走 AgentDialog 统一 ReAct 多轮循环（工具走 RAG）
+            if (_agentDialog != null)
+            {
+                Console.WriteLine("\n====ReAct（统一多轮循环·RAG 工具）====");
+                Console.WriteLine($"✅ 会话已创建，Session ID: {_session.SessionId}");
+                Console.WriteLine("💡 输入 'exit' 或 'quit' 退出对话");
+                Console.WriteLine("-----------------------------------");
+
+                while (true)
+                {
+                    Console.Write("\n👤 请输入: ");
+                    var userInput = Console.ReadLine();
+
+                    if (userInput == null) continue;
+                    if (userInput.Equals("exit", StringComparison.OrdinalIgnoreCase) ||
+                        userInput.Equals("quit", StringComparison.OrdinalIgnoreCase) ||
+                        userInput.Equals("退出", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Console.WriteLine("🚪 退出对话");
+                        break;
+                    }
+
+                    var answer = await _agentDialog.ExecuteAsync(userInput, _session);
+
+                    Console.WriteLine("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                    Console.WriteLine("✅ Agent+RAG化工合规流程执行完成！");
+                    Console.WriteLine("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                }
+                return;
+            }
+
+            // 旧逻辑（AgentDialog 未注入时的降级）
+            Console.WriteLine("\n====ReAct（化工合规手动工具调用·多轮对话）====");
             Console.WriteLine($"✅ 会话已创建，Session ID: {_session.SessionId}");
             Console.WriteLine("💡 输入 'exit' 或 'quit' 退出对话");
             Console.WriteLine("-----------------------------------");
+
+            var tools = new ChemicalComplianceTools();
 
             while (true)
             {
@@ -247,7 +282,7 @@ namespace Agent1
 
 请输出你的思考过程，最后必须单独一行以大写 TOOLS: 开头列出工具名，逗号分隔。
 格式示例：TOOLS:CheckHazardCategory,CheckStorageCompatibility
-（务必以 TOOLS: 开头，否则工具不会被调用！）"; // P2: 工业工具→化工合规工具
+（务必以 TOOLS: 开头，否则工具不会被调用！）";
 
                 string thoughtResult = await _llmService.InvokeStreamWithRetryAsync(thoughtPrompt, ConsoleColor.DarkGray, "思考分析");
                 Console.ResetColor();
@@ -255,19 +290,14 @@ namespace Agent1
                 Console.WriteLine("\n【Step 2 - Action】解析工具调用指令");
                 string[] toolsToCall = ParseToolCalls(thoughtResult);
 
-                if (toolsToCall.Length == 0)
-                {
-                    toolsToCall = new string[] { "GetSafetyDistance" }; // P2: 兜底工具从主轴温度改为安全距离
-                }
-
-                Console.WriteLine("\n【Step 3 - Observation】调用化工合规工具获取数据"); // P2: 工业工具→化工合规工具
+                Console.WriteLine("\n【Step 3 - Observation】调用化工合规工具获取数据");
                 Console.ForegroundColor = ConsoleColor.Green;
 
                 Dictionary<string, string> toolResults = new Dictionary<string, string>();
 
                 foreach (string toolName in toolsToCall)
                 {
-                    string result = CallTool(_tools, toolName, userInput);
+                    string result = CallTool(tools, toolName, userInput);
                     toolResults.Add(toolName, result);
                     Console.WriteLine($"✓ {toolName} → {result}");
                 }
@@ -289,7 +319,7 @@ namespace Agent1
 1. 严格基于真实数据，禁止编造任何信息
 2. 判断是否合规，引用具体法规条款（GB 30000、GB15603、GB50160）
 3. 指出违规点和对应的整改措施
-4. 输出格式清晰易读"; // P2: 工业设备诊断→化工合规审核
+4. 输出格式清晰易读";
 
                 var answer = await _llmService.InvokeStreamWithRetryAsync(conclusionPrompt, ConsoleColor.Blue, "最终结论");
                 Console.ResetColor();
@@ -297,7 +327,7 @@ namespace Agent1
                 _sessionService.AddDialogTurn(_session.SessionId, "Assistant", answer);
 
                 Console.WriteLine("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                Console.WriteLine("✅ ReAct化工合规工具调用流程执行完成！"); // P2: 工业级→化工合规
+                Console.WriteLine("✅ ReAct化工合规工具调用流程执行完成！");
                 Console.WriteLine("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             }
         }
