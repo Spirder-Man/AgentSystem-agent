@@ -7,6 +7,7 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Threading;
 using Agent1.Config;
 
 namespace Agent1.Services
@@ -41,9 +42,12 @@ namespace Agent1.Services
             string buffer = "";
             int bufferFlushThreshold = 50;
 
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+
             try
             {
-                await foreach (var chunk in _kernel.InvokePromptStreamingAsync<string>(prompt))
+                await foreach (var chunk in _kernel.InvokePromptStreamingAsync<string>(
+                    prompt, cancellationToken: cts.Token))
                 {
                     buffer += chunk;
 
@@ -232,68 +236,54 @@ namespace Agent1.Services
         }
 
         // 生成单个文本的向量嵌入
-        public async Task<float[]> GetEmbeddingAsync(string text)
+        public async Task<float[]?> GetEmbeddingAsync(string text)
         {
             try
             {
                 var config = AppConfig.Instance.VectorSearch;
                 var baseUrl = ModelConfig.Endpoint;
                 var url = new Uri(baseUrl, "/api/embeddings").ToString();
-                
+                // 创建请求对象
                 var request = new
                 {
+                    //模型ID
                     model = config.EmbeddingModelId,
+                    //输入文本
                     prompt = text
                 };
 
                 var json = JsonSerializer.Serialize(request);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
                 
-                Console.WriteLine($"   📤 请求 URL: {url}");
-                Console.WriteLine($"   📤 请求方法: POST");
-                Console.WriteLine($"   📤 请求 Body: {json}");
-
                 var response = await _httpClient.PostAsync(url, content);
-                
-                Console.WriteLine($"   📥 响应状态码: {response.StatusCode}");
                 
                 if (!response.IsSuccessStatusCode)
                 {
                     var errorContent = await response.Content.ReadAsStringAsync();
-                    Console.WriteLine($"   📥 错误响应: {errorContent}");
+                    Console.WriteLine($"   ⚠️ 向量请求失败 [{response.StatusCode}]: {errorContent.Substring(0, Math.Min(200, errorContent.Length))}");
+                    // 不返回随机向量（会污染向量库），返回 null 由调用方跳过向量写入
+                    return null;
                 }
-                
-                response.EnsureSuccessStatusCode();
 
                 var responseJson = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"   📥 响应 Body: {responseJson}");
                 
                 using var doc = JsonDocument.Parse(responseJson);
                 var embedding = doc.RootElement.GetProperty("embedding").EnumerateArray()
                     .Select(e => e.GetSingle())
                     .ToArray();
 
-                Console.WriteLine($"   ✅ 向量嵌入生成成功 (维度: {embedding.Length})");
+                Console.WriteLine($"   ✅ 向量嵌入成功 (维度: {embedding.Length})");
                 return embedding;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"   ⚠️ 向量嵌入生成失败: {ex.Message}");
-                Console.WriteLine($"   🔍 完整堆栈: {ex.StackTrace}");
-                
-                // 返回随机向量作为降级方案
-                var random = new Random();
-                var fallback = new float[AppConfig.Instance.VectorSearch.EmbeddingDimension];
-                for (int i = 0; i < fallback.Length; i++)
-                {
-                    fallback[i] = (float)(random.NextDouble() * 2 - 1); // -1 到 1 之间
-                }
-                return fallback;
+                Console.WriteLine($"   ⚠️ 向量嵌入失败: {ex.Message}");
+                return null;
             }
         }
 
         // 批量生成向量嵌入
-        public async Task<float[][]> GetEmbeddingsAsync(IEnumerable<string> texts)
+        public async Task<float[][]?> GetEmbeddingsAsync(IEnumerable<string> texts)
         {
             var results = new List<float[]>();
             foreach (var text in texts)

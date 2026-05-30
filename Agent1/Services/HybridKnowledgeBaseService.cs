@@ -68,6 +68,12 @@ namespace Agent1.Services
 
                 var embedding = await _llmService.GetEmbeddingAsync(content);
 
+                if (embedding == null)
+                {
+                    Console.WriteLine($"   ⏭️ 向量生成失败，跳过向量库写入（BM25 已写入）");
+                    return;
+                }
+
                 // P0修复：构建完整记录，携带全部元数据（脏数据熔断由 DatabaseService 执行）
                 var record = new ChemicalDocumentRecord
                 {
@@ -84,7 +90,7 @@ namespace Agent1.Services
                     ChunkIndex = chunkIndex,
                     Embedding = embedding
                 };
-
+                //ChemicalDocumentRecord 构建
                 await _databaseService.AddChemicalDocumentAsync(record);
             }
             catch (Exception ex)
@@ -95,7 +101,9 @@ namespace Agent1.Services
 
         public Task AddDocumentsAsync(IEnumerable<string> contents)
         {
-            return _bm25Service.AddDocumentsAsync(contents);
+            // 逐条调用 AddDocumentAsync，确保 BM25 和向量双写同步
+            var tasks = contents.Select(c => AddDocumentAsync(c));
+            return Task.WhenAll(tasks);
         }
 
         public async Task<List<RetrievedChunk>> RetrieveAsync(string query, int topK = 5)
@@ -129,6 +137,7 @@ namespace Agent1.Services
         public void Clear()
         {
             _bm25Service.Clear();
+            _databaseService.ClearChemicalDocumentsAsync().GetAwaiter().GetResult();
         }
 
         public async Task AddChemicalRegulationAsync(string content, string regulationType, string priority, string? chemicalType = null)
@@ -137,6 +146,12 @@ namespace Agent1.Services
             try
             {
                 var embedding = await _llmService.GetEmbeddingAsync(content);
+
+                if (embedding == null)
+                {
+                    Console.WriteLine($"   ⏭️ 向量生成失败，跳过向量库写入（BM25 已写入）");
+                    return;
+                }
 
                 // P0修复：构建完整记录
                 var record = new ChemicalDocumentRecord
@@ -221,8 +236,8 @@ namespace Agent1.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"   ⚠️ 向量检索失败，降级到BM25: {ex.Message}");
-                return await Bm25RetrieveAsync(query, topK);
+                Console.WriteLine($"   ⚠️ 向量检索失败，本次混合检索仅使用BM25: {ex.Message}");
+                return new List<RetrievedChunk>();
             }
         }
 
@@ -243,17 +258,22 @@ namespace Agent1.Services
                 result.RetrievalMethod = "BM25";
             }
 
+            // 归一化 BM25 分数到 0~1 区间，避免与向量分（0~1）数量级不一致导致加权失效
+            double maxBm25 = bm25Results.Count > 0 ? bm25Results.Max(r => r.Score) : 1;
+            if (maxBm25 <= 0) maxBm25 = 1;
+
             var merged = new Dictionary<string, (RetrievedChunk chunk, double bm25Score, double vectorScore)>();
 
             foreach (var result in bm25Results)
             {
-                var key = GetChunkKey(result);
-                merged[key] = (result, result.Score, 0);
+                var key = result.Content ?? Guid.NewGuid().ToString();
+                var normalizedScore = result.Score / maxBm25;  // 归一化到 0~1
+                merged[key] = (result, normalizedScore, 0);
             }
 
             foreach (var result in vectorResults)
             {
-                var key = GetChunkKey(result);
+                var key = result.Content ?? Guid.NewGuid().ToString();
                 if (merged.ContainsKey(key))
                 {
                     var existing = merged[key];
@@ -293,11 +313,6 @@ namespace Agent1.Services
 
             Console.WriteLine($"   ✅ 混合检索完成 (召回: {finalResults.Count})");
             return finalResults;
-        }
-
-        private string GetChunkKey(RetrievedChunk chunk)
-        {
-            return chunk.Content.Substring(0, Math.Min(100, chunk.Content.Length)).GetHashCode().ToString();
         }
 
         private static readonly Dictionary<string, int> _priorityLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)

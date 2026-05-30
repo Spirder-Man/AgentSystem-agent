@@ -15,6 +15,9 @@ namespace Agent1.Services
         [Obsolete("请使用 AddChemicalDocumentAsync(ChemicalDocumentRecord) 代替")]
         Task AddChemicalDocumentAsync(string content, string regulationType, string priority, string? sourceFile = null, string? chemicalType = null, float[]? embedding = null);
 
+        // 清空向量存储（与 BM25 Clear 同步）
+        Task ClearChemicalDocumentsAsync();
+
         // 向量检索
         Task<List<RetrievedChunk>> VectorSearchAsync(string query, float[] queryEmbedding, int topK = 5);
     }

@@ -195,9 +195,31 @@ namespace Agent1
             foreach (var f in txtFiles)
             {
                 _totalFiles++;
-                var chunks = await LoadAndSplitFile(f, regulationType, priority);
-                _totalChunks += chunks.Count;
-                _successFiles++;
+                try
+                {
+                    var content = await File.ReadAllTextAsync(f, Encoding.UTF8);
+                    var cr = _textCleaner.Clean(content, regulationType);
+                    var chunks = _semanticChunker.Chunk(cr.CleanText, regulationType);
+                    foreach (var c in chunks)
+                    {
+                        await _knowledgeBase.AddDocumentAsync(c.Content, new Dictionary<string, object>
+                        {
+                            ["RegulationType"] = regulationType, ["Priority"] = priority,
+                            ["SourceFile"] = Path.GetFileNameWithoutExtension(f),
+                            ["RegulationNumber"] = c.RegulationNumber ?? "",
+                            ["ChapterTitle"] = c.ChapterTitle ?? "",
+                            ["ClauseNumber"] = c.ClauseNumber ?? "",
+                            ["ChunkIndex"] = c.ChunkIndex,
+                            ["ExtractionQuality"] = cr.IsGarbled ? "partial" : "good"
+                        });
+                        _totalChunks++;
+                    }
+                    _successFiles++;
+                }
+                catch (Exception ex)
+                {
+                    _failedFiles++; _failedFileList.Add($"{Path.GetFileNameWithoutExtension(f)} ({ex.Message})");
+                }
             }
         }
         /// <summary>
@@ -259,17 +281,18 @@ namespace Agent1
             try
             {
                 var pdfResult = _pdfExtractor.Extract(filePath);
+                //解析文件
                 if (pdfResult.Quality == "failed")
                 {
                     _failedFiles++; _failedFileList.Add($"{fileName} (PDF解析失败)");
                     return;
                 }
+                //检索过滤
                 var cleanResult = _textCleaner.Clean(pdfResult.FullText, regulationType);
-                if (cleanResult.IsGarbled) _partialFiles++;
-
+                //语义分块
                 var chunks = _semanticChunker.Chunk(cleanResult.CleanText, regulationType,
                     pdfResult.RegulationNumber ?? fileName);
-
+                //构建字典存储检索后的分词
                 foreach (var c in chunks)
                 {
                     await _knowledgeBase.AddDocumentAsync(c.Content, new Dictionary<string, object>
@@ -394,16 +417,17 @@ namespace Agent1
             {
                 { "国标", 3000 },
                 { "园区规则", 2000 },
-                { "历史案例", 1000 }
+                { "历史案例", 1000 },
+                { "企业制度", 500 }
             };
 
             var rerankedResults = bm25Results
                 .Select(r => 
                 {
                     var priority = 0;
-                    if (r.Metadata.ContainsKey("Priority"))
+                    if (r.Metadata.ContainsKey("RegulationType"))
                     {
-                        var p = r.Metadata["Priority"]?.ToString();
+                        var p = r.Metadata["RegulationType"]?.ToString();
                         if (!string.IsNullOrEmpty(p) && priorityLevels.ContainsKey(p))
                         {
                             priority = priorityLevels[p];
@@ -434,9 +458,9 @@ namespace Agent1
                 if (metadata.ContainsKey("SourceFile"))
                     Console.WriteLine("      来源: " + metadata["SourceFile"]);
                 
-                var contentPreview = result.Content.Substring(0, Math.Min(150, result.Content.Length));
+                var contentPreview = (result.Content ?? "").Substring(0, Math.Min(150, (result.Content ?? "").Length));
                 Console.WriteLine("      内容: " + contentPreview);
-                if (result.Content.Length > 150)
+                if ((result.Content ?? "").Length > 150)
                     Console.WriteLine("             ...");
                 
                 Console.WriteLine();

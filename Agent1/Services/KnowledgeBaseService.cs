@@ -236,7 +236,8 @@ namespace Agent1.Services
                 }
             }
 
-            Console.WriteLine($"   🔍 Tokenize调试: 原文='{text.Substring(0, Math.Min(50, text.Length))}' → Tokens=[{string.Join(", ", tokens)}]");
+            // 调试用（仅在需排查分词问题时取消注释）
+            // Console.WriteLine($"   🔍 Tokenize调试: 原文='{text.Substring(0, Math.Min(50, text.Length))}' → Tokens=[{string.Join(", ", tokens)}]");
             return tokens;
         }
         /// <summary>

@@ -215,7 +215,7 @@ namespace Agent1.Services
                         using var alterCmd = new NpgsqlCommand(alterSql, connection);
                         await alterCmd.ExecuteNonQueryAsync();
                     }
-                    catch { /* 列可能已存在 */ }
+                    catch (NpgsqlException) { /* 列可能已存在，忽略 */ }
                 }
                 Console.WriteLine("   ✅ 扩展元数据字段就绪");
             }
@@ -479,6 +479,27 @@ namespace Agent1.Services
             }
 
             return results;
+        }
+
+        // 清空化工文档表（与 BM25 Clear 同步，避免双通道数据不一致）
+        public async Task ClearChemicalDocumentsAsync()
+        {
+            try
+            {
+                using var connection = CreateConnection();
+                await connection.OpenAsync();
+
+                using var command = new NpgsqlCommand(
+                    "DELETE FROM chemical_documents;",
+                    connection);
+
+                int deleted = await command.ExecuteNonQueryAsync();
+                Console.WriteLine($"   🧹 向量库已清空 (删除 {deleted} 条)");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ⚠️ 清空向量库失败: {ex.Message}");
+            }
         }
     }
 }

@@ -9,8 +9,8 @@ namespace Agent1.Services
         Task<string> InvokeStreamAsync(string prompt, ConsoleColor color);
         Task<string> InvokeStreamWithRetryAsync(string prompt, ConsoleColor color, string stageName = "");
         
-        // 新增：向量嵌入方法
-        Task<float[]> GetEmbeddingAsync(string text);
-        Task<float[][]> GetEmbeddingsAsync(IEnumerable<string> texts);
+        // 新增：向量嵌入方法（失败时返回 null，调用方应跳过向量写入）
+        Task<float[]?> GetEmbeddingAsync(string text);
+        Task<float[][]?> GetEmbeddingsAsync(IEnumerable<string> texts);
     }
 }

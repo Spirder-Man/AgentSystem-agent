@@ -34,7 +34,8 @@ namespace Agent1.Services
 
         public override string ToString()
         {
-            string shortContent = Content.Length > 50 ? Content.Substring(0, 50) + "..." : Content;
+            string content = Content ?? "";
+            string shortContent = content.Length > 50 ? content.Substring(0, 50) + "..." : content;
             return $"[Rank {Rank}] Score: {Score:F4} | Content: {shortContent}";
         }
     }

@@ -58,19 +58,17 @@ namespace Agent1.Modules
                     Console.WriteLine($"\n{i + 1}. 得分: {result.Score:F4}");
                     if (result.Metadata.ContainsKey("RegulationType"))
                         Console.WriteLine($"   类型: {result.Metadata["RegulationType"]}");
-                    Console.WriteLine($"   内容: {result.Content.Substring(0, Math.Min(100, result.Content.Length))}...");
+                    Console.WriteLine($"   内容: {(result.Content ?? "").Substring(0, Math.Min(100, (result.Content ?? "").Length))}...");
                 }
             }
 
             // 步骤2: 构建Prompt给LLM
             var prompt = BuildCompliancePrompt(input, searchResults);
 
-            // 步骤3: LLM生成审核结论
+            // 步骤3: LLM生成审核结论（InvokeStreamAsync 已流式输出，不重复打印）
             Console.WriteLine("\n🤖 正在生成合规审核结论...");
-            var conclusion = await _llmService.InvokeStreamAsync(prompt, ConsoleColor.Cyan);
-
-            Console.WriteLine("\n========== 审核结论 ==========");
-            Console.WriteLine(conclusion);
+            await _llmService.InvokeStreamAsync(prompt, ConsoleColor.Cyan);
+            Console.WriteLine("\n✅ 审核完成");
 
             // 步骤4: 记录审计日志
             await _auditService.LogOperationAsync(
@@ -89,19 +87,24 @@ namespace Agent1.Modules
             sb.AppendLine("你是化工园区危化品合规审核专家，请根据以下参考法规对用户的巡检内容进行合规审核:");
             sb.AppendLine();
             sb.AppendLine("参考法规:");
-            for (int i = 0; i < references.Count; i++)
+
+            // 只取前 3 条，每条最多 400 字符（控制 Prompt 总长）
+            int maxRefs = Math.Min(references.Count, 3);
+            for (int i = 0; i < maxRefs; i++)
             {
-                sb.AppendLine($"{i + 1}. {references[i].Content}");
+                var content = references[i].Content;
+                if (content.Length > 400)
+                    content = content.Substring(0, 400) + "...";
+                sb.AppendLine($"{i + 1}. {content}");
             }
             sb.AppendLine();
             sb.AppendLine("用户巡检内容:");
             sb.AppendLine(userInput);
             sb.AppendLine();
-            sb.AppendLine("请按以下格式输出审核结论:");
+            sb.AppendLine("直接输出审核结论，不要输出推理过程。请按以下格式简洁回答:");
             sb.AppendLine("1. 是否合规: [是/否]");
-            sb.AppendLine("2. 违规点: [如有]");
-            sb.AppendLine("3. 法规依据: [引用具体条款]");
-            sb.AppendLine("4. 整改建议: [详细说明]");
+            sb.AppendLine("2. 法规依据: [引用条款编号]");
+            sb.AppendLine("3. 整改建议: [简短说明，最多2句]");
 
             return sb.ToString();
         }
