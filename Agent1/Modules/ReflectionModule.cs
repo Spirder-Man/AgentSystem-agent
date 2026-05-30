@@ -10,9 +10,9 @@ namespace Agent1.Modules
 
         private readonly RunReflectionStreamTools _reflection;
 
-        public ReflectionModule(ILlmService llmService, ISessionService sessionService)
+        public ReflectionModule(ILlmService llmService, ISessionService sessionService, AgentDialog? agentDialog = null)
         {
-            _reflection = new RunReflectionStreamTools(llmService, sessionService);
+            _reflection = new RunReflectionStreamTools(llmService, sessionService, agentDialog);
         }
 
         public async Task RunAsync()

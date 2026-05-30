@@ -24,6 +24,10 @@ namespace Agent1
         /// </summary>
         private readonly AgentDialog? _agentDialog;
         /// <summary>
+        /// Phase 2d: 知识库服务（CoT 推理前 RAG 增强）
+        /// </summary>
+        private readonly IKnowledgeBaseService? _kbService;
+        /// <summary>
         /// 会话上下文
         /// </summary>
         private readonly SessionContext _session;
@@ -33,11 +37,13 @@ namespace Agent1
         /// <param name="llmService">LLM服务</param>
         /// <param name="sessionService">会话服务</param>
         /// <param name="agentDialog">Phase 2b: AgentDialog（ReAct 统一循环），null 时走旧逻辑</param>
-        public CoT(ILlmService llmService, ISessionService sessionService, AgentDialog? agentDialog = null)
+        /// <param name="kbService">Phase 2d: 知识库服务（CoT 推理 RAG 增强），null 时纯 LLM 推理</param>
+        public CoT(ILlmService llmService, ISessionService sessionService, AgentDialog? agentDialog = null, IKnowledgeBaseService? kbService = null)
         {
             _llmService = llmService;
             _sessionService = sessionService;
             _agentDialog = agentDialog;
+            _kbService = kbService;
             _session = _sessionService.CreateSession(SessionType.ChemicalCompliance);
         //这里的会话服务和LLM服务的区别是，会话服务负责管理会话的上下文，而LLM服务负责生成推理结果
         }
@@ -71,6 +77,18 @@ namespace Agent1
 
                 var history = _sessionService.GetFormattedHistory(_session.SessionId, 10);
 
+                // Phase 2d: CoT 推理前先 RAG 检索知识库，基于真实法规推理
+                string ragContext = "";
+                if (_kbService != null)
+                {
+                    var chunks = await _kbService.RetrieveChemicalRegulationAsync(userInput, regulationType: "国标", topK: 3);
+                    if (chunks.Count > 0)
+                    {
+                        ragContext = "\n【知识库检索结果（基于真实国标文本）】\n" +
+                            string.Join("\n---\n", chunks.Select(c => c.Content));
+                    }
+                }
+
                 string cotPrompt = $@"示例：问题氧化剂与易燃液体能否同库储存？
 推理过程：
 1. 查禁忌表：氧化剂与易燃液体存在配伍禁忌（GB15603-1995 4.2.2）
@@ -80,7 +98,7 @@ namespace Agent1
 
 【角色】化工园区危化品合规审核专家
 【对话历史】
-{history}
+{history}{ragContext}
 【当前问题】{userInput}
 【要求】
 1. 严格按照步骤思考
@@ -126,6 +144,19 @@ namespace Agent1
                 _sessionService.AddDialogTurn(_session.SessionId, "User", userInput);
                 //获取会话历史，最多10轮
                 var history = _sessionService.GetFormattedHistory(_session.SessionId, 10);
+
+                // Phase 2d: CoT 流式推理前先 RAG 检索知识库
+                string ragContext = "";
+                if (_kbService != null)
+                {
+                    var chunks = await _kbService.RetrieveChemicalRegulationAsync(userInput, regulationType: "国标", topK: 3);
+                    if (chunks.Count > 0)
+                    {
+                        ragContext = "\n【知识库检索结果（基于真实国标文本）】\n" +
+                            string.Join("\n---\n", chunks.Select(c => c.Content));
+                    }
+                }
+
                 //构建CoT推理的提示词
                 string cotPrompt = $@"示例：问题氧化剂与易燃液体能否同库储存？
 推理过程：
@@ -136,7 +167,7 @@ namespace Agent1
 
 【角色】化工园区危化品合规审核专家
 【对话历史】
-{history}
+{history}{ragContext}
 【当前问题】{userInput}
 【要求】
 1. 用标签包裹思考过程

@@ -29,9 +29,11 @@ namespace Agent1.Modules
         /// </summary>
         /// <param name="llmService">LLM服务</param>
         /// <param name="sessionService">会话服务</param>
-        public CoTSolidModule(ILlmService llmService, ISessionService sessionService)
+        /// <param name="agentDialog">Phase 2b: AgentDialog 统一 ReAct 循环</param>
+        /// <param name="kbService">Phase 2d: 知识库服务（CoT RAG 增强）</param>
+        public CoTSolidModule(ILlmService llmService, ISessionService sessionService, AgentDialog? agentDialog = null, IKnowledgeBaseService? kbService = null)
         {
-            _cot = new CoT(llmService, sessionService);
+            _cot = new CoT(llmService, sessionService, agentDialog, kbService);
         }
 
         public async Task RunAsync()

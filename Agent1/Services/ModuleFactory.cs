@@ -40,11 +40,11 @@ namespace Agent1.Services
         {
             return type switch
             {
-                ModuleType.CoTSolid => new CoTSolidModule(_llmService, _sessionService),
-                ModuleType.CoTStream => new CoTStreamModule(_llmService, _sessionService),
+                ModuleType.CoTSolid => new CoTSolidModule(_llmService, _sessionService, _agentDialog, _knowledgeBaseService),
+                ModuleType.CoTStream => new CoTStreamModule(_llmService, _sessionService, _agentDialog, _knowledgeBaseService),
                 ModuleType.ReActSolid => new ReActSolidModule(_llmService, _sessionService, _agentDialog),
                 ModuleType.ReActStream => new ReActStreamModule(_llmService, _sessionService, _agentDialog),
-                ModuleType.Reflection => new ReflectionModule(_llmService, _sessionService),
+                ModuleType.Reflection => new ReflectionModule(_llmService, _sessionService, _agentDialog),
                 ModuleType.RAG => new RAGModule(_llmService, _sessionService),
                 ModuleType.UnifiedDialog => new UnifiedDialogModule(_agentDialog),
                 ModuleType.ComplianceCheck => new ComplianceCheckModule(

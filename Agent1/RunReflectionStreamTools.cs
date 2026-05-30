@@ -12,23 +12,36 @@ namespace Agent1
     {
         private readonly ILlmService _llmService;
         private readonly ISessionService _sessionService;
-        private readonly ChemicalComplianceTools _complianceTools;
         private readonly SessionContext _session;
+        /// <summary>
+        /// Phase 2d: AgentDialog（统一 ReAct 循环 + 工具链），null 时走旧 Reflection 逻辑
+        /// </summary>
+        private readonly AgentDialog? _agentDialog;
 
-        public RunReflectionStreamTools(ILlmService llmService, ISessionService sessionService)
+        public RunReflectionStreamTools(ILlmService llmService, ISessionService sessionService, AgentDialog? agentDialog = null)
         {
             _llmService = llmService;
             _sessionService = sessionService;
-            _complianceTools = new ChemicalComplianceTools();
+            _agentDialog = agentDialog;
             _session = _sessionService.CreateSession(SessionType.ChemicalCompliance);
         }
 
         public async Task RunReflectionStreamTool()
         {
+            // Phase 2d: 优先走 AgentDialog 统一工具链 + 自研 Reflection 反思层
+            if (_agentDialog != null)
+            {
+                await RunWithAgentDialog();
+                return;
+            }
+
+            // 旧逻辑（AgentDialog 未注入时的降级）
             Console.WriteLine("\n====Reflection（化工合规自我纠错·多轮对话）====");
             Console.WriteLine($"✅ 会话已创建，Session ID: {_session.SessionId}");
             Console.WriteLine("💡 输入 'exit' 或 'quit' 退出对话");
             Console.WriteLine("-----------------------------------");
+
+            var complianceTools = new ChemicalComplianceTools();
 
             while (true)
             {
@@ -82,7 +95,7 @@ namespace Agent1
                 Dictionary<string, string> toolResults = new Dictionary<string, string>();
                 foreach (string toolName in toolsToCall)
                 {
-                    string result = CallTool(_complianceTools, toolName, userInput);
+                    string result = CallTool(complianceTools, toolName, userInput);
                     toolResults.Add(toolName, result);
                     Console.WriteLine($"✓ {toolName} → {result}");
                 }
@@ -145,6 +158,78 @@ namespace Agent1
                 Console.ResetColor();
                 Console.WriteLine("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                 Console.WriteLine("✅ Reflection化工合规自我纠错流程执行完成！");
+                Console.WriteLine("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            }
+        }
+
+        /// <summary>
+        /// Phase 2d: AgentDialog 统一工具链 + Reflection 反思层叠加
+        /// </summary>
+        private async Task RunWithAgentDialog()
+        {
+            Console.WriteLine("\n====Reflection（AgentDialog 工具链 + 自我纠错）====");
+            Console.WriteLine($"✅ 会话已创建，Session ID: {_session.SessionId}");
+            Console.WriteLine("💡 输入 'exit' 或 'quit' 退出对话");
+            Console.WriteLine("-----------------------------------");
+
+            while (true)
+            {
+                Console.Write("\n👤 请输入: ");
+                var userInput = Console.ReadLine();
+
+                if (userInput == null) continue;
+                if (userInput.Equals("exit", StringComparison.OrdinalIgnoreCase) ||
+                    userInput.Equals("quit", StringComparison.OrdinalIgnoreCase) ||
+                    userInput.Equals("退出", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine("🚪 退出对话");
+                    break;
+                }
+
+                // Step 1-3: AgentDialog 处理工具调用 + 生成初步结论
+                Console.WriteLine("\n📦 AgentDialog 统一工具链处理中...");
+                var initialConclusion = await _agentDialog!.ExecuteAsync(userInput, _session);
+
+                // Step 4: Reflection 反思层
+                Console.WriteLine("\n【Reflection 反思层】检查结论是否基于真实数据");
+                Console.ForegroundColor = ConsoleColor.Magenta;
+                var history = _sessionService.GetFormattedHistory(_session.SessionId, 10);
+                string reflectionPrompt = $@"【角色】化工园区危化品合规审核专家
+【对话历史】
+{history}
+【初步结论】
+{initialConclusion}
+【任务】对初步结论进行严格检查，按以下维度反思：
+1. 数据真实性：是否完全基于真实工具数据？有无编造？
+2. 结论严谨性：合规判断是否引用了具体法规条款？
+3. 建议落地性：整改建议是否具体可操作？
+【输出】逐条指出问题（无问题则说[无问题]），最后用【纠错指令】: 总结修改方向。无问题也输出。【纠错指令】: 无问题";
+
+                string reflectionResult = await _llmService.InvokeStreamWithRetryAsync(reflectionPrompt, ConsoleColor.Magenta, "Reflection反思");
+                Console.ResetColor();
+
+                // Step 5: 如果反思指出问题，修正结论
+                if (reflectionResult.Contains("无问题") && !reflectionResult.Contains("问题："))
+                {
+                    Console.WriteLine("\n✅ Reflection 通过，结论无需修正");
+                }
+                else
+                {
+                    Console.WriteLine("\n【修正结论】基于反思结果重新生成");
+                    Console.ForegroundColor = ConsoleColor.Blue;
+                    string finalPrompt = $@"【角色】化工园区危化品合规审核专家
+【当前问题】{userInput}
+【初步结论】
+{initialConclusion}
+【反思纠错结果】
+{reflectionResult}
+【要求】严格修正反思指出的所有问题，重新输出正确的合规审核结论";
+                    await _llmService.InvokeStreamAsync(finalPrompt, ConsoleColor.Blue);
+                    Console.ResetColor();
+                }
+
+                Console.WriteLine("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                Console.WriteLine("✅ Reflection 化学合规自我纠错完成！");
                 Console.WriteLine("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             }
         }
