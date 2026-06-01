@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
+using System.Text;
 
 namespace Agent1
 {
@@ -26,12 +27,21 @@ namespace Agent1
             AppConfig.Load(configuration);
 
             // ═══════════════════════════════════════════════════
-            // Phase 1: 结构化日志 — Serilog
+            // Phase 1: 结构化日志 — Serilog + Console 输出双写文件
             // ═══════════════════════════════════════════════════
             Log.Logger = new LoggerConfiguration()
                 .WriteTo.Console()
                 .WriteTo.File("logs/agent1-.log", rollingInterval: RollingInterval.Day)
                 .CreateLogger();
+
+            // Phase 2d: 所有 Console.WriteLine 同时写入 logs/full-YYYYMMDD.log
+            // 解决终端输出超出缓冲区后无法回溯查看诊断信息的问题
+            var logDir = "logs";
+            if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
+            var fullLogPath = Path.Combine(logDir, $"full-{DateTime.Now:yyyyMMdd}.log");
+            var fileWriter = new StreamWriter(fullLogPath, append: true) { AutoFlush = true };
+            Console.SetOut(new ConsoleTeeWriter(Console.Out, fileWriter));
+            Console.WriteLine($"📝 诊断日志双写已启用 → {fullLogPath}");
 
             var loggerFactory = LoggerFactory.Create(builder =>
             {
@@ -371,6 +381,51 @@ namespace Agent1
             }
 
             Console.WriteLine("\n💡 提示: 此更改仅在当前会话有效");
+        }
+    }
+
+    /// <summary>
+    /// 双写 TextWriter：同时写入原始 Console 输出流和文件流
+    /// 解决终端缓冲区溢出后无法回溯诊断日志的问题
+    /// </summary>
+    public class ConsoleTeeWriter : TextWriter
+    {
+        private readonly TextWriter _original;
+        private readonly TextWriter _file;
+
+        public ConsoleTeeWriter(TextWriter original, TextWriter file)
+        {
+            _original = original;
+            _file = file;
+        }
+
+        public override Encoding Encoding => _original.Encoding;
+
+        public override void Write(char value)
+        {
+            _original.Write(value);
+            _file.Write(value);
+        }
+
+        public override void Write(string? value)
+        {
+            _original.Write(value);
+            _file.Write(value);
+        }
+
+        public override void WriteLine(string? value)
+        {
+            _original.WriteLine(value);
+            _file.WriteLine(value);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _file.Dispose();
+            }
+            base.Dispose(disposing);
         }
     }
 }

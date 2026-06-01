@@ -17,12 +17,17 @@ namespace Agent1
         /// Phase 2d: AgentDialog（统一 ReAct 循环 + 工具链），null 时走旧 Reflection 逻辑
         /// </summary>
         private readonly AgentDialog? _agentDialog;
+        /// <summary>
+        /// Phase 2e: 代码级反思验证引擎（非 LLM，基于正则+知识库反向检索）
+        /// </summary>
+        private readonly ReflectionVerifier? _verifier;
 
-        public RunReflectionStreamTools(ILlmService llmService, ISessionService sessionService, AgentDialog? agentDialog = null)
+        public RunReflectionStreamTools(ILlmService llmService, ISessionService sessionService, AgentDialog? agentDialog = null, IKnowledgeBaseService? kbService = null)
         {
             _llmService = llmService;
             _sessionService = sessionService;
             _agentDialog = agentDialog;
+            _verifier = kbService != null ? new ReflectionVerifier(kbService) : null;
             _session = _sessionService.CreateSession(SessionType.ChemicalCompliance);
         }
 
@@ -190,42 +195,100 @@ namespace Agent1
                 Console.WriteLine("\n📦 AgentDialog 统一工具链处理中...");
                 var initialConclusion = await _agentDialog!.ExecuteAsync(userInput, _session);
 
-                // Step 4: Reflection 反思层
-                Console.WriteLine("\n【Reflection 反思层】检查结论是否基于真实数据");
-                Console.ForegroundColor = ConsoleColor.Magenta;
-                var history = _sessionService.GetFormattedHistory(_session.SessionId, 10);
-                string reflectionPrompt = $@"【角色】化工园区危化品合规审核专家
-【对话历史】
-{history}
-【初步结论】
-{initialConclusion}
-【任务】对初步结论进行严格检查，按以下维度反思：
-1. 数据真实性：是否完全基于真实工具数据？有无编造？
-2. 结论严谨性：合规判断是否引用了具体法规条款？
-3. 建议落地性：整改建议是否具体可操作？
-【输出】逐条指出问题（无问题则说[无问题]），最后用【纠错指令】: 总结修改方向。无问题也输出。【纠错指令】: 无问题";
-
-                string reflectionResult = await _llmService.InvokeStreamWithRetryAsync(reflectionPrompt, ConsoleColor.Magenta, "Reflection反思");
-                Console.ResetColor();
-
-                // Step 5: 如果反思指出问题，修正结论
-                if (reflectionResult.Contains("无问题") && !reflectionResult.Contains("问题："))
+                // Step 4: 代码级事实核查（ReflectionVerifier — 非 LLM！）
+                if (_verifier != null)
                 {
-                    Console.WriteLine("\n✅ Reflection 通过，结论无需修正");
+                    Console.WriteLine("\n═══════════ 代码级事实核查 ═══════════");
+
+                    // 4a. 业务验证：法规编号反向检索
+                    Console.Write("🔍 验证结论中的法规引用... ");
+                    var bizReport = await _verifier.VerifyBusinessFactsAsync(initialConclusion);
+                    Console.WriteLine($"完成 ({bizReport.Claims.Count}条声明)");
+
+                    // 4b. 系统健康：工具链完整性
+                    Console.Write("🔧 检查系统健康... ");
+                    var sysReport = _verifier.VerifySystemHealth(
+                        _agentDialog.LastToolResults,
+                        _agentDialog.LastToolPlan);
+                    Console.WriteLine($"完成 (执行:{sysReport.ToolsExecuted} 取消:{sysReport.ToolsCancelled})");
+
+                    // 4c. 输出核查报告
+                    Console.WriteLine();
+                    Console.ForegroundColor = ConsoleColor.DarkCyan;
+                    Console.WriteLine(bizReport.ToMarkdown());
+                    Console.WriteLine(sysReport.ToMarkdown());
+                    Console.ResetColor();
+
+                    // 4d. LLM 修正（基于代码核查报告，而非自我幻觉检查）
+                    if (bizReport.FactualPrecision < 1.0 || sysReport.ToolsCancelled > 0)
+                    {
+                        Console.WriteLine("\n⚠️ 核查发现问题，基于客观报告修正结论...");
+                        Console.ForegroundColor = ConsoleColor.Blue;
+                        var correctedPrompt = _verifier.BuildCorrectedPrompt(
+                            userInput, initialConclusion, bizReport, sysReport);
+                        Console.WriteLine();
+                        await _llmService.InvokeStreamAsync(correctedPrompt, ConsoleColor.Blue);
+                        Console.ResetColor();
+                        Console.WriteLine();
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine("✅ 核查通过，结论所有法规引用均在知识库中得到验证");
+                        Console.ResetColor();
+                    }
                 }
                 else
                 {
-                    Console.WriteLine("\n【修正结论】基于反思结果重新生成");
-                    Console.ForegroundColor = ConsoleColor.Blue;
-                    string finalPrompt = $@"【角色】化工园区危化品合规审核专家
-【当前问题】{userInput}
+                    // 降级：无验证层时，LLM 自我反思（旧逻辑）
+                    Console.WriteLine("\n【Reflection 反思层】检查结论是否基于真实数据");
+                    Console.ForegroundColor = ConsoleColor.Magenta;
+                    string reflectionPrompt = $@"你是化工园区危化品合规审核专家。禁止输出思考过程。
+
 【初步结论】
 {initialConclusion}
-【反思纠错结果】
-{reflectionResult}
-【要求】严格修正反思指出的所有问题，重新输出正确的合规审核结论";
-                    await _llmService.InvokeStreamAsync(finalPrompt, ConsoleColor.Blue);
+
+逐条检查（只输出问题，无问题写「无」）：
+1. 数据真实性：是否编造？
+2. 法规引用：是否引用具体标准编号？
+3. 建议可行性：是否具体可操作？
+
+最后一行必须输出：【纠错指令】: 具体修改方向（无问题则写「无需修正」）";
+
+                    string reflectionResult = await _llmService.InvokeStreamWithRetryAsync(reflectionPrompt, ConsoleColor.Magenta, "Reflection反思");
                     Console.ResetColor();
+
+                    Console.WriteLine();
+                    if (reflectionResult.Contains("无需修正") || (reflectionResult.Contains("无问题") && !reflectionResult.Contains("问题：")))
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine("✅ Reflection 通过，结论无需修正");
+                        Console.ResetColor();
+                    }
+                    else
+                    {
+                        Console.WriteLine("\n【修正结论】基于反思结果重新生成");
+                        Console.ForegroundColor = ConsoleColor.Blue;
+                        string finalPrompt = $@"你是化工园区危化品合规审核专家。禁止输出思考过程。
+
+【当前问题】{userInput}
+
+【初步结论】
+{initialConclusion}
+
+【反思纠错】
+{reflectionResult}
+
+严格修正反思指出的问题，按以下模板输出：
+【合规判断】是/否
+【法规依据】引用具体标准编号+条款
+【违规点】若无违规写「无」
+【整改建议】若无违规则写「无需整改」";
+                        Console.WriteLine();
+                        await _llmService.InvokeStreamAsync(finalPrompt, ConsoleColor.Blue);
+                        Console.ResetColor();
+                        Console.WriteLine();
+                    }
                 }
 
                 Console.WriteLine("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");

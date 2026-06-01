@@ -13,6 +13,11 @@ namespace Agent1.Services
         private readonly ILlmService _llmService;
         private readonly IToolService _toolService;
 
+        /// <summary>最近一次化工合规执行的工具结果（供 Reflection 验证层使用）</summary>
+        public Dictionary<string, string> LastToolResults { get; private set; } = new();
+        /// <summary>最近一次工具规划结果</summary>
+        public ToolPlan? LastToolPlan { get; private set; }
+
         public AgentDialog(
             ISessionService sessionService,
             IMemoryService memoryService,
@@ -127,6 +132,9 @@ namespace Agent1.Services
         {
             const int maxRounds = 3;
             var accumulatedObservations = new List<string>();
+            var allToolResults = new Dictionary<string, string>();
+            var allToolsPlanned = new List<string>();
+            var allToolsExecuted = new List<string>();
 
             for (int round = 1; round <= maxRounds; round++)
             {
@@ -138,6 +146,7 @@ namespace Agent1.Services
                     : "";
 
                 var plan = await _toolService.AnalyzeAndPlanToolsAsync(input, context.History + observationContext);
+                allToolsPlanned.AddRange(plan.ToolNames);
 
                 if (plan.ToolNames.Count == 0)
                 {
@@ -149,12 +158,14 @@ namespace Agent1.Services
                 // Step 2: Action — 执行工具
                 Console.WriteLine($"   → 本轮调用工具: {string.Join(", ", plan.ToolNames)}");
                 var roundResults = await _toolService.ExecuteToolsAsync(plan, input);
+                allToolsExecuted.AddRange(plan.ToolNames);
 
                 // Step 3: Observation — 记录结果，进入下一轮
                 foreach (var kv in roundResults)
                 {
                     var obs = $"[{kv.Key}] {kv.Value}";
                     accumulatedObservations.Add(obs);
+                    allToolResults[kv.Key] = kv.Value;
                     Console.WriteLine($"   ✓ {kv.Key} 完成");
                 }
             }
@@ -175,37 +186,35 @@ namespace Agent1.Services
                 : rawSummary;
 
             // Phase 2c: 把所有轮次的工具结果存入记忆（领域事实缓存）
-            if (accumulatedObservations.Count > 0)
+            if (allToolResults.Count > 0)
             {
-                var allToolResults = new Dictionary<string, string>();
-                foreach (var obs in accumulatedObservations)
-                {
-                    // Observation 格式: "[ToolName] result"
-                    var bracketEnd = obs.IndexOf(']');
-                    if (bracketEnd > 1 && obs.StartsWith("["))
-                    {
-                        var toolName = obs.Substring(1, bracketEnd - 1);
-                        var result = obs.Substring(bracketEnd + 2);
-                        allToolResults[toolName] = result;
-                    }
-                }
                 _memoryService.StoreToolFacts(input, allToolResults);
             }
 
-            var conclusionPrompt = $@"【角色】化工园区危化品合规审核专家
-【对话历史】
-{context.History}
-【当前问题】{input}
-【多轮工具调用结果】
-{toolSummary}
-【要求】
-1. 严格基于工具返回的真实数据，禁止编造任何信息
-2. 判断是否合规，引用具体法规条款
-3. 指出违规点和对应的整改措施
-4. 输出格式清晰易读，分条目列出";
+            // 暴露给外部验证层（ReflectionVerifier 使用）
+            LastToolResults = allToolResults;
+            LastToolPlan = new ToolPlan
+            {
+                NeedsTools = allToolsPlanned.Count > 0,
+                ToolNames = allToolsPlanned.Distinct().ToList()
+            };
 
+            var conclusionPrompt = $@"你是化工园区危化品合规审核专家。禁止输出任何思考过程，直接给出最终结论。
+
+【当前问题】{input}
+【工具数据】
+{toolSummary}
+
+请严格按以下模板输出（每项一行，不要多余内容）：
+【合规判断】是/否
+【法规依据】引用具体标准编号+条款
+【违规点】若无违规写「无」
+【整改建议】若无违规则写「无需整改」";
+
+            Console.WriteLine();
             var answer = await _llmService.InvokeStreamWithRetryAsync(conclusionPrompt, ConsoleColor.Blue, "合规结论");
             Console.ResetColor();
+            Console.WriteLine();
 
             _memoryService.ExtractAndStoreKeyFacts(input, answer);
             return answer;

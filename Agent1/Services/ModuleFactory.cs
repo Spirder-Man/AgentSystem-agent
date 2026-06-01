@@ -44,7 +44,7 @@ namespace Agent1.Services
                 ModuleType.CoTStream => new CoTStreamModule(_llmService, _sessionService, _agentDialog, _knowledgeBaseService),
                 ModuleType.ReActSolid => new ReActSolidModule(_llmService, _sessionService, _agentDialog),
                 ModuleType.ReActStream => new ReActStreamModule(_llmService, _sessionService, _agentDialog),
-                ModuleType.Reflection => new ReflectionModule(_llmService, _sessionService, _agentDialog),
+                ModuleType.Reflection => new ReflectionModule(_llmService, _sessionService, _agentDialog, _knowledgeBaseService),
                 ModuleType.RAG => new RAGModule(_llmService, _sessionService),
                 ModuleType.UnifiedDialog => new UnifiedDialogModule(_agentDialog),
                 ModuleType.ComplianceCheck => new ComplianceCheckModule(
