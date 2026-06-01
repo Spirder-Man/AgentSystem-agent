@@ -10,6 +10,7 @@
 │   │   ├── RAGModule.cs      # RAG检索增强生成
 │   │   ├── CoTSolidModule.cs # CoT思维链推理
 │   │   ├── ReActStreamModule.cs # ReAct交互式推理
+│   │   ├── ReflectionModule.cs # 自我反思纠错（代码级验证）
 │   │   └── ComplianceCheckModule.cs # 合规审查模块
 │   ├── Services/             # 核心服务
 │   │   ├── LlmService.cs     # LLM服务接口
@@ -21,7 +22,9 @@
 │   │   ├── DocExtractor.cs   # DOC/DOCX 文档提取器（OpenXml）
 │   │   ├── TextCleaner.cs    # 文本清洗服务
 │   │   ├── SemanticChunker.cs # 语义分块服务
-│   │   └── AuditService.cs   # 审计日志服务
+│   │   ├── AuditService.cs   # 审计日志服务
+│   │   ├── ReflectionVerifier.cs # 代码级反思验证引擎
+│   │   └── AgentDialog.cs    # Agent对话管理
 │   ├── Config/               # 配置文件
 │   └── Program.cs            # 应用入口
 ├── ArchitectureTest/         # 架构测试模块
@@ -217,11 +220,28 @@ MIT License
 
 ---
 
-**文档版本**：v2.0  
-**最后更新**：2026年5月30日  
-**状态**：Phase 2a 工具调用架构重构完成，工具已对接 RAG 知识库
+**文档版本**：v2.1  
+**最后更新**：2026年6月1日  
+**状态**：Phase 2d Reflection 代码级验证完成 → 下一阶段 Phase 2a 工具层 RAG 化
 
-## 📋 近期更新 (P3 + P4)
+## 📋 近期更新
+
+### Phase 2d：Reflection 反思层代码级验证（2026-06-01）
+- **新增** `Services/ReflectionVerifier.cs` — 代码级事实核查引擎（非 LLM，基于正则+知识库反向检索）
+  - `VerifyBusinessFactsAsync` — 提取结论中的 GB 编号/国务院令号，反向检索知识库验证真伪
+  - `VerifySystemHealth` — 检查工具链完整性、流式取消次数、空结果告警
+  - `BuildCorrectedPrompt` — 将核查报告注入 LLM 修正 Prompt
+- **数据模型**：`BusinessVerificationReport`（事实精度/HallucinatedClaims）+ `SystemHealthReport`（工具健康度）
+- **修改** `AgentDialog.cs` — 暴露 `LastToolResults` / `LastToolPlan` 供验证层使用
+- **重构** `RunReflectionStreamTools.cs` — Reflection 流程改为：代码核查 → 核查报告 → LLM 基于报告修正（旧 LLM 自我反思降级保留）
+- **注入链**：`ReflectionModule` / `ModuleFactory` 传递 `IKnowledgeBaseService`
+- **效果**：LLM 引用的法规编号可被代码验证真伪，终止「LLM 批改 LLM 自己作业」的幻觉循环
+
+### Phase 2a 前期基础：工具调度统一（2026-05-30）
+- **双模工具链**：`ChemicalComplianceTools` 支持 RAG 检索（主路径）+ 硬编码字典（降级兜底）
+- **LLM 语义工具选择**：`ToolService.AnalyzeAndPlanToolsAsync` 改为 LLM 驱动，关键词匹配保留为兜底
+- **统一调用入口**：消除 `AgentDialog` 与 `ToolService` 中重复的 `CallTool` 逻辑
+- **待完成**：移除 27 条硬编码字典，启用 Semantic Kernel 原生 Function Calling，工具数据全量来自 RAG 知识库
 
 ### P4：多格式知识库管道（2026-05-23）
 - **新增** `Services/PdfExtractor.cs` — 基于 PdfPig 的 PDF 文本提取
@@ -253,13 +273,6 @@ MIT License
   - 新增 `ParseToolCalls` 标记行限制匹配 + 智能参数提取（`ExtractSubstance`/`ExtractFacilityType` 等）
   - 强化 Step5 校验 Prompt 格式约束，防止 LLM 自我复制
 
-### Phase 2a：工具调用架构重构 — LLM 统一调度（2026-05-30）
-- **双模工具链**：`ChemicalComplianceTools` 支持 RAG 检索（主路径）+ 硬编码字典（降级兜底）
-- **LLM 语义工具选择**：`ToolService.AnalyzeAndPlanToolsAsync` 改为 LLM 驱动，关键词匹配保留为兜底
-- **统一调用入口**：消除 `AgentDialog` 与 `ToolService` 中重复的 `CallTool` 逻辑（删除 ~90 行硬编码代码）
-- **工具真正接入 RAG**：`CheckHazardCategory` / `CheckStorageCompatibility` / `GetSafetyDistance` 改为从知识库检索 GB30000/GB15603/GB50160 全文，不再依赖硬编码字典
-
 ### 编译状态
-✅ `dotnet build`：0 错误，20 警告（全部为既有的 nullable 引用类型警告）
-✅ `dotnet test`：2/2 通过
+✅ `dotnet build`：0 错误，19 警告（全部为既有的 nullable 引用类型警告）
 
