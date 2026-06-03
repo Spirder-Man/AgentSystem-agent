@@ -328,7 +328,7 @@ namespace Agent1
 
                 foreach (string toolName in toolsToCall)
                 {
-                    string result = CallTool(tools, toolName, userInput);
+                    string result = await CallTool(tools, toolName, userInput);
                     toolResults.Add(toolName, result);
                     Console.WriteLine($"✓ {toolName} → {result}");
                 }
@@ -389,13 +389,13 @@ namespace Agent1
             return found.ToArray();
         }
 
-        private string CallTool(ChemicalComplianceTools tools, string toolName, string userInput) // P2: IndustrialTools→ChemicalComplianceTools
+        private async Task<string> CallTool(ChemicalComplianceTools tools, string toolName, string userInput) // P2: IndustrialTools→ChemicalComplianceTools
         {
             return toolName switch
             {
-                "CheckHazardCategory" => tools.CheckHazardCategory(userInput), // P2: 传入用户问题进行模糊匹配
-                "CheckStorageCompatibility" => tools.CheckStorageCompatibility(userInput, userInput),
-                "GetSafetyDistance" => tools.GetSafetyDistance(userInput),
+                "CheckHazardCategory" => await tools.CheckHazardCategory(userInput), // P2: 传入用户问题进行模糊匹配
+                "CheckStorageCompatibility" => await tools.CheckStorageCompatibility(userInput, userInput),
+                "GetSafetyDistance" => await tools.GetSafetyDistance(userInput),
                 "GetCurrentTime" => tools.GetCurrentTime(),
                 "Calculate" => tools.Calculate("1+1"),
                 _ => $"未知工具: {toolName}"

@@ -2,6 +2,7 @@
 using Agent1.Modules;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Agent1.Services
@@ -126,84 +127,20 @@ namespace Agent1.Services
         }
 
         /// <summary>
-        /// Phase 2b: 真正的多轮 ReAct 循环 — Thought→Action→Observation 可迭代多轮
+        /// Phase 2a: SK Auto Function Calling — LLM 自主决定调用哪些工具
+        /// 工具选择和执行由 Semantic Kernel 自动处理，不再需要手动 ReAct 循环
+        /// Phase 2a 验证: 调用完成后从 LlmService.LastFunctionCalls 回填 LastToolResults
+        ///   以保持与 ReflectionVerifier / RunReflectionStreamTools 的向后兼容
         /// </summary>
         private async Task<string> ExecuteChemicalComplianceAsync(string input, PipelineContext context)
         {
-            const int maxRounds = 3;
-            var accumulatedObservations = new List<string>();
-            var allToolResults = new Dictionary<string, string>();
-            var allToolsPlanned = new List<string>();
-            var allToolsExecuted = new List<string>();
+            // Phase 2a: 单次 LLM 调用，SK 自动判断 + 执行工具
+            var prompt = $@"你是化工园区危化品合规审核专家。
 
-            for (int round = 1; round <= maxRounds; round++)
-            {
-                Console.WriteLine($"\n   【ReAct Round {round}/{maxRounds}】");
-
-                // Step 1: Thought — LLM 判断需要什么工具（同时考虑之前轮次的 Observation）
-                var observationContext = accumulatedObservations.Count > 0
-                    ? "\n【前面轮次的工具调用结果】\n" + string.Join("\n---\n", accumulatedObservations)
-                    : "";
-
-                var plan = await _toolService.AnalyzeAndPlanToolsAsync(input, context.History + observationContext);
-                allToolsPlanned.AddRange(plan.ToolNames);
-
-                if (plan.ToolNames.Count == 0)
-                {
-                    // LLM 认为不需要更多工具了 → 生成最终结论
-                    Console.WriteLine("   → LLM 判断信息足够，生成结论");
-                    break;
-                }
-
-                // Step 2: Action — 执行工具
-                Console.WriteLine($"   → 本轮调用工具: {string.Join(", ", plan.ToolNames)}");
-                var roundResults = await _toolService.ExecuteToolsAsync(plan, input);
-                allToolsExecuted.AddRange(plan.ToolNames);
-
-                // Step 3: Observation — 记录结果，进入下一轮
-                foreach (var kv in roundResults)
-                {
-                    var obs = $"[{kv.Key}] {kv.Value}";
-                    accumulatedObservations.Add(obs);
-                    allToolResults[kv.Key] = kv.Value;
-                    Console.WriteLine($"   ✓ {kv.Key} 完成");
-                }
-            }
-
-            // 生成最终结论（基于所有轮次的 Observation）
-            // Phase 2c: 上下文过长时自动截断（保留最近 2500 字符）
-            Console.WriteLine("\n   【结论生成】基于多轮工具数据输出合规建议");
-            Console.ForegroundColor = ConsoleColor.Blue;
-
-            var rawSummary = accumulatedObservations.Count > 0
-                ? string.Join("\n", accumulatedObservations)
-                : "（本次未调用工具，以下结论基于通用知识）";
-
-            // 上下文压缩：超过 2500 字符时只保留尾部最新结果
-            const int maxContextChars = 2500;
-            var toolSummary = rawSummary.Length > maxContextChars
-                ? "...(前序结果已省略)\n" + rawSummary.Substring(rawSummary.Length - maxContextChars)
-                : rawSummary;
-
-            // Phase 2c: 把所有轮次的工具结果存入记忆（领域事实缓存）
-            if (allToolResults.Count > 0)
-            {
-                _memoryService.StoreToolFacts(input, allToolResults);
-            }
-
-            // 暴露给外部验证层（ReflectionVerifier 使用）
-            LastToolResults = allToolResults;
-            LastToolPlan = new ToolPlan
-            {
-                NeedsTools = allToolsPlanned.Count > 0,
-                ToolNames = allToolsPlanned.Distinct().ToList()
-            };
-
-            var conclusionPrompt = $@"你是化工园区危化品合规审核专家。禁止输出任何思考过程，直接给出最终结论。
+对话历史：
+{context.History}
 
 【当前问题】{input}
-【工具数据】
-{toolSummary}
 
 请严格按以下模板输出（每项一行，不要多余内容）：
 【合规判断】是/否
@@ -211,10 +148,33 @@ namespace Agent1.Services
 【违规点】若无违规写「无」
 【整改建议】若无违规则写「无需整改」";
 
-            Console.WriteLine();
-            var answer = await _llmService.InvokeStreamWithRetryAsync(conclusionPrompt, ConsoleColor.Blue, "合规结论");
+            Console.WriteLine("\n   【SK Auto Function Calling 模式】");
+            Console.ForegroundColor = ConsoleColor.Blue;
+            var answer = await _llmService.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Blue, "化工合规");
             Console.ResetColor();
             Console.WriteLine();
+
+            // Phase 2a 验证: 从 LlmService 诊断记录同步 LastToolResults
+            // ReflectionVerifier.VerifySystemHealth 依赖此属性检查工具链完整性
+            var llmService = _llmService as LlmService;
+            if (llmService != null && llmService.LastFunctionCalls.Count > 0)
+            {
+                LastToolResults = new Dictionary<string, string>();
+                foreach (var fc in llmService.LastFunctionCalls)
+                {
+                    LastToolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
+                }
+                LastToolPlan = new ToolPlan
+                {
+                    NeedsTools = true,
+                    ToolNames = llmService.LastFunctionCalls.Select(fc => fc.FunctionName).ToList()
+                };
+            }
+            else
+            {
+                LastToolResults = new Dictionary<string, string>();
+                LastToolPlan = new ToolPlan { NeedsTools = false };
+            }
 
             _memoryService.ExtractAndStoreKeyFacts(input, answer);
             return answer;
@@ -245,6 +205,61 @@ namespace Agent1.Services
             
             _memoryService.ExtractAndStoreKeyFacts(input, answer);
             
+            return answer;
+        }
+
+        /// <summary>
+        /// 评测快速通道: 跳过流水线/会话/记忆/流式输出，直接非流式调用 LLM。
+        /// 用于 50 条批量评测场景，节省约 40% 单次请求时间。
+        /// 工具调用记录回填到 LastToolResults / LastFunctionCalls 供评测器检查。
+        /// </summary>
+        public async Task<string> ExecuteEvalFastAsync(string userInput)
+        {
+            var prompt = $@"你是化工园区危化品合规审核专家。
+
+【当前问题】{userInput}
+
+请严格按以下模板输出（每项一行，不要多余内容）：
+【合规判断】是/否
+【法规依据】引用具体标准编号+条款
+【违规点】若无违规写「无」
+【整改建议】若无违规则写「无需整改」";
+
+            Console.Write("   [非流式] 调用中... ");
+            var llmService = _llmService as LlmService;
+            string answer;
+
+            if (llmService != null)
+            {
+                answer = await llmService.InvokeNonStreamingWithRetryAsync(prompt, "评测");
+
+                // 同步工具调用记录供评测器检查
+                if (llmService.LastFunctionCalls.Count > 0)
+                {
+                    LastToolResults = new Dictionary<string, string>();
+                    foreach (var fc in llmService.LastFunctionCalls)
+                    {
+                        LastToolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
+                    }
+                    LastToolPlan = new ToolPlan
+                    {
+                        NeedsTools = true,
+                        ToolNames = llmService.LastFunctionCalls.Select(fc => fc.FunctionName).ToList()
+                    };
+                }
+                else
+                {
+                    LastToolResults = new Dictionary<string, string>();
+                    LastToolPlan = new ToolPlan { NeedsTools = false };
+                }
+            }
+            else
+            {
+                // 降级到流式
+                answer = await _llmService.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Blue, "化工合规");
+            }
+
+            Console.WriteLine("完成");
             return answer;
         }
 

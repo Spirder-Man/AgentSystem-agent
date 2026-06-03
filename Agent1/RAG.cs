@@ -162,7 +162,7 @@ namespace Agent1
                 //将模型的思考结果中的工具调用指令解析出来，将工具调用指令中的工具名称提取出来，形成一个字符串数组
                 foreach (string toolName in toolsToCall)
                 {
-                    string result = CallTool(_complianceTools, toolName, userInput); // P1: 传入用户输入作为工具参数
+                    string result = await CallTool(_complianceTools, toolName, userInput); // P1: 传入用户输入作为工具参数
                     toolResults.Add(toolName, result);
                     Console.WriteLine($"✓ {toolName} → {result}");
                 }
@@ -461,14 +461,14 @@ namespace Agent1
         /// <param name="toolName">工具名称</param>
         /// <param name="userInput">用户原始输入（用于智能参数提取）</param>
         /// <returns>工具调用结果</returns>
-        private string CallTool(ChemicalComplianceTools tools, string toolName, string userInput)
+        private async Task<string> CallTool(ChemicalComplianceTools tools, string toolName, string userInput)
         {
             // 修复2: 不再直接传 userInput，而是通过 Extract* 方法提取具体实体名
             return toolName switch
             {
-                "CheckHazardCategory" => tools.CheckHazardCategory(ExtractSubstance(userInput)),
-                "CheckStorageCompatibility" => CallStorageCheck(tools, userInput),
-                "GetSafetyDistance" => tools.GetSafetyDistance(ExtractFacilityType(userInput)),
+                "CheckHazardCategory" => await tools.CheckHazardCategory(ExtractSubstance(userInput)),
+                "CheckStorageCompatibility" => await CallStorageCheck(tools, userInput),
+                "GetSafetyDistance" => await tools.GetSafetyDistance(ExtractFacilityType(userInput)),
                 "GetCurrentTime" => tools.GetCurrentTime(),
                 "Calculate" => tools.Calculate(userInput),  // Calculate 直接处理表达式
                 _ => $"未知工具: {toolName}"
@@ -476,10 +476,10 @@ namespace Agent1
         }
 
         /// <summary>CheckStorageCompatibility 的参数提取 + 调用包装（switch表达式不支持内联变量声明）</summary>
-        private string CallStorageCheck(ChemicalComplianceTools tools, string userInput)
+        private async Task<string> CallStorageCheck(ChemicalComplianceTools tools, string userInput)
         {
             var (a, b) = ExtractTwoSubstances(userInput);
-            return tools.CheckStorageCompatibility(a, b);
+            return await tools.CheckStorageCompatibility(a, b);
         }
 
     }

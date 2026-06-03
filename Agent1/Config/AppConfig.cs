@@ -22,6 +22,9 @@ namespace Agent1.Config
 
         // 等保三级审计配置
         public AuditConfig Audit { get; set; } = new();
+
+        // 业务评测配置
+        public EvaluationConfig Evaluation { get; set; } = new();
     }
 
     // 化工场景专用LLM配置
@@ -30,6 +33,11 @@ namespace Agent1.Config
         public string ModelId { get; set; } = "deepseek-r1:local7b";
         public string Endpoint { get; set; } = "http://localhost:11434";
         public string MultimodalModelId { get; set; } = "qwen-vl:latest";
+
+        // Phase 2a 预留: 工具调用规划专用模型（可与 ModelId 相同）
+        // 未来可分离为小模型做工具规划 + 大模型做合规结论生成
+        public string FunctionCallingModelId { get; set; } = "";  // 空字符串表示使用 ModelId
+
         public int MaxRetries { get; set; } = 3;
         public int RetryDelayMs { get; set; } = 1000;
         public int BufferFlushThreshold { get; set; } = 50;
@@ -139,5 +147,13 @@ namespace Agent1.Config
         public int HnswM { get; set; } = 16;  // 每层最大连接数
         public int HnswEfConstruction { get; set; } = 200;  // 构建时考察邻居数
         public int HnswEfSearch { get; set; } = 64;  // 查询时考察邻居数
+    }
+
+    // 业务评测配置
+    public class EvaluationConfig
+    {
+        public string EvalSetPath { get; set; } = "Data/ComplianceEvalSet.json";
+        public int CaseIntervalMs { get; set; } = 2000;
+        public string OutputReportPath { get; set; } = "Data/eval_report.json";
     }
 }

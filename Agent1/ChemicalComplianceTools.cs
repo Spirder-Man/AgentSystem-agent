@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using Agent1.Services;
 
@@ -10,29 +11,27 @@ namespace Agent1
 {
     /// <summary>
     /// 化工园区危化品合规审核专用工具集
-    /// Phase 2a: 双模工具 —— 有 IKnowledgeBaseService 走 RAG 检索，无则降级到硬编码字典（方案 A 兜底）
+    /// Phase 2a 重构: [KernelFunction] 绑定到 RAG 检索方法，工具返回知识库原文而非 LLM 生成
+    /// 降级策略: RAG 检索 → 硬编码字典 → 诚实声明
     /// </summary>
     public class ChemicalComplianceTools
     {
-        private readonly IKnowledgeBaseService? _kbService;
-        private readonly ILlmService? _llmService;
+        private IKnowledgeBaseService? _kbService;
 
-        /// <summary>完整构造：启用 RAG 检索模式（方案 B 入口）</summary>
-        public ChemicalComplianceTools(IKnowledgeBaseService kbService, ILlmService llmService)
+        /// <summary>完整构造：启用 RAG 检索模式。kbService 为 null 时降级到硬编码字典</summary>
+        public ChemicalComplianceTools(IKnowledgeBaseService? kbService = null)
         {
             _kbService = kbService;
-            _llmService = llmService;
         }
 
-        /// <summary>无参构造：降级到硬编码字典模式（方案 A 兜底 / RAG.cs 旧流程兼容）</summary>
-        public ChemicalComplianceTools()
+        /// <summary>Phase 2a 修复: DI 循环依赖解决方案 — 延迟注入 kbService</summary>
+        public void SetKnowledgeBaseService(IKnowledgeBaseService kbService)
         {
-            _kbService = null;
-            _llmService = null;
+            _kbService = kbService;
         }
 
         /// <summary>是否启用了 RAG 检索</summary>
-        private bool UseRag => _kbService != null && _llmService != null;
+        private bool UseRag => _kbService != null;
 
         // ════════════════════════════════════════
         // 硬编码字典（方案 A 降级兜底 + 旧代码兼容）
@@ -82,11 +81,93 @@ namespace Agent1
         };
 
         // ════════════════════════════════════════
-        // 同步方法：硬编码字典（旧代码兼容 / 方案 A 降级）
+        // 主力：[KernelFunction] RAG 检索版（SK Auto Function Calling 入口）
+        // 工具返回知识库原文，不依赖 LLM 流式生成
         // ════════════════════════════════════════
 
-        [KernelFunction, Description("查询指定危化品属于哪个危险类别，返回对应的国标编号（GB 30000 系列）")]
-        public string CheckHazardCategory(string substanceName)
+        [KernelFunction, Description("查询指定危化品的危险类别及适用国标（GB 30000 系列）。输入参数 substanceName: 危化品名称，如\"苯\"、\"硫酸\"。")]
+        public async Task<string> CheckHazardCategory(string substanceName)
+        {
+            Console.WriteLine($"   [工具诊断] CheckHazardCategory 被调用, substanceName=\"{substanceName}\"");
+
+            if (!UseRag)
+            {
+                Console.WriteLine("   [工具诊断] RAG 不可用，降级到硬编码字典");
+                return CheckHazardCategoryFallback(substanceName);
+            }
+
+            var chunks = await _kbService!.RetrieveChemicalRegulationAsync(
+                $"{substanceName} 危险类别 分类 规范",
+                regulationType: "国标", topK: 3);
+
+            Console.WriteLine($"   [工具诊断] RAG 检索完成, 命中 {chunks.Count} 条结果");
+
+            if (chunks.Count == 0)
+            {
+                Console.WriteLine("   [工具诊断] 检索为0条，降级到硬编码字典");
+                return CheckHazardCategoryFallback(substanceName);
+            }
+
+            return FormatRagResult($"危化品「{substanceName}」危险类别检索结果", chunks);
+        }
+
+        [KernelFunction, Description("查询两种危化品是否可以同库储存（依据 GB15603）。参数 substanceA: 第一种危化品名称, substanceB: 第二种危化品名称。")]
+        public async Task<string> CheckStorageCompatibility(string substanceA, string substanceB)
+        {
+            Console.WriteLine($"   [工具诊断] CheckStorageCompatibility 被调用, A=\"{substanceA}\", B=\"{substanceB}\"");
+
+            if (!UseRag)
+            {
+                Console.WriteLine("   [工具诊断] RAG 不可用，降级到硬编码字典");
+                return CheckStorageCompatibilityFallback(substanceA, substanceB);
+            }
+
+            var chunks = await _kbService!.RetrieveChemicalRegulationAsync(
+                $"{substanceA} {substanceB} 同库储存 配伍禁忌",
+                regulationType: "国标", topK: 3);
+
+            Console.WriteLine($"   [工具诊断] RAG 检索完成, 命中 {chunks.Count} 条结果");
+
+            if (chunks.Count == 0)
+            {
+                Console.WriteLine("   [工具诊断] 检索为0条，降级到硬编码字典");
+                return CheckStorageCompatibilityFallback(substanceA, substanceB);
+            }
+
+            return FormatRagResult($"「{substanceA}」与「{substanceB}」储存兼容性检索结果", chunks);
+        }
+
+        [KernelFunction, Description("查询指定设施类型的安全距离要求（依据 GB50160/GB50016）。参数 facilityType: 设施类型，如\"储罐-建筑\"、\"甲类仓库-明火点\"。")]
+        public async Task<string> GetSafetyDistance(string facilityType)
+        {
+            Console.WriteLine($"   [工具诊断] GetSafetyDistance 被调用, facilityType=\"{facilityType}\"");
+
+            if (!UseRag)
+            {
+                Console.WriteLine("   [工具诊断] RAG 不可用，降级到硬编码字典");
+                return GetSafetyDistanceFallback(facilityType);
+            }
+
+            var chunks = await _kbService!.RetrieveChemicalRegulationAsync(
+                $"{facilityType} 安全间距 距离 米",
+                regulationType: "国标", topK: 3);
+
+            Console.WriteLine($"   [工具诊断] RAG 检索完成, 命中 {chunks.Count} 条结果");
+
+            if (chunks.Count == 0)
+            {
+                Console.WriteLine("   [工具诊断] 检索为0条，降级到硬编码字典");
+                return GetSafetyDistanceFallback(facilityType);
+            }
+
+            return FormatRagResult($"「{facilityType}」安全间距检索结果", chunks);
+        }
+
+        // ════════════════════════════════════════
+        // 降级方法：硬编码字典（RAG 检索失败 / 无 kbService 时兜底）
+        // ════════════════════════════════════════
+
+        private string CheckHazardCategoryFallback(string substanceName)
         {
             foreach (var kvp in HazardCategories)
             {
@@ -96,8 +177,7 @@ namespace Agent1
             return $"「{substanceName}」未在常见危化品类别中直接匹配，建议查阅 GB 30000 系列标准全文（knowledgebase/国标/ 目录下已收录完整标准文件）";
         }
 
-        [KernelFunction, Description("查询两种危化品是否可以同库储存，返回禁忌信息（依据 GB15603-1995 4.2.2）")]
-        public string CheckStorageCompatibility(string substanceA, string substanceB)
+        private string CheckStorageCompatibilityFallback(string substanceA, string substanceB)
         {
             foreach (var kvp in StorageIncompatibilities)
             {
@@ -109,8 +189,7 @@ namespace Agent1
             return $"✅ 「{substanceA}」与「{substanceB}」在常见禁忌表中未发现直接冲突，但仍建议按照 GB15603 分类贮存原则进行核实（knowledgebase/国标/GB15603 已收录全文）";
         }
 
-        [KernelFunction, Description("查询指定设施类型的安全距离要求（储罐间距、消防通道间距等），返回最小安全距离（米）")]
-        public string GetSafetyDistance(string facilityType)
+        private string GetSafetyDistanceFallback(string facilityType)
         {
             var key = facilityType.Trim();
             if (SafetyDistances.TryGetValue(key, out int distance))
@@ -122,55 +201,25 @@ namespace Agent1
         }
 
         // ════════════════════════════════════════
-        // 异步方法：RAG 检索 + LLM 生成（方案 B 主力）
+        // 辅助：格式化 RAG 检索结果为 Markdown 原文
         // ════════════════════════════════════════
 
-        public async Task<string> CheckHazardCategoryAsync(string substanceName)
+        private static string FormatRagResult(string title, List<RetrievedChunk> chunks)
         {
-            if (!UseRag) return CheckHazardCategory(substanceName);
-
-            var chunks = await _kbService!.RetrieveChemicalRegulationAsync(
-                $"{substanceName} 危险类别 分类 规范",
-                regulationType: "国标", topK: 3);
-
-            if (chunks.Count == 0)
-                return $"未在知识库中找到「{substanceName}」的危险类别信息，建议查阅 GB 30000 系列标准全文";
-
-            var context = string.Join("\n---\n", chunks.Select(c => c.Content));
-            var prompt = $"根据以下知识库内容判断「{substanceName}」属于哪个危险类别及对应国标。直接给出结果，格式：「XX」属于「XX类别」，适用标准：GB XXXXX-XXXX\n\n{context}";
-            return await _llmService!.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Gray, "RAG-CheckHazard");
-        }
-
-        public async Task<string> CheckStorageCompatibilityAsync(string substanceA, string substanceB)
-        {
-            if (!UseRag) return CheckStorageCompatibility(substanceA, substanceB);
-
-            var chunks = await _kbService!.RetrieveChemicalRegulationAsync(
-                $"{substanceA} {substanceB} 同库储存 配伍禁忌",
-                regulationType: "国标", topK: 3);
-
-            if (chunks.Count == 0)
-                return $"未在知识库中找到「{substanceA}」与「{substanceB}」的储存兼容性信息，建议查阅 GB15603 全文";
-
-            var context = string.Join("\n---\n", chunks.Select(c => c.Content));
-            var prompt = $"根据以下知识库内容判断「{substanceA}」与「{substanceB}」是否可以同库储存。直接给出结果，包含禁止/允许结论及依据标准。\n\n{context}";
-            return await _llmService!.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Gray, "RAG-CheckStorage");
-        }
-
-        public async Task<string> GetSafetyDistanceAsync(string facilityType)
-        {
-            if (!UseRag) return GetSafetyDistance(facilityType);
-
-            var chunks = await _kbService!.RetrieveChemicalRegulationAsync(
-                $"{facilityType} 安全间距 距离 要求",
-                regulationType: "国标", topK: 3);
-
-            if (chunks.Count == 0)
-                return $"未在知识库中找到「{facilityType}」的安全距离信息，建议查阅 GB50160 和 GB50016 全文";
-
-            var context = string.Join("\n---\n", chunks.Select(c => c.Content));
-            var prompt = $"根据以下知识库内容查询「{facilityType}」的安全间距要求。直接给出结果，必须包含具体数值（米）及依据标准。如果知识库中无明确数值，诚实说明。\n\n{context}";
-            return await _llmService!.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Gray, "RAG-GetDistance");
+            var sb = new StringBuilder();
+            sb.AppendLine($"📋 {title}");
+            sb.AppendLine();
+            for (int i = 0; i < chunks.Count; i++)
+            {
+                var chunk = chunks[i];
+                var source = "未知来源";
+                if (chunk.Metadata != null && chunk.Metadata.TryGetValue("source", out var src))
+                    source = src.ToString() ?? "未知来源";
+                sb.AppendLine($"**【检索结果 {i + 1}】** (来源: {source}, 相关度: {chunk.Score:P0})");
+                sb.AppendLine(chunk.Content);
+                sb.AppendLine();
+            }
+            return sb.ToString().TrimEnd();
         }
 
         [KernelFunction, Description("获取当前时间和日期")]

@@ -7,6 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Agent1
 {
@@ -72,20 +74,18 @@ namespace Agent1
             services.AddSingleton<IDatabaseService, DatabaseService>();
             services.AddSingleton<ISessionService, SessionService>();
             services.AddSingleton<IMemoryService, MemoryService>();
-            services.AddSingleton<ILlmService, LlmService>();
-            // Phase 2a: ChemicalComplianceTools 双模注册（RAG 构造优先，KnowledgeBaseService 稍后注册但 DI 延迟解析）
-            services.AddSingleton<ChemicalComplianceTools>(sp =>
-            {
-                var kb = sp.GetRequiredService<IKnowledgeBaseService>();
-                var llm = sp.GetRequiredService<ILlmService>();
-                return new ChemicalComplianceTools(kb, llm);
-            });
+
+            // Phase 2a 修复: 打破循环依赖
+            // ILlmService ← IKnowledgeBaseService ← ILlmService 形成死锁
+            // 解决方案: ILlmService 先以无 kbService 方式注册, DI 完成后再调用 InitializeTools 注入
+            services.AddSingleton<LlmService>(sp => new LlmService(null!));
+            services.AddSingleton<ILlmService>(sp => sp.GetRequiredService<LlmService>());
+
             services.AddSingleton<IToolService>(sp =>
             {
                 var llm = sp.GetRequiredService<ILlmService>();
                 var kb = sp.GetRequiredService<IKnowledgeBaseService>();
-                var tools = AppConfig.Instance.ChemicalTool?.Tools;
-                return new ToolService(llm, kb, tools);
+                return new ToolService(llm, kb, AppConfig.Instance.ChemicalTool?.Tools);
             });
             services.AddSingleton<AgentDialog>();
             services.AddSingleton<IKnowledgeBaseService>(sp =>
@@ -109,6 +109,13 @@ namespace Agent1
             var toolService = serviceProvider.GetRequiredService<IToolService>();
             var agentDialog = serviceProvider.GetRequiredService<AgentDialog>();
             var knowledgeBaseService = serviceProvider.GetRequiredService<IKnowledgeBaseService>();
+
+            // Phase 2a DI 循环修复: 延迟注入 RAG 服务到 ChemicalComplianceTools
+            // LlmService 构造函数传了 null, 现在用真实 kbService 替换
+            var llmSvc = serviceProvider.GetRequiredService<LlmService>();
+            llmSvc.SetKnowledgeBaseService(knowledgeBaseService);
+            Console.WriteLine("🔗 RAG 知识库已注入 ChemicalComplianceTools (延迟绑定)");
+
             var integrationService = serviceProvider.GetRequiredService<IIntegrationService>();
             var auditService = serviceProvider.GetRequiredService<IAuditService>();
             var moduleFactory = serviceProvider.GetRequiredService<IModuleFactory>();
@@ -197,6 +204,8 @@ namespace Agent1
                 Console.WriteLine("  9. 化工合规RAG测试");
                 Console.WriteLine("  10. 数据库连接验证");
                 Console.WriteLine("  11. 切换检索模式 (当前: " + (AppConfig.Instance.KnowledgeBase.SearchMode ?? "hybrid") + ")");
+                Console.WriteLine("  12. 工具调用诊断验证 [Phase 2a]");
+                Console.WriteLine("  13. 合规评测集 [50条业务指标]");
                 Console.WriteLine("  0. 退出\n");
 
                 Console.Write("请输入选项: ");
@@ -226,6 +235,14 @@ namespace Agent1
                 else if (input == "11")
                 {
                     await SwitchSearchMode();
+                }
+                else if (input == "12")
+                {
+                    await RunFunctionCallingDiagnostics(agentDialog, llmService);
+                }
+                else if (input == "13")
+                {
+                    await RunComplianceEval(agentDialog, llmService);
                 }
                 else
                 {
@@ -381,6 +398,371 @@ namespace Agent1
             }
 
             Console.WriteLine("\n💡 提示: 此更改仅在当前会话有效");
+        }
+
+        /// <summary>
+        /// Phase 2a 验证: 工具调用诊断 — 运行预设测试用例，验证 SK Auto Function Calling 是否生效
+        /// </summary>
+        static async Task RunFunctionCallingDiagnostics(AgentDialog agentDialog, ILlmService llmService)
+        {
+            Console.WriteLine("\n========================================");
+            Console.WriteLine("    Phase 2a 工具调用诊断验证");
+            Console.WriteLine("========================================");
+            Console.WriteLine($"   当前模型: {ModelConfig.ModelId}");
+            Console.WriteLine("   预期: SK Auto Function Calling 应自动触发对应工具");
+            Console.WriteLine("========================================\n");
+
+            var testCases = new (string query, string expectedTools, string description)[]
+            {
+                ("苯属于什么危险类别", "CheckHazardCategory", "单一工具: 危化品类别查询"),
+                ("苯和丙酮能同库储存吗", "CheckStorageCompatibility", "单一工具: 储存兼容性检查"),
+                ("甲类仓库与明火点的安全距离是多少", "GetSafetyDistance", "单一工具: 安全距离查询"),
+                ("现在几点", "GetCurrentTime", "通用工具: 时间查询"),
+                ("甲醇和硝酸存放在同一个仓库是否合规", "CheckHazardCategory,CheckStorageCompatibility", "多工具: 类别+兼容性"),
+            };
+
+            var session = agentDialog.CreateSession(SessionType.ChemicalCompliance);
+            int passCount = 0;
+
+            for (int i = 0; i < testCases.Length; i++)
+            {
+                var tc = testCases[i];
+                Console.WriteLine($"\n━━━ 测试 {i + 1}/{testCases.Length}: {tc.description} ━━━");
+                Console.WriteLine($"   查询: \"{tc.query}\"");
+                Console.WriteLine($"   预期工具: {tc.expectedTools}");
+
+                try
+                {
+                    var result = await agentDialog.ExecuteAsync(tc.query, session);
+
+                    // 读取诊断结果
+                    var llmSvc = llmService as LlmService;
+                    if (llmSvc != null && llmSvc.LastFunctionCalls.Count > 0)
+                    {
+                        var actualTools = string.Join(", ", llmSvc.LastFunctionCalls.Select(fc => fc.FunctionName));
+                        Console.WriteLine($"   ✅ 实际调用: {actualTools}");
+                        foreach (var fc in llmSvc.LastFunctionCalls)
+                        {
+                            Console.WriteLine($"      📋 {fc.FunctionName}({fc.Arguments}) → {(fc.Success ? "成功" : "失败")}");
+                            var resultPreview = (fc.Result ?? "").Length > 100
+                                ? (fc.Result ?? "").Substring(0, 100) + "..."
+                                : fc.Result;
+                            Console.WriteLine($"         结果: {resultPreview}");
+                        }
+                        passCount++;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"   ❌ 未触发任何工具调用! 预期: {tc.expectedTools}");
+                        Console.WriteLine("      → LLM 可能绕过了 Function Calling，直接凭记忆回答");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"   ❌ 测试异常: {ex.Message}");
+                }
+
+                await Task.Delay(1000); // 间隔1秒避免 Ollama 过载
+            }
+
+            Console.WriteLine($"\n========================================");
+            Console.WriteLine($"   诊断完成: {passCount}/{testCases.Length} 用例触发了工具调用");
+            Console.WriteLine($"   ⚠️ 关键发现: DeepSeek-R1:7b 在 Ollama 上不支持 Function Calling");
+            Console.WriteLine($"      → 错误信息: 'does not support tools'");
+            Console.WriteLine($"      → SK Auto Function Calling 无法与此模型配合使用");
+            Console.WriteLine($"      → 5 个'工具调用'实际是 SK 内部函数，非 ChemicalComplianceTools");
+            Console.WriteLine($"   ");
+            Console.WriteLine($"   建议: 切换到支持 Function Calling 的模型 (如 Qwen3-8B)");
+            Console.WriteLine($"   操作步骤:");
+            Console.WriteLine($"     1. ollama pull qwen3:8b");
+            Console.WriteLine($"     2. 修改 appsettings.json: \"ModelId\": \"qwen3:8b\"");
+            Console.WriteLine($"     3. 重新运行 dotnet run 并选 12 验证");
+            Console.WriteLine($"   详见: docs/architecture/ModelScope模型选型决策框架.md");
+            Console.WriteLine("========================================\n");
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // 业务评测引擎 — 50条合规评测集全量跑测
+        // ═══════════════════════════════════════════════════════
+        static async Task RunComplianceEval(AgentDialog agentDialog, ILlmService llmService)
+        {
+            var evalConfig = AppConfig.Instance.Evaluation;
+            var jsonPath = Path.Combine(AppContext.BaseDirectory, evalConfig.EvalSetPath);
+
+            Console.WriteLine("\n══════════════════════════════════════════════");
+            Console.WriteLine("   化工合规AI Agent — 50条业务评测");
+            Console.WriteLine("══════════════════════════════════════════════");
+            Console.WriteLine($"   模型: {ModelConfig.ModelId}");
+            Console.WriteLine($"   评测集: {jsonPath}");
+            Console.WriteLine("   评估维度: 工具触发 + 参数提取 + 合规结论");
+            Console.WriteLine("══════════════════════════════════════════════\n");
+
+            if (!File.Exists(jsonPath))
+            {
+                Console.WriteLine($"❌ 评测集文件不存在: {jsonPath}");
+                return;
+            }
+
+            var json = await File.ReadAllTextAsync(jsonPath);
+            EvalSet evalSet;
+            try
+            {
+                evalSet = JsonSerializer.Deserialize<EvalSet>(json) ?? new EvalSet();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ 评测集 JSON 解析失败: {ex.Message}");
+                return;
+            }
+
+            var cases = evalSet.test_cases ?? new List<EvalCase>();
+            Console.WriteLine($"📋 加载评测集: {evalSet.name} (v{evalSet.version})");
+            Console.WriteLine($"   共 {cases.Count} 条用例\n");
+
+            var results = new List<EvalResult>();
+            var categoryStats = new Dictionary<string, (int total, int toolOk, int paramOk, int conclusionOk)>();
+
+            for (int i = 0; i < cases.Count; i++)
+            {
+                var tc = cases[i];
+                Console.WriteLine($"━━━ [{tc.id}] {tc.category} ({i + 1}/{cases.Count}) ━━━");
+                Console.WriteLine($"   查询: \"{tc.query}\"");
+                Console.WriteLine($"   预期工具: {tc.expected_tool}");
+
+                var result = new EvalResult
+                {
+                    id = tc.id,
+                    category = tc.category,
+                    query = tc.query,
+                    expected_tool = tc.expected_tool
+                };
+
+                // 初始化分类统计
+                if (!categoryStats.ContainsKey(tc.category))
+                    categoryStats[tc.category] = (0, 0, 0, 0);
+                var cat = categoryStats[tc.category];
+                categoryStats[tc.category] = (cat.total + 1, cat.toolOk, cat.paramOk, cat.conclusionOk);
+
+                try
+                {
+                    var response = await agentDialog.ExecuteEvalFastAsync(tc.query);
+                    result.actual_response = response ?? "";
+
+                    // 1) 工具触发检查
+                    var llmSvc = llmService as LlmService;
+                    if (llmSvc != null && llmSvc.LastFunctionCalls.Count > 0)
+                    {
+                        var calledTools = llmSvc.LastFunctionCalls.Select(fc => fc.FunctionName).ToList();
+                        result.actual_tools = string.Join(",", calledTools);
+
+                        if (calledTools.Contains(tc.expected_tool, StringComparer.OrdinalIgnoreCase))
+                        {
+                            result.tool_match = true;
+                            Console.WriteLine($"   ✅ 工具触发: {result.actual_tools}");
+
+                            // 2) 参数检查
+                            var matchedCall = llmSvc.LastFunctionCalls
+                                .FirstOrDefault(fc => fc.FunctionName.Equals(tc.expected_tool, StringComparison.OrdinalIgnoreCase));
+                            if (matchedCall != null && tc.expected_params != null)
+                            {
+                                result.actual_params = matchedCall.Arguments ?? "";
+                                result.param_match = CheckParams(matchedCall.Arguments, tc.expected_params);
+                                Console.WriteLine($"      {(result.param_match ? "✅" : "⚠️")} 参数: {result.actual_params}");
+                            }
+
+                            // 3) 结论检查
+                            if (tc.expected_conclusion != null)
+                            {
+                                result.conclusion_match = CheckConclusion(response, tc.expected_conclusion);
+                                Console.WriteLine($"      {(result.conclusion_match ? "✅" : "⚠️")} 结论: is_compliant={tc.expected_conclusion.is_compliant}");
+                            }
+                        }
+                        else
+                        {
+                            result.tool_match = false;
+                            Console.WriteLine($"   ❌ 工具错误: 预期 {tc.expected_tool}, 实际 {result.actual_tools}");
+                        }
+                    }
+                    else
+                    {
+                        result.tool_match = false;
+                        result.actual_tools = "(无工具调用)";
+                        Console.WriteLine($"   ❌ 未触发任何工具");
+                    }
+
+                    // 更新分类统计
+                    var cat2 = categoryStats[tc.category];
+                    categoryStats[tc.category] = (
+                        cat2.total,
+                        cat2.toolOk + (result.tool_match ? 1 : 0),
+                        cat2.paramOk + (result.param_match ? 1 : 0),
+                        cat2.conclusionOk + (result.conclusion_match ? 1 : 0)
+                    );
+                }
+                catch (Exception ex)
+                {
+                    result.error = ex.Message;
+                    Console.WriteLine($"   ❌ 异常: {ex.Message}");
+                }
+
+                results.Add(result);
+                await Task.Delay(evalConfig.CaseIntervalMs);
+            }
+
+            // ═══ 输出评测报告 ═══
+            var total = results.Count;
+            var toolOk = results.Count(r => r.tool_match);
+            var paramOk = results.Count(r => r.param_match);
+            var conclusionOk = results.Count(r => r.conclusion_match);
+            var errors = results.Count(r => !string.IsNullOrEmpty(r.error));
+
+            Console.WriteLine("\n╔════════════════════════════════════════╗");
+            Console.WriteLine("║         业 务 评 测 报 告              ║");
+            Console.WriteLine("╠════════════════════════════════════════╣");
+            Console.WriteLine($"║  总用例数:     {total,3}                        ║");
+            Console.WriteLine($"║  成功执行:     {total - errors,3}                        ║");
+            Console.WriteLine($"║  异常:         {errors,3}                        ║");
+            Console.WriteLine("╠════════════════════════════════════════╣");
+            Console.WriteLine("║  核心业务指标:                         ║");
+            Console.WriteLine($"║  工具触发率:   {toolOk,3}/{total} = {toolOk * 100.0 / Math.Max(total, 1):F1}%               ║");
+            Console.WriteLine($"║  参数准确率:   {paramOk,3}/{total} = {paramOk * 100.0 / Math.Max(total, 1):F1}%               ║");
+            Console.WriteLine($"║  结论准确率:   {conclusionOk,3}/{total} = {conclusionOk * 100.0 / Math.Max(total, 1):F1}%               ║");
+            Console.WriteLine("╠════════════════════════════════════════╣");
+            Console.WriteLine("║  分类细项:                             ║");
+
+            foreach (var kvp in categoryStats)
+            {
+                var catName = kvp.Key;
+                var (catTotal, catTool, catParam, catConcl) = kvp.Value;
+                Console.WriteLine($"║  {catName}:");
+                Console.WriteLine($"║    工具: {catTool}/{catTotal}  参数: {catParam}/{catTotal}  结论: {catConcl}/{catTotal}");
+            }
+            Console.WriteLine("╚════════════════════════════════════════╝\n");
+
+            // 写入报告文件
+            var report = new EvalReport
+            {
+                model = ModelConfig.ModelId,
+                timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                total = total,
+                tool_call_rate = toolOk * 100.0 / Math.Max(total, 1),
+                parameter_accuracy = paramOk * 100.0 / Math.Max(total, 1),
+                conclusion_accuracy = conclusionOk * 100.0 / Math.Max(total, 1),
+                category_breakdown = categoryStats.ToDictionary(
+                    kvp => kvp.Key,
+                    kvp => new CategoryMetric
+                    {
+                        total = kvp.Value.total,
+                        tool_ok = kvp.Value.toolOk,
+                        param_ok = kvp.Value.paramOk,
+                        conclusion_ok = kvp.Value.conclusionOk
+                    }
+                ),
+                cases = results
+            };
+
+            var reportPath = Path.Combine(AppContext.BaseDirectory, evalConfig.OutputReportPath);
+            var reportDir = Path.GetDirectoryName(reportPath);
+            if (!string.IsNullOrEmpty(reportDir) && !Directory.Exists(reportDir))
+                Directory.CreateDirectory(reportDir);
+            var reportJson = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(reportPath, reportJson);
+            Console.WriteLine($"📄 详细报告已保存: {reportPath}");
+
+            // 模型评级
+            var avgScore = (toolOk * 100.0 / Math.Max(total, 1)
+                          + paramOk * 100.0 / Math.Max(total, 1)
+                          + conclusionOk * 100.0 / Math.Max(total, 1)) / 3.0;
+            Console.Write("\n📊 综合评级: ");
+            if (avgScore >= 85) Console.WriteLine("★★★ 优秀 — 可投入生产使用");
+            else if (avgScore >= 70) Console.WriteLine("★★☆ 良好 — 建议针对性优化后上线");
+            else if (avgScore >= 55) Console.WriteLine("★☆☆ 可用 — 需进一步 Prompt/模型调优");
+            else Console.WriteLine("☆☆☆ 不合格 — 建议更换模型或架构方案");
+            Console.WriteLine($"   (工具触发率 × 参数准确率 × 结论准确率 综合: {avgScore:F1}%)\n");
+        }
+
+        /// <summary>宽松检查工具参数是否匹配预期</summary>
+        static bool CheckParams(string? actualArgs, Dictionary<string, string>? expected)
+        {
+            if (string.IsNullOrEmpty(actualArgs) || expected == null || expected.Count == 0)
+                return false;
+            var argsLower = actualArgs.ToLowerInvariant();
+            foreach (var kvp in expected)
+                if (argsLower.Contains(kvp.Value.ToLowerInvariant()))
+                    return true;
+            return false;
+        }
+
+        /// <summary>检查响应中的合规结论是否匹配预期</summary>
+        static bool CheckConclusion(string? response, EvalConclusion? expected)
+        {
+            if (string.IsNullOrEmpty(response) || expected == null)
+                return false;
+            var respLower = response.ToLowerInvariant();
+            if (expected.is_compliant)
+                return respLower.Contains("合规") || respLower.Contains("允许") || respLower.Contains("可以");
+            else
+                return respLower.Contains("不合规") || respLower.Contains("不允许") || respLower.Contains("禁止") || respLower.Contains("严禁");
+        }
+
+        // ═══════ 评测数据模型 ═══════
+        class EvalSet
+        {
+            public string name { get; set; } = "";
+            public string version { get; set; } = "";
+            public string created { get; set; } = "";
+            public List<EvalCase> test_cases { get; set; } = new();
+        }
+
+        class EvalCase
+        {
+            public string id { get; set; } = "";
+            public string category { get; set; } = "";
+            public string query { get; set; } = "";
+            public string expected_tool { get; set; } = "";
+            public Dictionary<string, string>? expected_params { get; set; }
+            public EvalConclusion? expected_conclusion { get; set; }
+        }
+
+        class EvalConclusion
+        {
+            public bool is_compliant { get; set; }
+            public string regulation { get; set; } = "";
+        }
+
+        class EvalResult
+        {
+            public string id { get; set; } = "";
+            public string category { get; set; } = "";
+            public string query { get; set; } = "";
+            public string expected_tool { get; set; } = "";
+            public string? actual_tools { get; set; }
+            public string? actual_params { get; set; }
+            public string? actual_response { get; set; }
+            public bool tool_match { get; set; }
+            public bool param_match { get; set; }
+            public bool conclusion_match { get; set; }
+            public string? error { get; set; }
+        }
+
+        class EvalReport
+        {
+            public string model { get; set; } = "";
+            public string timestamp { get; set; } = "";
+            public int total { get; set; }
+            public double tool_call_rate { get; set; }
+            public double parameter_accuracy { get; set; }
+            public double conclusion_accuracy { get; set; }
+            public Dictionary<string, CategoryMetric> category_breakdown { get; set; } = new();
+            public List<EvalResult> cases { get; set; } = new();
+        }
+
+        class CategoryMetric
+        {
+            public int total { get; set; }
+            public int tool_ok { get; set; }
+            public int param_ok { get; set; }
+            public int conclusion_ok { get; set; }
         }
     }
 

@@ -332,19 +332,19 @@ namespace Agent1
 
             return cleaned switch
             {
-                "CheckHazardCategory" => _complianceTools.CheckHazardCategory(RAG.ExtractSubstanceStatic(userInput)),
-                "CheckStorageCompatibility" => CallStorageCheck(userInput),
-                "GetSafetyDistance" => _complianceTools.GetSafetyDistance(RAG.ExtractFacilityTypeStatic(userInput)),
+                "CheckHazardCategory" => await _complianceTools.CheckHazardCategory(RAG.ExtractSubstanceStatic(userInput)),
+                "CheckStorageCompatibility" => await CallStorageCheck(userInput),
+                "GetSafetyDistance" => await _complianceTools.GetSafetyDistance(RAG.ExtractFacilityTypeStatic(userInput)),
                 "GetCurrentTime" => _complianceTools.GetCurrentTime(),
                 "Calculate" => await HandleCalculateCall(toolName, userInput),
                 _ => await HandleDynamicToolCall(toolName)
             };
         }
 
-        private string CallStorageCheck(string userInput)
+        private async Task<string> CallStorageCheck(string userInput)
         {
             var (a, b) = RAG.ExtractTwoSubstancesStatic(userInput);
-            return _complianceTools.CheckStorageCompatibility(a, b);
+            return await _complianceTools.CheckStorageCompatibility(a, b);
         }
 
         private Task<string> HandleCalculateCall(string toolCall, string userInput) // P2: Calculate包装，保持原有动态解析能力

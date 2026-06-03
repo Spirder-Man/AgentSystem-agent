@@ -7,8 +7,11 @@ using Agent1.Config;
 namespace Agent1.Services
 {
     /// <summary>
-    /// Phase 2a: 统一工具调度中心 —— LLM 语义工具选择 + 异步 RAG 工具执行
-    /// LLM 优先，关键词兜底；异步 RAG 方法优先，同步硬编码兜底
+    /// Phase 2a 降级: 工具调度中心
+    /// 主力路径已迁移至 SK Auto Function Calling (LlmService.InvokeStreamAsync)。
+    /// ToolService 现作为显式降级入口保留:
+    ///   - AnalyzeAndPlanToolsAsync: SK FC 不可用时的手动工具规划降级
+    ///   - ExecuteToolsAsync/CallToolAsync: 手动执行路径 (标记为废弃, 降级兜底)
     /// </summary>
     public class ToolService : IToolService
     {
@@ -22,7 +25,7 @@ namespace Agent1.Services
             _llmService = llmService;
             _kbService = kbService;
             _toolDefinitions = toolDefinitions ?? new List<ToolDefinition>();
-            _tools = new ChemicalComplianceTools(kbService, llmService); // RAG-backed 构造
+            _tools = new ChemicalComplianceTools(kbService); // Phase 2a: RAG-only 构造，不再需要 llmService
         }
 
         public async Task<ToolPlan> AnalyzeAndPlanToolsAsync(string userInput, string history)
@@ -103,6 +106,11 @@ namespace Agent1.Services
             return plan;
         }
 
+        /// <summary>
+        /// [Obsolete] Phase 2a: 主力路径已由 SK Auto Function Calling 接管。
+        /// 仅在 SK FC 完全不可用时作为降级兜底使用。保留以兼容 RunReflectionStreamTools 旧流程。
+        /// </summary>
+        [Obsolete("主力路径已由 SK Auto Function Calling 接管, 此方法仅作降级兜底")]
         public async Task<Dictionary<string, string>> ExecuteToolsAsync(ToolPlan plan, string userInput)
         {
             var results = new Dictionary<string, string>();
@@ -144,12 +152,12 @@ namespace Agent1.Services
                 .Replace("(", "").Replace(")", "")
                 .Replace("：", "").Replace(":", "");
 
-            // 优先调用异步 RAG 版本，GetCurrentTime/Calculate 仍为同步
+            // 优先调用 RAG 版本，GetCurrentTime/Calculate 仍为同步
             return cleaned switch
             {
-                "CheckHazardCategory" => await _tools.CheckHazardCategoryAsync(RAG.ExtractSubstanceStatic(userInput)),
+                "CheckHazardCategory" => await _tools.CheckHazardCategory(RAG.ExtractSubstanceStatic(userInput)),
                 "CheckStorageCompatibility" => await CallStorageCheckAsync(userInput),
-                "GetSafetyDistance" => await _tools.GetSafetyDistanceAsync(RAG.ExtractFacilityTypeStatic(userInput)),
+                "GetSafetyDistance" => await _tools.GetSafetyDistance(RAG.ExtractFacilityTypeStatic(userInput)),
                 "GetCurrentTime" => _tools.GetCurrentTime(),
                 "Calculate" => _tools.Calculate(userInput),
                 _ => $"未知工具: {toolName}"
@@ -159,7 +167,7 @@ namespace Agent1.Services
         private async Task<string> CallStorageCheckAsync(string userInput)
         {
             var (a, b) = RAG.ExtractTwoSubstancesStatic(userInput);
-            return await _tools.CheckStorageCompatibilityAsync(a, b);
+            return await _tools.CheckStorageCompatibility(a, b);
         }
 
         public string GetToolDescriptions()

@@ -100,7 +100,7 @@ namespace Agent1
                 Dictionary<string, string> toolResults = new Dictionary<string, string>();
                 foreach (string toolName in toolsToCall)
                 {
-                    string result = CallTool(complianceTools, toolName, userInput);
+                    string result = await CallTool(complianceTools, toolName, userInput);
                     toolResults.Add(toolName, result);
                     Console.WriteLine($"✓ {toolName} → {result}");
                 }
@@ -328,15 +328,15 @@ namespace Agent1
             return found.ToArray();
         }
 
-        private string CallTool(ChemicalComplianceTools tools, string toolName, string userInput)
+        private async Task<string> CallTool(ChemicalComplianceTools tools, string toolName, string userInput)
         {
             return toolName.Trim()
                 .Replace("(", "").Replace(")", "")
                 .Replace("：", "").Replace(":", "") switch
             {
-                "CheckHazardCategory" => tools.CheckHazardCategory(userInput),
-                "CheckStorageCompatibility" => tools.CheckStorageCompatibility(userInput, userInput),
-                "GetSafetyDistance" => tools.GetSafetyDistance(userInput),
+                "CheckHazardCategory" => await tools.CheckHazardCategory(userInput),
+                "CheckStorageCompatibility" => await tools.CheckStorageCompatibility(userInput, userInput),
+                "GetSafetyDistance" => await tools.GetSafetyDistance(userInput),
                 "GetCurrentTime" => tools.GetCurrentTime(),
                 "Calculate" => tools.Calculate("1+1"),
                 _ => $"未知工具: {toolName}"

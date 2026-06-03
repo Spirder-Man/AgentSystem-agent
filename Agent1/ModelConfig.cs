@@ -38,6 +38,15 @@ namespace Agent1
         public static string MultimodalModelId => Config.Llm.MultimodalModelId;
 
         /// <summary>
+        /// Phase 2a 预留: 工具调用规划专用模型ID。如果配置为空则使用 ModelId（默认行为）。
+        /// 未来可分离为小模型做工具规划 + 大模型做合规结论生成。
+        /// </summary>
+        public static string FunctionCallingModelId =>
+            string.IsNullOrEmpty(Config.Llm.FunctionCallingModelId)
+                ? Config.Llm.ModelId
+                : Config.Llm.FunctionCallingModelId;
+
+        /// <summary>
         /// 化工知识库配置快捷访问
         /// </summary>
         public static string ChemicalKnowledgeBasePath => Config.KnowledgeBase.BasePath;

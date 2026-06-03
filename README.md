@@ -222,9 +222,21 @@ MIT License
 
 **文档版本**：v2.1  
 **最后更新**：2026年6月1日  
-**状态**：Phase 2d Reflection 代码级验证完成 → 下一阶段 Phase 2a 工具层 RAG 化
+**状态**：Phase 2a 模型评测中 → Qwen3:8b 50条业务基准量化 | Phase 2d Reflection 代码级验证已完成
 
 ## 📋 近期更新
+
+### Phase 2a 模型评测：50条业务基准量化（2026-06-03）
+- **模型切换**：`deepseek-r1:local7b`(不支持Function Calling) → `qwen3:8b-eval`(Q4_K_M量化, n_ctx=8192, n_batch=1024)
+- **新增** `Data/ComplianceEvalSet.json` — 50条化工合规评测集（危险类别查询15条 + 储存兼容性20条 + 安全距离8条 + 综合审核7条）
+- **新增** `Modelfile.qwen3-eval` — Ollama CPU推理加速配置（num_thread=12, n_ctx=8192, n_batch=1024）
+- **新增** `Config/AppConfig.EvaluationConfig` — 评测配置（数据集路径、用例间隔、报告输出）
+- **新增** 评测引擎（`Program.cs.RunComplianceEval`）— 工具触发率 + 参数准确率 + 结论准确率 三维度量化
+- **新增** `LlmService.InvokeNonStreamingWithRetryAsync` — 非流式调用，评测场景节省约40%时间
+- **新增** `AgentDialog.ExecuteEvalFastAsync` — 评测快速通道，跳过流水线/会话/记忆
+- **修复** `IntentRouter` — 扩充合规关键词(危险/特性/GHS/分类)，剔除SimpleChat通用词(什么/为什么/怎么)
+- **修复** RAG知识库延迟注入 — `LlmService.SetKnowledgeBaseService` 在DI解析后连接知识库
+- **待完成**：50条评测全量通过，跑通工具触发率/参数准确率/结论准确率三维业务基准
 
 ### Phase 2d：Reflection 反思层代码级验证（2026-06-01）
 - **新增** `Services/ReflectionVerifier.cs` — 代码级事实核查引擎（非 LLM，基于正则+知识库反向检索）

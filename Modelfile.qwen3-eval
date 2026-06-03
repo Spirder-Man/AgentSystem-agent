@@ -1,0 +1,17 @@
+# Qwen3 8B 评测优化版 — CPU 推理加速
+# 基于 qwen3:8b，仅覆盖性能参数，TEMPLATE 继承自原模型
+
+FROM qwen3:8b
+
+# 上下文窗口：4096 → 8192
+# Function Calling 的 tool definitions 约 1500 tokens，加上 prompt + 知识库结果 + 对话历史
+# 4096 不够用会导致截断重试。8192 是 8B 模型在 16GB RAM 上的安全上限
+PARAMETER num_ctx 8192
+
+# Prompt 批处理大小：512 → 1024
+# CPU 推理的 token/s 基本与 batch size 成正比。1024 是 16GB RAM 的安全值
+PARAMETER num_batch 1024
+
+# 线程数：使用物理核心数（i7-13620H = 6P+4E，留 4 线程给系统）
+PARAMETER num_thread 12
+
