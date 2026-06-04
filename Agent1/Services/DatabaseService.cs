@@ -471,7 +471,8 @@ namespace Agent1.Services
                     });
                 }
 
-                Console.WriteLine($"   ✅ 向量检索完成 (找到 {results.Count} 条结果)");
+                if (!EvalMode.IsActive)
+                    Console.WriteLine($"   ✅ 向量检索完成 (找到 {results.Count} 条结果)");
             }
             catch (Exception ex)
             {

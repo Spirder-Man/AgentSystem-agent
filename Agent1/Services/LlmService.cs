@@ -297,32 +297,75 @@ namespace Agent1.Services
         /// <summary>
         /// Phase 2a 评测加速: 非流式调用 — 跳过流式缓冲/控制台打印/think过滤，
         /// 直接拿完整结果。用于批量评测场景，相比流式节省 30-40% CPU 时间。
+        /// 
+        /// 重试策略:
+        ///   - 第1次: 完整 Function Calling (SK Auto)，LLM 自主决定工具调用
+        ///   - 第2-3次: 若首次已成功调用工具，重试时禁用 FC 并将工具结果内联到 prompt，
+        ///              避免重复触发 RAG 检索浪费 CPU。仅重试 LLM 文本生成部分。
+        /// 
+        /// 超时: 5 分钟 (CPU 推理下 qwen3:8b-eval + num_ctx 8192 需要更多时间)
         /// </summary>
         public async Task<string> InvokeNonStreamingWithRetryAsync(string prompt, string stageName = "")
         {
             Exception? lastException = null;
+            // 记录首次尝试中成功调用的工具结果，供重试时内联
+            List<FunctionCallRecord>? firstAttemptToolResults = null;
 
             for (int attempt = 1; attempt <= MaxRetries; attempt++)
             {
+                // 每个 attempt 使用独立的超时令牌，防止重试被前一次的超时令牌影响
+                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+
                 try
                 {
                     if (attempt > 1)
                         Console.WriteLine($"   🔄 第{attempt}次重试 {stageName}...");
 
-                    var settings = new OpenAIPromptExecutionSettings
+                    if (attempt == 1)
                     {
-                        ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
-                        FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(),
-                        Temperature = 0.3,
-                    };
+                        // ── 第 1 次: 完整 Function Calling 模式 ──
+                        var settings = new OpenAIPromptExecutionSettings
+                        {
+                            ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
+                            FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(),
+                            Temperature = 0.3,
+                        };
 
-                    // 清空上一轮工具调用记录
-                    LastFunctionCalls.Clear();
+                        LastFunctionCalls.Clear();
 
-                    var kernelResult = await _kernel.InvokePromptAsync(
-                        prompt, new KernelArguments(settings));
+                        var kernelResult = await _kernel.InvokePromptAsync(
+                            prompt, new KernelArguments(settings), cancellationToken: cts.Token);
 
-                    return kernelResult.ToString();
+                        // 保存工具调用结果，供重试使用
+                        firstAttemptToolResults = new List<FunctionCallRecord>(LastFunctionCalls);
+
+                        return kernelResult.ToString();
+                    }
+                    else
+                    {
+                        // ── 第 2-3 次: 禁用 FC，工具结果内联重试 ──
+                        string retryPrompt = prompt;
+                        if (firstAttemptToolResults != null && firstAttemptToolResults.Count > 0)
+                        {
+                            // 将首次成功调用的工具结果内联到 prompt，避免重跑 RAG
+                            var toolResultsText = string.Join("\n",
+                                firstAttemptToolResults.Select(fc =>
+                                    $"[工具调用] {fc.FunctionName}({fc.Arguments}): {fc.Result}"));
+                            retryPrompt = prompt + "\n\n【已获取的工具调用结果，请直接据此回答】\n" + toolResultsText;
+                        }
+
+                        var retrySettings = new OpenAIPromptExecutionSettings
+                        {
+                            // 禁用工具调用：避免重复触发 RAG 检索
+                            ToolCallBehavior = null,
+                            Temperature = 0.3,
+                        };
+
+                        var kernelResult = await _kernel.InvokePromptAsync(
+                            retryPrompt, new KernelArguments(retrySettings), cancellationToken: cts.Token);
+
+                        return kernelResult.ToString();
+                    }
                 }
                 catch (OperationCanceledException ex)
                 {
@@ -381,7 +424,8 @@ namespace Agent1.Services
                     .Select(e => e.GetSingle())
                     .ToArray();
 
-                Console.WriteLine($"   ✅ 向量嵌入成功 (维度: {embedding.Length})");
+                if (!EvalMode.IsActive)
+                    Console.WriteLine($"   ✅ 向量嵌入成功 (维度: {embedding.Length})");
                 return embedding;
             }
             catch (Exception ex)

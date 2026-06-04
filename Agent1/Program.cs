@@ -28,6 +28,18 @@ namespace Agent1
             // 加载全局配置（环境变量可覆盖敏感信息如 DB_PASSWORD）
             AppConfig.Load(configuration);
 
+            // 启动前校验关键配置项，防止运行时才发现配错
+            var configErrors = AppConfig.Instance.Validate();
+            if (configErrors.Count > 0)
+            {
+                Console.WriteLine("❌ 配置校验失败，请检查 appsettings.json:");
+                foreach (var err in configErrors)
+                    Console.WriteLine($"   - {err}");
+                Console.WriteLine("\n按任意键退出...");
+                Console.ReadKey();
+                return;
+            }
+
             // ═══════════════════════════════════════════════════
             // Phase 1: 结构化日志 — Serilog + Console 输出双写文件
             // ═══════════════════════════════════════════════════
@@ -503,6 +515,9 @@ namespace Agent1
                 return;
             }
 
+            // 评测模式：压制 RAG 详细日志，减少 Console I/O 开销
+            EvalMode.IsActive = true;
+
             var json = await File.ReadAllTextAsync(jsonPath);
             EvalSet evalSet;
             try
@@ -679,6 +694,9 @@ namespace Agent1
             else if (avgScore >= 55) Console.WriteLine("★☆☆ 可用 — 需进一步 Prompt/模型调优");
             else Console.WriteLine("☆☆☆ 不合格 — 建议更换模型或架构方案");
             Console.WriteLine($"   (工具触发率 × 参数准确率 × 结论准确率 综合: {avgScore:F1}%)\n");
+
+            // 恢复正常日志模式
+            EvalMode.IsActive = false;
         }
 
         /// <summary>宽松检查工具参数是否匹配预期</summary>

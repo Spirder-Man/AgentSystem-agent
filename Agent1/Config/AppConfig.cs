@@ -25,6 +25,42 @@ namespace Agent1.Config
 
         // 业务评测配置
         public EvaluationConfig Evaluation { get; set; } = new();
+
+        // Prompt 模板配置
+        public PromptTemplateConfig PromptTemplates { get; set; } = new();
+
+        /// <summary>
+        /// 启动时校验关键配置项，防止运行时才发现配错。
+        /// 返回错误列表，空列表表示全部通过。
+        /// </summary>
+        public List<string> Validate()
+        {
+            var errors = new List<string>();
+
+            if (string.IsNullOrWhiteSpace(Llm.ModelId))
+                errors.Add("Llm.ModelId 未配置（模型名称不能为空）");
+            if (string.IsNullOrWhiteSpace(Llm.Endpoint))
+                errors.Add("Llm.Endpoint 未配置（Ollama 服务地址不能为空）");
+            if (!Llm.Endpoint.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                errors.Add($"Llm.Endpoint 格式异常: {Llm.Endpoint}（应以 http:// 或 https:// 开头）");
+
+            if (string.IsNullOrWhiteSpace(Database.Host))
+                errors.Add("Database.Host 未配置");
+            if (Database.Port <= 0 || Database.Port > 65535)
+                errors.Add($"Database.Port 无效: {Database.Port}");
+            if (string.IsNullOrWhiteSpace(Database.DatabaseName))
+                errors.Add("Database.DatabaseName 未配置");
+
+            if (string.IsNullOrWhiteSpace(VectorSearch.EmbeddingModelId))
+                errors.Add("VectorSearch.EmbeddingModelId 未配置（嵌入模型不能为空）");
+
+            if (string.IsNullOrWhiteSpace(PromptTemplates.SystemRole))
+                errors.Add("PromptTemplates.SystemRole 未配置");
+            if (string.IsNullOrWhiteSpace(PromptTemplates.EvalFastPrompt))
+                errors.Add("PromptTemplates.EvalFastPrompt 未配置（评测 Prompt 不能为空）");
+
+            return errors;
+        }
     }
 
     // 化工场景专用LLM配置
@@ -155,5 +191,36 @@ namespace Agent1.Config
         public string EvalSetPath { get; set; } = "Data/ComplianceEvalSet.json";
         public int CaseIntervalMs { get; set; } = 2000;
         public string OutputReportPath { get; set; } = "Data/eval_report.json";
+    }
+
+    // Prompt 模板配置 — 统一管理所有 LLM Prompt，调优无需改源码
+    public class PromptTemplateConfig
+    {
+        // 角色定义
+        public string SystemRole { get; set; } = "你是化工园区危化品合规审核专家。";
+        public string SimpleChatRole { get; set; } = "你是友好的AI助手，名字叫{AssistantName}。";
+
+        // 输出模板
+        public string OutputTemplate { get; set; } =
+            "请严格按以下模板输出（每项一行，不要多余内容）：\n" +
+            "【合规判断】是/否\n" +
+            "【法规依据】引用具体标准编号+条款\n" +
+            "【违规点】若无违规写「无」\n" +
+            "【整改建议】若无违规则写「无需整改」";
+
+        // 对话上下文模板
+        public string HistoryTemplate { get; set; } = "对话历史：\n{History}";
+        public string CurrentQuestionTemplate { get; set; } = "【当前问题】{UserInput}";
+        public string SimpleChatQuestionTemplate { get; set; } = "用户说：{UserInput}\n\n用户的名字可能是{UserName}。\n\n请直接回答用户，不要思考标记。";
+
+        // 评测快速通道（精简版，无对话历史）
+        public string EvalFastPrompt { get; set; } =
+            "{SystemRole}\n\n" +
+            "【当前问题】{UserInput}\n\n" +
+            "请严格按以下模板输出（每项一行，不要多余内容）：\n" +
+            "【合规判断】是/否\n" +
+            "【法规依据】引用具体标准编号+条款\n" +
+            "【违规点】若无违规写「无」\n" +
+            "【整改建议】若无违规则写「无需整改」";
     }
 }

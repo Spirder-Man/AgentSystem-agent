@@ -9,6 +9,14 @@ using System.Threading.Tasks;
 namespace Agent1.Services
 {
     /// <summary>
+    /// 评测模式全局开关：开启时压制 RAG 详细日志，减少 Console I/O 开销。
+    /// </summary>
+    public static class EvalMode
+    {
+        public static bool IsActive { get; set; } = false;
+    }
+
+    /// <summary>
     /// 知识库服务类，负责处理化工合规检索。
     /// </summary>
     public class KnowledgeBaseService : IKnowledgeBaseService
@@ -160,10 +168,17 @@ namespace Agent1.Services
                 .Select((kvp, idx) => RetrievedChunk.Create(_documents[kvp.Key].Content, kvp.Value, idx, _documents[kvp.Key].Metadata))
                 .ToList();
 
-            Console.WriteLine($"   🔍 BM25检索: 查询='{query}', 召回={results.Count}条");
-            foreach (var r in results)
+            if (!EvalMode.IsActive)
             {
-                Console.WriteLine($"      {r}");
+                Console.WriteLine($"   🔍 BM25检索: 查询='{query}', 召回={results.Count}条");
+                foreach (var r in results)
+                {
+                    Console.WriteLine($"      {r}");
+                }
+            }
+            else
+            {
+                Console.WriteLine($"   🔍 BM25检索: 召回={results.Count}条");
             }
 
             return Task.FromResult(results);

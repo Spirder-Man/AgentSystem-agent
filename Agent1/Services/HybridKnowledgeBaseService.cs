@@ -108,7 +108,8 @@ namespace Agent1.Services
 
         public async Task<List<RetrievedChunk>> RetrieveAsync(string query, int topK = 5)
         {
-            Console.WriteLine($"\n🔍 开始混合检索: {query}");
+            if (!EvalMode.IsActive)
+                Console.WriteLine($"\n🔍 开始混合检索: {query}");
 
             var mode = _kbConfig.SearchMode?.ToLowerInvariant() ?? "hybrid";
 
@@ -227,7 +228,8 @@ namespace Agent1.Services
 
         private async Task<List<RetrievedChunk>> VectorRetrieveAsync(string query, int topK)
         {
-            Console.WriteLine("   🎯 使用向量语义检索...");
+            if (!EvalMode.IsActive)
+                Console.WriteLine("   🎯 使用向量语义检索...");
             try
             {
                 var embedding = await _llmService.GetEmbeddingAsync(query);
@@ -248,7 +250,8 @@ namespace Agent1.Services
 
         private async Task<List<RetrievedChunk>> HybridRetrieveAsync(string query, int topK)
         {
-            Console.WriteLine("   🧩 使用BM25+向量混合检索...");
+            if (!EvalMode.IsActive)
+                Console.WriteLine("   🧩 使用BM25+向量混合检索...");
 
             var bm25Task = _bm25Service.RetrieveAsync(query, topK * 2);
             var vectorTask = VectorRetrieveAsync(query, topK * 2);
@@ -316,7 +319,8 @@ namespace Agent1.Services
                 })
                 .ToList();
 
-            Console.WriteLine($"   ✅ 混合检索完成 (召回: {finalResults.Count})");
+            if (!EvalMode.IsActive)
+                Console.WriteLine($"   ✅ 混合检索完成 (召回: {finalResults.Count})");
             return finalResults;
         }
 

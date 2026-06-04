@@ -1,4 +1,5 @@
 
+using Agent1.Config;
 using Agent1.Modules;
 using System;
 using System.Collections.Generic;
@@ -134,19 +135,10 @@ namespace Agent1.Services
         /// </summary>
         private async Task<string> ExecuteChemicalComplianceAsync(string input, PipelineContext context)
         {
-            // Phase 2a: 单次 LLM 调用，SK 自动判断 + 执行工具
-            var prompt = $@"你是化工园区危化品合规审核专家。
-
-对话历史：
-{context.History}
-
-【当前问题】{input}
-
-请严格按以下模板输出（每项一行，不要多余内容）：
-【合规判断】是/否
-【法规依据】引用具体标准编号+条款
-【违规点】若无违规写「无」
-【整改建议】若无违规则写「无需整改」";
+            var t = AppConfig.Instance.PromptTemplates;
+            var history = t.HistoryTemplate.Replace("{History}", context.History ?? "");
+            var question = t.CurrentQuestionTemplate.Replace("{UserInput}", input);
+            var prompt = $"{t.SystemRole}\n\n{history}\n\n{question}\n\n{t.OutputTemplate}";
 
             Console.WriteLine("\n   【SK Auto Function Calling 模式】");
             Console.ForegroundColor = ConsoleColor.Blue;
@@ -182,23 +174,19 @@ namespace Agent1.Services
 
         private async Task<string> ExecuteGeneralChatAsync(string input, PipelineContext context)
         {
-            var userName = !string.IsNullOrWhiteSpace(context.UserProfile.UserName) 
-                ? context.UserProfile.UserName 
-                : "用户";
+            var t = AppConfig.Instance.PromptTemplates;
             var assistantName = !string.IsNullOrWhiteSpace(context.UserProfile.AssistantName) 
                 ? context.UserProfile.AssistantName 
                 : "助手";
-            
-            var prompt = $@"你是友好的AI助手，名字叫{assistantName}。
-
-对话历史：
-{context.History}
-
-用户说：{input}
-
-用户的名字可能是{userName}。
-
-请直接回答用户，不要思考标记。";
+            var role = t.SimpleChatRole.Replace("{AssistantName}", assistantName);
+            var history = t.HistoryTemplate.Replace("{History}", context.History ?? "");
+            var userName = !string.IsNullOrWhiteSpace(context.UserProfile.UserName) 
+                ? context.UserProfile.UserName 
+                : "用户";
+            var question = t.SimpleChatQuestionTemplate
+                .Replace("{UserInput}", input)
+                .Replace("{UserName}", userName);
+            var prompt = $"{role}\n\n{history}\n\n{question}";
             
             Console.WriteLine("\n💬 正在生成回复...");
             var answer = await _llmService.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Blue, "简单对话");
@@ -215,15 +203,10 @@ namespace Agent1.Services
         /// </summary>
         public async Task<string> ExecuteEvalFastAsync(string userInput)
         {
-            var prompt = $@"你是化工园区危化品合规审核专家。
-
-【当前问题】{userInput}
-
-请严格按以下模板输出（每项一行，不要多余内容）：
-【合规判断】是/否
-【法规依据】引用具体标准编号+条款
-【违规点】若无违规写「无」
-【整改建议】若无违规则写「无需整改」";
+            var t = AppConfig.Instance.PromptTemplates;
+            var prompt = t.EvalFastPrompt
+                .Replace("{SystemRole}", t.SystemRole)
+                .Replace("{UserInput}", userInput);
 
             Console.Write("   [非流式] 调用中... ");
             var llmService = _llmService as LlmService;

@@ -3,14 +3,14 @@
 
 FROM qwen3:8b
 
-# 上下文窗口：4096 → 8192
-# Function Calling 的 tool definitions 约 1500 tokens，加上 prompt + 知识库结果 + 对话历史
-# 4096 不够用会导致截断重试。8192 是 8B 模型在 16GB RAM 上的安全上限
-PARAMETER num_ctx 8192
+# 上下文窗口：4096
+# 评测 prompt 简短且无对话历史，4096 足够容纳 tool definitions + prompt + RAG 结果
+# 更大的 ctx 会显著增加 KV-cache 计算量，在 CPU 上反而拖慢推理
+PARAMETER num_ctx 4096
 
-# Prompt 批处理大小：512 → 1024
-# CPU 推理的 token/s 基本与 batch size 成正比。1024 是 16GB RAM 的安全值
-PARAMETER num_batch 1024
+# Prompt 批处理大小：512
+# CPU 推理下 512 是 batch size 的安全值，1024 容易导致内存压力→超时
+PARAMETER num_batch 512
 
 # 线程数：使用物理核心数（i7-13620H = 6P+4E，留 4 线程给系统）
 PARAMETER num_thread 12

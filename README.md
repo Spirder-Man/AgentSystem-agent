@@ -140,11 +140,11 @@ cp .env.example .env    # 编辑密码后 docker-compose 会自动读取
 
 ```sql
 -- PostgreSQL 中执行
-CREATE DATABASE chemical_park_ai_agent;
+CREATE DATABASE your_chemical_db;
 ```
 
 ```bash
-psql -U postgres -d chemical_park_ai_agent -f init_database.sql
+psql -U postgres -d your_chemical_db -f init_database.sql
 ```
 
 ### 2. 配置
@@ -179,9 +179,9 @@ cp .env.example .env
 ```json
 // appsettings.json 关键配置项
 "Llm": { "ModelId": "deepseek-r1:local7b", "Endpoint": "http://localhost:11434" },
-"KnowledgeBase": { "BasePath": "d:\\桌面\\agent\\项目\\Agent1\\knowledgebase" },
+"KnowledgeBase": { "BasePath": "<your-project-path>/knowledgebase" },
 "VectorSearch": { "EmbeddingModelId": "nomic-embed-text:latest" },
-"Database": { "Host": "localhost", "Port": 5432, "DatabaseName": "chemical_park_ai_agent" }
+"Database": { "Host": "localhost", "Port": 5432, "DatabaseName": "your_chemical_db" }
 ```
 
 ### 2. 运行
