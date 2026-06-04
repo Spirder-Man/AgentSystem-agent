@@ -9,6 +9,7 @@ using Serilog;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace Agent1
 {
@@ -711,16 +712,62 @@ namespace Agent1
             return false;
         }
 
-        /// <summary>检查响应中的合规结论是否匹配预期</summary>
+        /// <summary>
+        /// [P0-3 FIX] 检查响应中的合规结论是否匹配预期。
+        /// 优先解析工具嵌入的 [判定:is_compliant=...] 结构化标签；
+        /// unknown/待核实/依据原文 等非二元标签不参与匹配，回退关键词。
+        /// 无标签时回退到改良版关键词匹配（排除常见误报模式）。
+        /// </summary>
         static bool CheckConclusion(string? response, EvalConclusion? expected)
         {
             if (string.IsNullOrEmpty(response) || expected == null)
                 return false;
+
+            // 1. 优先查找 [判定:is_compliant=...] 标签（容忍空格和大小写差异）
+            var tagMatch = Regex.Match(response, @"\[判定\s*:\s*is_compliant\s*=\s*(true|false|unknown|待核实|依据原文)\s*\]", RegexOptions.IgnoreCase);
+            if (tagMatch.Success)
+            {
+                var tagValue = tagMatch.Groups[1].Value.Trim();
+
+                // 非二元标签：unknown/待核实/依据原文 → 不参与匹配，回退关键词
+                if (tagValue.Equals("unknown", StringComparison.OrdinalIgnoreCase)
+                    || tagValue.Equals("待核实")
+                    || tagValue.Equals("依据原文"))
+                {
+                    // 不回退关键词——这是非结论性工具输出，不应强制匹配
+                    return false;
+                }
+
+                // 二元标签：true/false → 直接比对
+                var parsed = bool.TryParse(tagValue, out var isCompliant) && isCompliant;
+                return parsed == expected.is_compliant;
+            }
+
+            // 2. 无结构标签时，回退关键词匹配（排除常见误报模式）
             var respLower = response.ToLowerInvariant();
+
+            // 误报排除词：工具回复中常见的 non-compliance 上下文化用语
+            bool hasCaveat = respLower.Contains("不建议") || respLower.Contains("建议查阅")
+                          || respLower.Contains("仍建议核实") || respLower.Contains("未发现直接冲突");
+
+            // 条件否定的标志词（"如果...则不允许" 不应算作不合规结论）
+            bool hasConditional = respLower.Contains("如果") || respLower.Contains("则")
+                               || respLower.Contains("当");
+
             if (expected.is_compliant)
-                return respLower.Contains("合规") || respLower.Contains("允许") || respLower.Contains("可以");
+            {
+                // 合规判定：含正向关键词 AND 不含误报排除词
+                bool hasPositive = respLower.Contains("合规") || respLower.Contains("允许") || respLower.Contains("可以");
+                return hasPositive && !hasCaveat;
+            }
             else
-                return respLower.Contains("不合规") || respLower.Contains("不允许") || respLower.Contains("禁止") || respLower.Contains("严禁");
+            {
+                // 不合规判定：含负向关键词 AND 不是条件句
+                bool hasNegative = respLower.Contains("不合规") || respLower.Contains("不允许")
+                                || respLower.Contains("禁止") || respLower.Contains("严禁")
+                                || respLower.Contains("禁忌");
+                return hasNegative && !hasConditional;
+            }
         }
 
         // ═══════ 评测数据模型 ═══════

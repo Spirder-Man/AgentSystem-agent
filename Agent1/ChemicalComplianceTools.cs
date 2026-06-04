@@ -172,9 +172,9 @@ namespace Agent1
             foreach (var kvp in HazardCategories)
             {
                 if (substanceName.Contains(kvp.Key) || kvp.Key.Contains(substanceName))
-                    return $"「{substanceName}」属于「{kvp.Key}」类别，适用标准：{kvp.Value}";
+                    return $"「{substanceName}」属于「{kvp.Key}」类别，适用标准：{kvp.Value} [判定:is_compliant=unknown]";
             }
-            return $"「{substanceName}」未在常见危化品类别中直接匹配，建议查阅 GB 30000 系列标准全文（knowledgebase/国标/ 目录下已收录完整标准文件）";
+            return $"「{substanceName}」未在常见危化品类别中直接匹配，建议查阅 GB 30000 系列标准全文（knowledgebase/国标/ 目录下已收录完整标准文件） [判定:is_compliant=unknown]";
         }
 
         private string CheckStorageCompatibilityFallback(string substanceA, string substanceB)
@@ -184,20 +184,20 @@ namespace Agent1
                 bool aIsIncompatible = kvp.Value.Any(s => substanceB.Contains(s));
                 bool bIsIncompatible = kvp.Value.Any(s => substanceA.Contains(s));
                 if (aIsIncompatible || bIsIncompatible)
-                    return $"⚠️ 禁用：「{substanceA}」与「{substanceB}」存在配伍禁忌——{kvp.Key}类不可与之同库贮存。依据：GB15603-1995 第4.2.2条 禁忌物料不得同库贮存";
+                    return $"⚠️ 禁用：「{substanceA}」与「{substanceB}」存在配伍禁忌——{kvp.Key}类不可与之同库贮存。依据：GB15603-1995 第4.2.2条 禁忌物料不得同库贮存 [判定:is_compliant=false]";
             }
-            return $"✅ 「{substanceA}」与「{substanceB}」在常见禁忌表中未发现直接冲突，但仍建议按照 GB15603 分类贮存原则进行核实（knowledgebase/国标/GB15603 已收录全文）";
+            return $"✅ 「{substanceA}」与「{substanceB}」在常见禁忌表中未发现直接冲突，但仍建议按照 GB15603 分类贮存原则进行核实（knowledgebase/国标/GB15603 已收录全文） [判定:is_compliant=true]";
         }
 
         private string GetSafetyDistanceFallback(string facilityType)
         {
             var key = facilityType.Trim();
             if (SafetyDistances.TryGetValue(key, out int distance))
-                return $"「{key}」的最小安全间距为 {distance} 米";
+                return $"「{key}」的最小安全间距为 {distance} 米 [判定:is_compliant=待核实]";
             var matched = SafetyDistances.Keys.Where(k => k.Contains(key) || key.Contains(k)).ToList();
             if (matched.Count > 0)
-                return $"已匹配「{matched[0]}」：最小安全间距为 {SafetyDistances[matched[0]]} 米";
-            return $"未找到「{key}」的精确安全距离数值，建议在 knowledgebase/国标/ 目录下查阅 GB50160《石油化工企业设计防火规范》和 GB50016《建筑设计防火规范》全文";
+                return $"已匹配「{matched[0]}」：最小安全间距为 {SafetyDistances[matched[0]]} 米 [判定:is_compliant=待核实]";
+            return $"未找到「{key}」的精确安全距离数值，建议在 knowledgebase/国标/ 目录下查阅 GB50160《石油化工企业设计防火规范》和 GB50016《建筑设计防火规范》全文 [判定:is_compliant=待核实]";
         }
 
         // ════════════════════════════════════════
@@ -219,6 +219,7 @@ namespace Agent1
                 sb.AppendLine(chunk.Content);
                 sb.AppendLine();
             }
+            sb.AppendLine("[判定:is_compliant=依据原文]");
             return sb.ToString().TrimEnd();
         }
 

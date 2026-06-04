@@ -1,7 +1,10 @@
 
 
 using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
+using Microsoft.SemanticKernel.Connectors.Ollama;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
@@ -19,20 +22,35 @@ namespace Agent1.Services
         private readonly HttpClient _httpClient;
         private readonly ChemicalComplianceTools _complianceTools;
         private const int MaxRetries = 3;
-        private const int RetryDelayMs = 1000;
+        private const int RetryDelayMs = 5000;  // [P1-2] 原1000→5000, 给Ollama服务端10秒清理上一请求
 
         // Phase 2a 验证: 工具调用诊断 — 记录最近一次 SK Auto Function Calling 的执行信息
         public List<FunctionCallRecord> LastFunctionCalls { get; private set; } = new();
 
+        /// <summary>
+        /// [Thinking控制] 控制 Qwen3 思考模式开关。
+        /// false=非Thinking(快速响应,Function Calling/评测/对话用)
+        /// true=Thinking(深度推理,ReAct/Reflection/CoT用)
+        /// 默认 false,由 InvokeStreamWithRetryAsync 临时切换为 true。
+        /// </summary>
+        internal bool EnableThinking { get; set; } = false;
+
         public LlmService(IKnowledgeBaseService kbService)
         {
             _complianceTools = new ChemicalComplianceTools(kbService);
+
+            // [Thinking控制] 创建 OllamaThinkingHandler，后续通过反射注入到 SK 内部 HttpClient
+            var thinkingHandler = new OllamaThinkingHandler(this);
+
             var kernelBuilder = Kernel.CreateBuilder();
             kernelBuilder.AddOllamaChatCompletion(ModelConfig.ModelId, ModelConfig.Endpoint);
             // Phase 2a: 使用 RAG-backed 实例注册，SK Auto Function Calling 直接调用知识库检索
             kernelBuilder.Plugins.AddFromObject(_complianceTools, "ChemicalCompliance");
             _kernel = kernelBuilder.Build();
-            
+
+            // [Thinking控制] 通过反射将 OllamaThinkingHandler 注入到 SK 内部 HttpClient 中
+            InjectThinkingHandler(_kernel, thinkingHandler);
+
             _httpClient = new HttpClient
             {
                 Timeout = TimeSpan.FromMinutes(2)
@@ -256,42 +274,52 @@ namespace Agent1.Services
 
         public async Task<string> InvokeStreamWithRetryAsync(string prompt, ConsoleColor color, string stageName = "")
         {
-            Exception lastException = null;
-
-            for (int attempt = 1; attempt <= MaxRetries; attempt++)
+            // [Thinking控制] ReAct/Reflection/CoT 深度推理场景启用思考模式
+            var previousThinking = EnableThinking;
+            EnableThinking = true;
+            try
             {
-                try
+                Exception lastException = null;
+
+                for (int attempt = 1; attempt <= MaxRetries; attempt++)
                 {
-                    if (attempt > 1)
+                    try
                     {
-                        Console.WriteLine($"\n🔄 第{attempt}次重试 {stageName}...");
+                        if (attempt > 1)
+                        {
+                            Console.WriteLine($"\n🔄 第{attempt}次重试 {stageName}...");
+                        }
+
+                        return await InvokeStreamAsync(prompt, color);
                     }
+                    catch (OperationCanceledException ex)
+                    {
+                        lastException = ex;
+                        Console.WriteLine($"\n⏰ 请求超时 ({attempt}/{MaxRetries}): {ex.Message}");
 
-                    return await InvokeStreamAsync(prompt, color);
-                }
-                catch (OperationCanceledException ex)
-                {
-                    lastException = ex;
-                    Console.WriteLine($"\n⏰ 请求超时 ({attempt}/{MaxRetries}): {ex.Message}");
+                        if (attempt < MaxRetries)
+                            await Task.Delay(RetryDelayMs);
+                    }
+                    catch (Exception ex)
+                    {
+                        lastException = ex;
+                        Console.WriteLine($"\n❌ 错误 ({attempt}/{MaxRetries}): {ex.Message}");
 
-                    if (attempt < MaxRetries)
-                        await Task.Delay(RetryDelayMs);
+                        if (attempt < MaxRetries)
+                            await Task.Delay(RetryDelayMs);
+                    }
                 }
-                catch (Exception ex)
-                {
-                    lastException = ex;
-                    Console.WriteLine($"\n❌ 错误 ({attempt}/{MaxRetries}): {ex.Message}");
 
-                    if (attempt < MaxRetries)
-                        await Task.Delay(RetryDelayMs);
-                }
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"\n❌ 所有重试失败: {lastException?.Message}");
+                Console.ResetColor();
+
+                return $"生成失败: {lastException?.Message}";
             }
-
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"\n❌ 所有重试失败: {lastException?.Message}");
-            Console.ResetColor();
-
-            return $"生成失败: {lastException?.Message}";
+            finally
+            {
+                EnableThinking = previousThinking;
+            }
         }
 
         /// <summary>
@@ -313,8 +341,9 @@ namespace Agent1.Services
 
             for (int attempt = 1; attempt <= MaxRetries; attempt++)
             {
-                // 每个 attempt 使用独立的超时令牌，防止重试被前一次的超时令牌影响
-                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+                // [P1-1] 第1次 8 分钟 (FC+RAG 全链路), 重试 5 分钟 (仅 LLM 文本生成)
+                var timeoutMinutes = attempt == 1 ? 8 : 5;
+                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(timeoutMinutes));
 
                 try
                 {
@@ -352,6 +381,7 @@ namespace Agent1.Services
                                 firstAttemptToolResults.Select(fc =>
                                     $"[工具调用] {fc.FunctionName}({fc.Arguments}): {fc.Result}"));
                             retryPrompt = prompt + "\n\n【已获取的工具调用结果，请直接据此回答】\n" + toolResultsText;
+                            Console.WriteLine($"   📋 [验证] 工具结果已内联: {firstAttemptToolResults.Count} 个调用结果附加到重试 Prompt");
                         }
 
                         var retrySettings = new OpenAIPromptExecutionSettings
@@ -364,11 +394,25 @@ namespace Agent1.Services
                         var kernelResult = await _kernel.InvokePromptAsync(
                             retryPrompt, new KernelArguments(retrySettings), cancellationToken: cts.Token);
 
+                        // [P0-1 FIX] 恢复工具调用记录，表明最终回答基于内联的工具数据
+                        if (firstAttemptToolResults != null && firstAttemptToolResults.Count > 0)
+                            LastFunctionCalls = firstAttemptToolResults;
+
                         return kernelResult.ToString();
                     }
                 }
                 catch (OperationCanceledException ex)
                 {
+                    // [P0-2 FIX] 即使超时，工具也可能已成功调用，捕获结果供重试内联
+                    if (attempt == 1 && LastFunctionCalls.Count > 0 && firstAttemptToolResults == null)
+                    {
+                        firstAttemptToolResults = new List<FunctionCallRecord>(LastFunctionCalls);
+                        Console.WriteLine($"   💾 已保存 {firstAttemptToolResults.Count} 个工具结果供重试用");
+                    }
+
+                    // [P0-1 FIX] 清空残留工具记录，防止评测器读到 stale 数据
+                    LastFunctionCalls.Clear();
+
                     lastException = ex;
                     Console.WriteLine($"   ⏰ 请求超时 ({attempt}/{MaxRetries}): {ex.Message}");
                     if (attempt < MaxRetries)
@@ -376,6 +420,9 @@ namespace Agent1.Services
                 }
                 catch (Exception ex)
                 {
+                    // [P0-1 FIX] 清空残留工具记录
+                    LastFunctionCalls.Clear();
+
                     lastException = ex;
                     Console.WriteLine($"   ❌ 错误 ({attempt}/{MaxRetries}): {ex.Message}");
                     if (attempt < MaxRetries)
@@ -455,6 +502,114 @@ namespace Agent1.Services
         }
 
         /// <summary>
+        /// [Thinking控制] 通过反射将 OllamaThinkingHandler 注入到 SK Ollama 连接器的内部 HttpClient。
+        /// SK 1.74.0-alpha 实际链路:
+        ///   ChatClientChatCompletionService → _chatClient (KernelFunctionInvokingChatClient)
+        ///   → InnerClient(属性) → OllamaApiClient → _client (HttpClient)
+        /// 采用递归搜索策略（字段+属性），自动适应 SK 内部结构变化。
+        /// </summary>
+        private static void InjectThinkingHandler(Kernel kernel, OllamaThinkingHandler handler)
+        {
+            try
+            {
+                var chatService = kernel.GetRequiredService<IChatCompletionService>();
+
+                // 递归搜索 HttpClient（最多深入 5 层，避免循环引用）
+                var result = FindHttpClientField(chatService, 0, 5);
+                if (result == null)
+                {
+                    Console.WriteLine("   ⚠️ [Thinking] 未能在 5 层内找到 HttpClient，跳过 handler 注入");
+                    return;
+                }
+
+                var (owner, httpClientField) = result.Value;
+
+                // 创建新的 HttpClient，将 handler 作为最内层 handler
+                var newHttpClient = new HttpClient(handler)
+                {
+                    Timeout = TimeSpan.FromMinutes(15)
+                };
+                httpClientField.SetValue(owner, newHttpClient);
+
+                Console.WriteLine($"   ✅ [Thinking] OllamaThinkingHandler 已注入 → {owner.GetType().Name}.{httpClientField.Name} (think 默认关闭)");
+            }
+            catch (Exception ex)
+            {
+                // 注入失败不应阻止程序启动
+                Console.WriteLine($"   ⚠️ [Thinking] handler 注入异常: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 递归搜索对象图中的 HttpClient。
+        /// SK 1.74.0-alpha 使用 Microsoft.Extensions.AI 装饰器模式，
+        /// 内部客户端通过属性（InnerClient）而非字段暴露，因此同时搜索字段和属性。
+        /// 返回 (拥有该字段的对象, FieldInfo) 或 null。
+        /// </summary>
+        private static (object owner, System.Reflection.FieldInfo field)? FindHttpClientField(object obj, int depth, int maxDepth)
+        {
+            if (obj == null || depth >= maxDepth)
+                return null;
+
+            var type = obj.GetType();
+            var bf = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            var bfAll = bf | System.Reflection.BindingFlags.Public;
+
+            // === 1. 搜索非公开字段 ===
+            var fields = type.GetFields(bf);
+            foreach (var f in fields)
+            {
+                var value = f.GetValue(obj);
+                if (value is HttpClient || f.FieldType == typeof(HttpClient))
+                    return (obj, f);
+            }
+
+            // === 2. 搜索属性（装饰器模式: InnerClient / InnerService） ===
+            var props = type.GetProperties(bfAll);
+            var childObjects = new List<object>();
+            foreach (var p in props)
+            {
+                if (p.GetIndexParameters().Length > 0) continue;
+                try
+                {
+                    var value = p.GetValue(obj);
+                    if (value == null) continue;
+                    if (value is HttpClient)
+                    {
+                        var backingField = type.GetField("<" + p.Name + ">k__BackingField", bf);
+                        if (backingField != null) return (obj, backingField);
+                    }
+                    var pt = p.PropertyType;
+                    if (!pt.IsPrimitive && !pt.IsEnum && pt != typeof(string) && !pt.IsArray
+                        && pt.FullName?.StartsWith("System.Collections") != true)
+                        childObjects.Add(value);
+                }
+                catch { /* 某些属性可能有副作用 */ }
+            }
+
+            // === 3. 递归深入字段子对象 ===
+            foreach (var f in fields)
+            {
+                var value = f.GetValue(obj);
+                if (value == null) continue;
+                var ft = f.FieldType;
+                if (ft.IsPrimitive || ft.IsEnum || ft == typeof(string) || ft.IsArray
+                    || ft.FullName?.StartsWith("System.Collections") == true) continue;
+                var found = FindHttpClientField(value, depth + 1, maxDepth);
+                if (found != null) return found;
+            }
+
+            // === 4. 递归深入属性子对象 ===
+            foreach (var child in childObjects)
+            {
+                var found = FindHttpClientField(child, depth + 1, maxDepth);
+                if (found != null) return found;
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// Phase 2a: 模型感知 — 判断当前模型是否需要过滤 &lt;think&gt; 标签。
         /// DeepSeek-R1 系列会在输出中嵌入思考过程标签，需要过滤。
         /// Qwen/GPT 等模型不需要此处理。Qwen3 在 Function Calling 场景下自动使用 non-thinking 模式,
@@ -464,6 +619,51 @@ namespace Agent1.Services
         {
             var modelId = ModelConfig.ModelId.ToLowerInvariant();
             return modelId.Contains("deepseek-r1") || modelId.Contains("qwen3");
+        }
+
+        // ════════════════════════════════════════
+        // [Thinking控制] Ollama 请求拦截器
+        // ════════════════════════════════════════
+
+        /// <summary>
+        /// 拦截 SK → Ollama 的 /api/chat 请求，根据 EnableThinking 注入 think 参数。
+        /// Qwen3 默认启用思考模式(生成大量 &lt;think&gt; token 导致超时)，
+        /// Function Calling/评测场景需关闭思考，ReAct/Reflection 场景需开启。
+        /// </summary>
+        private class OllamaThinkingHandler : DelegatingHandler
+        {
+            private readonly LlmService _owner;
+
+            public OllamaThinkingHandler(LlmService owner) : base(new HttpClientHandler())
+            {
+                _owner = owner;
+            }
+
+            protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                if (request.Content != null
+                    && request.RequestUri != null
+                    && request.RequestUri.AbsolutePath.Contains("/api/chat")
+                    && request.Method == HttpMethod.Post)
+                {
+                    var body = await request.Content.ReadAsStringAsync(cancellationToken);
+
+                    // 仅在 JSON body 中不存在 think 参数时才注入
+                    if (!body.Contains("\"think\""))
+                    {
+                        var trimmed = body.TrimEnd();
+                        if (trimmed.EndsWith("}"))
+                        {
+                            var enableValue = _owner.EnableThinking ? "true" : "false";
+                            var newBody = trimmed.Substring(0, trimmed.Length - 1)
+                                + $",\"think\":{enableValue}" + "}";
+                            request.Content = new StringContent(newBody, Encoding.UTF8, "application/json");
+                        }
+                    }
+                }
+
+                return await base.SendAsync(request, cancellationToken);
+            }
         }
     }
 

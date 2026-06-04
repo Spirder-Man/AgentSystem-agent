@@ -85,20 +85,28 @@
 
 ```
 docs/
-├── architecture/              # 架构设计文档 (12个文件)
+├── architecture/              # 架构设计文档 (13个文件)
 │   ├── 架构设计文档.md
 │   ├── 化工园区危化品合规审核AI Agent架构整改方案.md
 │   ├── 化工园区危化品合规审核AI Agent架构适配方案.md
+│   ├── ModelScope模型选型决策框架.md
 │   └── ...
+├── articles/                  # 技术文章与参数注入方案 (4个文件)
+│   ├── Semantic_Kernel_Ollama_enable_thinking_参数注入方案探讨.md
+│   └── ollama-api-chat-think-*.png
 ├── technical-principles/      # 技术原理文档 (9个文件)
 │   ├── BM25 参数：权重平衡的关键探索.md
 │   ├── C# 内存模型、LINQ、BM25 和 NGram 详解.md
 │   ├── 化工园区危化品合规审核RAG系统技术原理深度解析.md
 │   └── ...
 ├── testing/                   # 测试文档 (4个文件)
-├── troubleshooting/           # 故障排查文档 (2个文件)
-├── learning-notes/            # 学习笔记 (3个文件)
-├── project/                   # 项目文档 (2个文件)
+├── troubleshooting/           # 故障排查文档 (4个文件)
+├── learning-notes/            # 学习笔记 (4个文件)
+├── project/                   # 项目文档 (4个文件)
+├── Agent1 十项核心技术决策深度拆解.md
+├── FunctionCalling模型评测BUG记录.md
+├── 别小看这两个for循环！中文RAG检索的底层核心解法.md
+├── 🔴 断点地图：RAG 全链路深度理解.md
 └── README.md                  # 文档库索引
 ```
 
@@ -220,11 +228,21 @@ MIT License
 
 ---
 
-**文档版本**：v2.1  
-**最后更新**：2026年6月1日  
-**状态**：Phase 2a 模型评测中 → Qwen3:8b 50条业务基准量化 | Phase 2d Reflection 代码级验证已完成
+**文档版本**：v2.2  
+**最后更新**：2026年6月4日  
+**状态**：Phase 2a 评测增强（结构化判定标签 + Thinking 控制）| Phase 2d Reflection 代码级验证已完成
 
 ## 📋 近期更新
+
+### Phase 2a 评测增强：结构化判定标签 + Ollama Thinking 控制（2026-06-04）
+- **新增** `LlmService.OllamaThinkingHandler` — DelegatingHandler 拦截器，自动向 Ollama `/api/chat` 请求注入 `think` 参数
+  - Qwen3 默认启用思考模式（生成大量 `<think>` token 导致超时），Function Calling/评测场景需关闭，ReAct/Reflection 场景需开启
+  - `EnableThinking` 属性按场景动态控制（ReAct/Reflection=true，RAG/评测=false）
+- **新增** `LlmService.InjectOllamaThinkingHandler` + `FindHttpClientField` — 通过反射递归搜索 SK 内部 HttpClient 并注入 handler（兼容 SK 1.74.0-alpha 装饰器模式）
+- **修改** `ChemicalComplianceTools.cs` — 所有 Fallback 工具输出追加 `[判定:is_compliant=...]` 结构化标签（true/false/unknown/待核实/依据原文）
+- **重构** `Program.CheckConclusion` — 优先解析 `[判定:is_compliant=...]` 标签进行结论匹配，非二元标签（unknown/待核实）不参与强制匹配，无标签时回退改良版关键词匹配
+- **修改** `appsettings.json` — `EvalFastPrompt` 末尾追加判定标签输出要求
+- **效果**：评测结论匹配从纯关键词猜测升级为结构化标签解析，消除工具输出中的误报/漏报；Qwen3 思考模式可按需开关，避免 Function Calling 超时
 
 ### Phase 2a 模型评测：50条业务基准量化（2026-06-03）
 - **模型切换**：`deepseek-r1:local7b`(不支持Function Calling) → `qwen3:8b-eval`(Q4_K_M量化, n_ctx=8192, n_batch=1024)
