@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Agent1.Services;
 
@@ -32,6 +33,23 @@ namespace Agent1
 
         /// <summary>是否启用了 RAG 检索</summary>
         private bool UseRag => _kbService != null;
+
+        // [P2-2] RAG 检索缓存：评测时同化学品不重复查向量库
+        private static readonly Dictionary<string, List<RetrievedChunk>> RagCache = new();
+
+        /// <summary>[P2-2] 带缓存的 RAG 检索</summary>
+        private async Task<List<RetrievedChunk>> GetCachedOrRetrieveAsync(string query, string regulationType = "国标", int topK = 3)
+        {
+            var cacheKey = $"{query}|{regulationType}|{topK}";
+            if (RagCache.TryGetValue(cacheKey, out var cached))
+            {
+                Console.WriteLine($"   [缓存命中] RAG 结果复用: \"{query}\" ({cached.Count} 条)");
+                return cached;
+            }
+            var chunks = await _kbService!.RetrieveChemicalRegulationAsync(query, regulationType: regulationType, topK: topK);
+            RagCache[cacheKey] = chunks;
+            return chunks;
+        }
 
         // ════════════════════════════════════════
         // 硬编码字典（方案 A 降级兜底 + 旧代码兼容）
@@ -80,6 +98,34 @@ namespace Agent1
             ["甲类仓库-明火点"] = 30,
         };
 
+        // [P2-1] 化学品别名映射表：评测中常见的非标准名称归一化
+        private static readonly Dictionary<string, string> SubstanceAliasMap = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["液氯"] = "氯",
+            ["氨水"] = "氨溶液",
+            ["烧碱"] = "氢氧化钠",
+            ["盐酸"] = "氯化氢",
+            ["双氧水"] = "过氧化氢",
+            ["火碱"] = "氢氧化钠",
+            ["苛性钠"] = "氢氧化钠",
+            ["苛性钾"] = "氢氧化钾",
+            ["酒精"] = "乙醇",
+            ["甘油"] = "丙三醇",
+            ["醋酸"] = "乙酸",
+            ["丙酮"] = "丙酮",  // 保留标准名
+            ["甲醛溶液"] = "甲醛",
+            ["福尔马林"] = "甲醛",
+        };
+
+        /// <summary>[P2-1] 将化学品别名归一化为标准名称</summary>
+        private static string NormalizeSubstanceName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return name;
+            var trimmed = name.Trim();
+            return SubstanceAliasMap.TryGetValue(trimmed, out var normalized) ? normalized : trimmed;
+        }
+
         // ════════════════════════════════════════
         // 主力：[KernelFunction] RAG 检索版（SK Auto Function Calling 入口）
         // 工具返回知识库原文，不依赖 LLM 流式生成
@@ -88,6 +134,8 @@ namespace Agent1
         [KernelFunction, Description("查询指定危化品的危险类别及适用国标（GB 30000 系列）。输入参数 substanceName: 危化品名称，如\"苯\"、\"硫酸\"。")]
         public async Task<string> CheckHazardCategory(string substanceName)
         {
+            // [P2-1] 别名归一化
+            substanceName = NormalizeSubstanceName(substanceName);
             Console.WriteLine($"   [工具诊断] CheckHazardCategory 被调用, substanceName=\"{substanceName}\"");
 
             if (!UseRag)
@@ -96,7 +144,7 @@ namespace Agent1
                 return CheckHazardCategoryFallback(substanceName);
             }
 
-            var chunks = await _kbService!.RetrieveChemicalRegulationAsync(
+            var chunks = await GetCachedOrRetrieveAsync(
                 $"{substanceName} 危险类别 分类 规范",
                 regulationType: "国标", topK: 3);
 
@@ -114,6 +162,9 @@ namespace Agent1
         [KernelFunction, Description("查询两种危化品是否可以同库储存（依据 GB15603）。参数 substanceA: 第一种危化品名称, substanceB: 第二种危化品名称。")]
         public async Task<string> CheckStorageCompatibility(string substanceA, string substanceB)
         {
+            // [P2-1] 别名归一化
+            substanceA = NormalizeSubstanceName(substanceA);
+            substanceB = NormalizeSubstanceName(substanceB);
             Console.WriteLine($"   [工具诊断] CheckStorageCompatibility 被调用, A=\"{substanceA}\", B=\"{substanceB}\"");
 
             if (!UseRag)
@@ -122,7 +173,7 @@ namespace Agent1
                 return CheckStorageCompatibilityFallback(substanceA, substanceB);
             }
 
-            var chunks = await _kbService!.RetrieveChemicalRegulationAsync(
+            var chunks = await GetCachedOrRetrieveAsync(
                 $"{substanceA} {substanceB} 同库储存 配伍禁忌",
                 regulationType: "国标", topK: 3);
 
@@ -148,7 +199,7 @@ namespace Agent1
                 return GetSafetyDistanceFallback(facilityType);
             }
 
-            var chunks = await _kbService!.RetrieveChemicalRegulationAsync(
+            var chunks = await GetCachedOrRetrieveAsync(
                 $"{facilityType} 安全间距 距离 米",
                 regulationType: "国标", topK: 3);
 
@@ -160,7 +211,84 @@ namespace Agent1
                 return GetSafetyDistanceFallback(facilityType);
             }
 
-            return FormatRagResult($"「{facilityType}」安全间距检索结果", chunks);
+            // [P0-1] 从 RAG 原文中提取数值距离，增强可判读性
+            var allText = string.Join("\n", chunks.Select(c => c.Content));
+            var (distance, unit, source) = ExtractDistanceFromText(allText);
+
+            // [P1-1] 从 chunk 中提取法规编号
+            var regSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var c in chunks)
+            {
+                if (c.Metadata != null && c.Metadata.TryGetValue("source", out var src))
+                    ExtractRegulationRefs(src.ToString() ?? "", regSet);
+                ExtractRegulationRefs(c.Content, regSet);
+            }
+
+            var sb = new StringBuilder();
+            if (regSet.Count > 0)
+                sb.AppendLine($"[REGULATIONS: {string.Join(", ", regSet.OrderBy(r => r))}]");
+            if (distance.HasValue)
+                sb.AppendLine($"[DISTANCE: {distance.Value}{unit}]");
+            sb.AppendLine($"📋 「{facilityType}」安全间距检索结果");
+            if (distance.HasValue)
+            {
+                sb.AppendLine($"🔢 **提取数值**: {distance.Value} {unit} (来源: {source})");
+                sb.AppendLine($"⚠️  实际距离需对照 {facilityType} 场景具体判定");
+                sb.AppendLine($"[判定:is_compliant=待核实, 参考距离={distance.Value}{unit}]");
+            }
+            else
+            {
+                sb.AppendLine("⚠️  未从检索结果中提取到具体数值距离");
+                sb.AppendLine("[判定:is_compliant=数据不足]");
+            }
+            sb.AppendLine();
+            for (int i = 0; i < chunks.Count; i++)
+            {
+                var chunk = chunks[i];
+                var chunkSource = "未知来源";
+                if (chunk.Metadata != null && chunk.Metadata.TryGetValue("source", out var src))
+                    chunkSource = src.ToString() ?? "未知来源";
+                sb.AppendLine($"**【检索结果 {i + 1}】** (来源: {chunkSource}, 相关度: {chunk.Score:P0})");
+                sb.AppendLine(chunk.Content);
+                sb.AppendLine();
+            }
+            return sb.ToString().TrimEnd();
+        }
+
+        /// <summary>
+        /// [P0-1] 从 RAG 原文中提取安全距离数值。
+        /// 匹配模式：不小于X米 / >=Xm / 最小安全距离为Xm / 不得小于X米 等
+        /// </summary>
+        private static (double? distance, string unit, string source) ExtractDistanceFromText(string text)
+        {
+            // 模式1: "不小于 X 米" / "不得小于 X m" / "≥ X m"
+            var patterns = new[]
+            {
+                @"(不小于|不得小于|≥|>=s*)s*(\d+(?:\.\d+)?)\s*(米|m)",
+                @"(最小.*?(?:安全|防火)?间距.*?为)\s*(\d+(?:\.\d+)?)\s*(米|m)",
+                @"(安全距离.*?)\s*(\d+(?:\.\d+)?)\s*(米|m)",
+                @"(间距).*?(\d+(?:\.\d+)?)\s*(米|m)",
+                @"(\d+(?:\.\d+)?)\s*(米|m)",  // 最宽泛：直接找 "X米"或"X m"
+            };
+
+            foreach (var pattern in patterns)
+            {
+                var match = Regex.Match(text, pattern);
+                if (match.Success)
+                {
+                    var distStr = match.Groups.Values
+                        .FirstOrDefault(g => double.TryParse(g.Value, out _))?.Value;
+                    if (distStr != null && double.TryParse(distStr, out var d))
+                    {
+                        var contextStart = Math.Max(0, match.Index - 20);
+                        var contextLen = Math.Min(80, text.Length - contextStart);
+                        var context = text.Substring(contextStart, contextLen).Replace("\n", " ");
+                        return (d, "米", context);
+                    }
+                }
+            }
+
+            return (null, "", "");
         }
 
         // ════════════════════════════════════════
@@ -172,7 +300,7 @@ namespace Agent1
             foreach (var kvp in HazardCategories)
             {
                 if (substanceName.Contains(kvp.Key) || kvp.Key.Contains(substanceName))
-                    return $"「{substanceName}」属于「{kvp.Key}」类别，适用标准：{kvp.Value} [判定:is_compliant=unknown]";
+                    return $"[REGULATIONS: {kvp.Value}]\n「{substanceName}」属于「{kvp.Key}」类别，适用标准：{kvp.Value} [判定:is_compliant=unknown]";
             }
             return $"「{substanceName}」未在常见危化品类别中直接匹配，建议查阅 GB 30000 系列标准全文（knowledgebase/国标/ 目录下已收录完整标准文件） [判定:is_compliant=unknown]";
         }
@@ -184,19 +312,19 @@ namespace Agent1
                 bool aIsIncompatible = kvp.Value.Any(s => substanceB.Contains(s));
                 bool bIsIncompatible = kvp.Value.Any(s => substanceA.Contains(s));
                 if (aIsIncompatible || bIsIncompatible)
-                    return $"⚠️ 禁用：「{substanceA}」与「{substanceB}」存在配伍禁忌——{kvp.Key}类不可与之同库贮存。依据：GB15603-1995 第4.2.2条 禁忌物料不得同库贮存 [判定:is_compliant=false]";
+                    return $"[REGULATIONS: GB15603-1995]\n⚠️ 禁用：「{substanceA}」与「{substanceB}」存在配伍禁忌——{kvp.Key}类不可与之同库贮存。依据：GB15603-1995 第4.2.2条 禁忌物料不得同库贮存 [判定:is_compliant=false]";
             }
-            return $"✅ 「{substanceA}」与「{substanceB}」在常见禁忌表中未发现直接冲突，但仍建议按照 GB15603 分类贮存原则进行核实（knowledgebase/国标/GB15603 已收录全文） [判定:is_compliant=true]";
+            return $"[REGULATIONS: GB15603-1995]\n✅ 「{substanceA}」与「{substanceB}」在常见禁忌表中未发现直接冲突，但仍建议按照 GB15603 分类贮存原则进行核实（knowledgebase/国标/GB15603 已收录全文） [判定:is_compliant=true]";
         }
 
         private string GetSafetyDistanceFallback(string facilityType)
         {
             var key = facilityType.Trim();
             if (SafetyDistances.TryGetValue(key, out int distance))
-                return $"「{key}」的最小安全间距为 {distance} 米 [判定:is_compliant=待核实]";
+                return $"[REGULATIONS: GB50160]\n[DISTANCE: {distance}m]\n「{key}」的最小安全间距为 {distance} 米 [判定:is_compliant=待核实]";
             var matched = SafetyDistances.Keys.Where(k => k.Contains(key) || key.Contains(k)).ToList();
             if (matched.Count > 0)
-                return $"已匹配「{matched[0]}」：最小安全间距为 {SafetyDistances[matched[0]]} 米 [判定:is_compliant=待核实]";
+                return $"[REGULATIONS: GB50160]\n[DISTANCE: {SafetyDistances[matched[0]]}m]\n已匹配「{matched[0]}」：最小安全间距为 {SafetyDistances[matched[0]]} 米 [判定:is_compliant=待核实]";
             return $"未找到「{key}」的精确安全距离数值，建议在 knowledgebase/国标/ 目录下查阅 GB50160《石油化工企业设计防火规范》和 GB50016《建筑设计防火规范》全文 [判定:is_compliant=待核实]";
         }
 
@@ -207,6 +335,23 @@ namespace Agent1
         private static string FormatRagResult(string title, List<RetrievedChunk> chunks)
         {
             var sb = new StringBuilder();
+
+            // [P1-1] 结构化法规编号提取: 从 chunk 元数据和内容中提取法规引用
+            var regulationSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var chunk in chunks)
+            {
+                // 从元数据 source 字段提取
+                if (chunk.Metadata != null && chunk.Metadata.TryGetValue("source", out var src))
+                {
+                    var sourceStr = src.ToString() ?? "";
+                    ExtractRegulationRefs(sourceStr, regulationSet);
+                }
+                // 从 chunk 内容中提取法规编号
+                ExtractRegulationRefs(chunk.Content, regulationSet);
+            }
+            if (regulationSet.Count > 0)
+                sb.AppendLine($"[REGULATIONS: {string.Join(", ", regulationSet.OrderBy(r => r))}]");
+
             sb.AppendLine($"📋 {title}");
             sb.AppendLine();
             for (int i = 0; i < chunks.Count; i++)
@@ -221,6 +366,17 @@ namespace Agent1
             }
             sb.AppendLine("[判定:is_compliant=依据原文]");
             return sb.ToString().TrimEnd();
+        }
+
+        /// <summary>[P1-1] 从文本中提取法规编号 (GB XXXX-XXXX 格式)</summary>
+        private static void ExtractRegulationRefs(string text, HashSet<string> resultSet)
+        {
+            var matches = Regex.Matches(text, @"GB\s*/?T?\s*\d{4,5}[.\-]\d{2,4}(?:\s*-\s*\d{4})?");
+            foreach (Match m in matches)
+            {
+                var normalized = Regex.Replace(m.Value, @"\s+", " ").Trim();
+                resultSet.Add(normalized);
+            }
         }
 
         [KernelFunction, Description("获取当前时间和日期")]

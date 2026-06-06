@@ -90,7 +90,7 @@ namespace Agent1.Services
                 var settings = new OpenAIPromptExecutionSettings
                 {
                     ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
-                    FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(),
+                    FunctionChoiceBehavior = FunctionChoiceBehavior.Required(),
                     Temperature = 0.3,
                 };
 
@@ -341,8 +341,8 @@ namespace Agent1.Services
 
             for (int attempt = 1; attempt <= MaxRetries; attempt++)
             {
-                // [P1-1] 第1次 8 分钟 (FC+RAG 全链路), 重试 5 分钟 (仅 LLM 文本生成)
-                var timeoutMinutes = attempt == 1 ? 8 : 5;
+                // 评测快速通道：缩减超时 + 限制输出 token，CPU 推理大幅提速
+                var timeoutMinutes = attempt == 1 ? 4 : 3;
                 using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(timeoutMinutes));
 
                 try
@@ -356,8 +356,9 @@ namespace Agent1.Services
                         var settings = new OpenAIPromptExecutionSettings
                         {
                             ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
-                            FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(),
-                            Temperature = 0.3,
+                            FunctionChoiceBehavior = FunctionChoiceBehavior.Required(),
+                            Temperature = 0.0,
+                            MaxTokens = 300,
                         };
 
                         LastFunctionCalls.Clear();
@@ -432,6 +433,77 @@ namespace Agent1.Services
 
             Console.WriteLine($"   ❌ 所有重试失败: {lastException?.Message}");
             return $"生成失败: {lastException?.Message}";
+        }
+
+        /// <summary>
+        /// Layer 1 FC 就绪性检查 — 在业务评测前验证 Function Calling 管线是否正常。
+        /// 使用与评测相同的非流式调用路径 (InvokeNonStreamingWithRetryAsync)，
+        /// 确保 Layer 1 和 Layer 2 的 FC 行为完全一致。
+        /// 返回 (是否基础通过, 触发数, 总数, 详细诊断文本)。
+        /// 基础通过标准: 5 条至少 1 条触发了工具调用。
+        /// </summary>
+        public async Task<(bool passed, int triggerCount, int totalCount, string detail)> RunFcReadinessCheckAsync()
+        {
+            var testCases = new (string query, string expectedTools, string description)[]
+            {
+                ("苯属于什么危险类别", "CheckHazardCategory", "危险类别查询"),
+                ("苯和丙酮能同库储存吗", "CheckStorageCompatibility", "储存兼容性检查"),
+                ("甲类仓库与明火点的安全距离是多少", "GetSafetyDistance", "安全距离查询"),
+                ("现在几点", "GetCurrentTime", "通用工具-时间"),
+                ("甲醇和硝酸存放在同一个仓库是否合规", "CheckHazardCategory,CheckStorageCompatibility", "多工具调用"),
+            };
+
+            var promptTemplate = AppConfig.Instance.PromptTemplates.EvalFastPrompt;
+            var detail = new System.Text.StringBuilder();
+            int triggerCount = 0;
+
+            Console.WriteLine("\n   ── FC 就绪性检查 ──");
+
+            for (int i = 0; i < testCases.Length; i++)
+            {
+                var tc = testCases[i];
+                Console.Write($"   [{i + 1}/{testCases.Length}] {tc.description}: \"{tc.query}\" ... ");
+
+                // 使用与 eval 完全相同的 prompt 模板和调用路径
+                var prompt = promptTemplate
+                    .Replace("{SystemRole}", AppConfig.Instance.PromptTemplates.SystemRole)
+                    .Replace("{UserInput}", tc.query);
+
+                try
+                {
+                    await InvokeNonStreamingWithRetryAsync(prompt, "FC就绪检查");
+
+                    if (LastFunctionCalls.Count > 0)
+                    {
+                        var tools = string.Join(", ", LastFunctionCalls.Select(fc => fc.FunctionName));
+                        Console.WriteLine($"✅ 触发: {tools}");
+                        detail.AppendLine($"  ✅ [{tc.description}] {tc.query} → {tools}");
+                        triggerCount++;
+                    }
+                    else
+                    {
+                        Console.WriteLine("❌ 未触发");
+                        detail.AppendLine($"  ❌ [{tc.description}] {tc.query} → 未触发任何工具 (预期: {tc.expectedTools})");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"⚠️ 异常: {ex.Message}");
+                    detail.AppendLine($"  ⚠️ [{tc.description}] {tc.query} → 异常: {ex.Message}");
+                }
+
+                await Task.Delay(500);
+            }
+
+            var passed = triggerCount >= 1; // 基础通过: 至少 1 条触发
+            var status = passed
+                ? (triggerCount >= 3 ? "就绪 ✅" : "基础通过 ⚠️")
+                : "未就绪 ❌";
+
+            Console.WriteLine($"   FC 就绪性: {triggerCount}/{testCases.Length} 触发 → {status}");
+            detail.Insert(0, $"FC 就绪性检查: {triggerCount}/{testCases.Length} → {status}\n");
+
+            return (passed, triggerCount, testCases.Length, detail.ToString());
         }
 
         // 生成单个文本的向量嵌入
@@ -525,9 +597,16 @@ namespace Agent1.Services
                 var (owner, httpClientField) = result.Value;
 
                 // 创建新的 HttpClient，将 handler 作为最内层 handler
+                // [P0 FIX] 必须设置 BaseAddress，否则 SK 内部使用相对 URI (/api/chat) 时
+                // 抛出 "An invalid request URI was provided"。BaseAddress 需以 / 结尾，
+                // 确保与相对路径正确拼接（如 http://localhost:11434/ + api/chat = 正确 URL）。
+                var baseAddr = ModelConfig.Endpoint;
+                if (!baseAddr.AbsoluteUri.EndsWith("/"))
+                    baseAddr = new Uri(baseAddr.AbsoluteUri + "/");
                 var newHttpClient = new HttpClient(handler)
                 {
-                    Timeout = TimeSpan.FromMinutes(15)
+                    Timeout = TimeSpan.FromMinutes(15),
+                    BaseAddress = baseAddr
                 };
                 httpClientField.SetValue(owner, newHttpClient);
 
@@ -648,8 +727,9 @@ namespace Agent1.Services
                 {
                     var body = await request.Content.ReadAsStringAsync(cancellationToken);
 
-                    // 仅在 JSON body 中不存在 think 参数时才注入
-                    if (!body.Contains("\"think\""))
+                    // 仅在显式要求思考时才注入 think:true；
+                    // think:false 不再注入，让 Qwen3 根据 tools 在场自动选择 non-thinking（更快）
+                    if (_owner.EnableThinking && !body.Contains("\"think\""))
                     {
                         var trimmed = body.TrimEnd();
                         if (trimmed.EndsWith("}"))

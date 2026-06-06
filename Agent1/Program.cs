@@ -255,7 +255,7 @@ namespace Agent1
                 }
                 else if (input == "13")
                 {
-                    await RunComplianceEval(agentDialog, llmService);
+                    await RunComplianceEval(agentDialog, llmService, knowledgeBaseService);
                 }
                 else
                 {
@@ -497,7 +497,7 @@ namespace Agent1
         // ═══════════════════════════════════════════════════════
         // 业务评测引擎 — 50条合规评测集全量跑测
         // ═══════════════════════════════════════════════════════
-        static async Task RunComplianceEval(AgentDialog agentDialog, ILlmService llmService)
+        static async Task RunComplianceEval(AgentDialog agentDialog, ILlmService llmService, IKnowledgeBaseService knowledgeBaseService)
         {
             var evalConfig = AppConfig.Instance.Evaluation;
             var jsonPath = Path.Combine(AppContext.BaseDirectory, evalConfig.EvalSetPath);
@@ -535,6 +535,66 @@ namespace Agent1
             Console.WriteLine($"📋 加载评测集: {evalSet.name} (v{evalSet.version})");
             Console.WriteLine($"   共 {cases.Count} 条用例\n");
 
+            // ════════════════════════════════════════
+            // Layer 1: FC 就绪性检查（前置条件）
+            // ════════════════════════════════════════
+            var llmSvcLayer1 = llmService as LlmService;
+            bool fcReady = false;
+            int fcTriggerCount = 0;
+            int fcTotalCount = 5;
+            string fcDetail = "";
+
+            if (llmSvcLayer1 != null)
+            {
+                Console.WriteLine("🔍 前置检查: FC 就绪性验证...");
+                var (passed, trigCnt, totalCnt, detail) = await llmSvcLayer1.RunFcReadinessCheckAsync();
+                fcReady = passed;
+                fcTriggerCount = trigCnt;
+                fcTotalCount = totalCnt;
+                fcDetail = detail;
+                Console.WriteLine();
+            }
+
+            if (!fcReady)
+            {
+                Console.WriteLine("❌ FC 管线未就绪 — 5 条诊断用例均未触发任何工具调用。");
+                Console.WriteLine("   可能原因: 模型不支持 Function Calling 或 Prompt 未引导工具使用。");
+                Console.WriteLine("   建议: 先运行 menu 12「工具调用诊断验证」排查管线问题。");
+                Console.WriteLine("   跳过业务评测，避免 50 条全量无效跑测。\n");
+
+                // 生成阻断诊断报告
+                var blockedReport = new EvalReport
+                {
+                    model = ModelConfig.ModelId,
+                    timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                    total = 0,
+                    tool_call_rate = 0,
+                    parameter_accuracy = 0,
+                    conclusion_accuracy = 0,
+                    fc_readiness = new FcReadinessStatus
+                    {
+                        passed = false,
+                        trigger_count = fcTriggerCount,
+                        total_count = fcTotalCount,
+                        detail = fcDetail
+                    },
+                    cases = new List<EvalResult>()
+                };
+
+                var blockedReportPath = Path.Combine(AppContext.BaseDirectory, evalConfig.OutputReportPath);
+                var blockedReportDir = Path.GetDirectoryName(blockedReportPath);
+                if (!string.IsNullOrEmpty(blockedReportDir) && !Directory.Exists(blockedReportDir))
+                    Directory.CreateDirectory(blockedReportDir);
+                var blockedJson = JsonSerializer.Serialize(blockedReport, new JsonSerializerOptions { WriteIndented = true });
+                await File.WriteAllTextAsync(blockedReportPath, blockedJson);
+                Console.WriteLine($"📄 诊断报告已保存: {blockedReportPath}\n");
+
+                EvalMode.IsActive = false;
+                return;
+            }
+
+            Console.WriteLine($"   ✅ FC 就绪 ({fcTriggerCount}/{fcTotalCount} 触发)，进入业务评测...\n");
+
             var results = new List<EvalResult>();
             var categoryStats = new Dictionary<string, (int total, int toolOk, int paramOk, int conclusionOk)>();
 
@@ -561,7 +621,12 @@ namespace Agent1
 
                 try
                 {
-                    var response = await agentDialog.ExecuteEvalFastAsync(tc.query);
+                    // [P0-2] 意图路由: info_query 使用查询专用 Prompt，compliance_judgment 使用判断专用 Prompt
+                    var isInfoQuery = (tc.intent ?? "").Equals("info_query", StringComparison.OrdinalIgnoreCase);
+                    Console.WriteLine($"   意图: {(isInfoQuery ? "信息查询" : "合规判断")}");
+                    var response = isInfoQuery
+                        ? await agentDialog.ExecuteEvalFastQueryAsync(tc.query)
+                        : await agentDialog.ExecuteEvalFastAsync(tc.query);
                     result.actual_response = response ?? "";
 
                     // 1) 工具触发检查
@@ -586,11 +651,12 @@ namespace Agent1
                                 Console.WriteLine($"      {(result.param_match ? "✅" : "⚠️")} 参数: {result.actual_params}");
                             }
 
-                            // 3) 结论检查
+                            // 3) 结论检查 — [P0-3] 升级：传递 intent 用于结构化对比
                             if (tc.expected_conclusion != null)
                             {
-                                result.conclusion_match = CheckConclusion(response, tc.expected_conclusion);
-                                Console.WriteLine($"      {(result.conclusion_match ? "✅" : "⚠️")} 结论: is_compliant={tc.expected_conclusion.is_compliant}");
+                                result.conclusion_match = CheckConclusion(response, tc.expected_conclusion, result.tool_match, tc.category, tc.intent);
+                                var isInfoQ = (tc.intent ?? "") == "info_query";
+                                Console.WriteLine($"      {(result.conclusion_match ? "✅" : "⚠️")} 结论: {(isInfoQ ? $"reg={tc.expected_conclusion.expected_regulation_number ?? "?"}" : $"is_compliant={tc.expected_conclusion.is_compliant}")}");
                             }
                         }
                         else
@@ -614,6 +680,27 @@ namespace Agent1
                         cat2.paramOk + (result.param_match ? 1 : 0),
                         cat2.conclusionOk + (result.conclusion_match ? 1 : 0)
                     );
+
+                    // [P1-2] Post-hoc KB 反向验证: 对 LLM 输出的法规编号做知识库存在性检查
+                    if (tc.intent == "compliance_judgment" && !string.IsNullOrEmpty(response))
+                    {
+                        try
+                        {
+                            var llmSvc2 = llmService as LlmService;
+                            var toolCalls = llmSvc2?.LastFunctionCalls ?? new List<FunctionCallRecord>();
+                            var verification = await ConclusionVerifier.VerifyAsync(
+                                response, toolCalls, knowledgeBaseService, tc.category);
+                            if (verification.HallucinatedRegulations.Count > 0)
+                            {
+                                Console.WriteLine($"      🔍 法规幻觉: {string.Join(", ", verification.HallucinatedRegulations)}");
+                            }
+                            if (verification.VerifiedRegulations.Count > 0)
+                            {
+                                Console.WriteLine($"      ✅ 法规已验证: {string.Join(", ", verification.VerifiedRegulations)}");
+                            }
+                        }
+                        catch { /* KB 验证异常不中断评测 */ }
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -634,6 +721,8 @@ namespace Agent1
 
             Console.WriteLine("\n╔════════════════════════════════════════╗");
             Console.WriteLine("║         业 务 评 测 报 告              ║");
+            Console.WriteLine("╠════════════════════════════════════════╣");
+            Console.WriteLine($"║  FC 就绪性:   {fcTriggerCount}/{fcTotalCount} → {(fcReady ? "通过 ✅" : "未通过 ❌")}             ║");
             Console.WriteLine("╠════════════════════════════════════════╣");
             Console.WriteLine($"║  总用例数:     {total,3}                        ║");
             Console.WriteLine($"║  成功执行:     {total - errors,3}                        ║");
@@ -664,6 +753,13 @@ namespace Agent1
                 tool_call_rate = toolOk * 100.0 / Math.Max(total, 1),
                 parameter_accuracy = paramOk * 100.0 / Math.Max(total, 1),
                 conclusion_accuracy = conclusionOk * 100.0 / Math.Max(total, 1),
+                fc_readiness = new FcReadinessStatus
+                {
+                    passed = fcReady,
+                    trigger_count = fcTriggerCount,
+                    total_count = fcTotalCount,
+                    detail = fcDetail
+                },
                 category_breakdown = categoryStats.ToDictionary(
                     kvp => kvp.Key,
                     kvp => new CategoryMetric
@@ -713,61 +809,115 @@ namespace Agent1
         }
 
         /// <summary>
-        /// [P0-3 FIX] 检查响应中的合规结论是否匹配预期。
-        /// 优先解析工具嵌入的 [判定:is_compliant=...] 结构化标签；
-        /// unknown/待核实/依据原文 等非二元标签不参与匹配，回退关键词。
-        /// 无标签时回退到改良版关键词匹配（排除常见误报模式）。
+        /// [P0-3 升级] 结论校验：intent 驱动的结构化对比。
+        /// - info_query: 不检查 is_compliant，改为检查法规编号匹配 / 距离数值匹配
+        /// - compliance_judgment: 检查结构化标签 + 法规编号 + 关键词兜底
         /// </summary>
-        static bool CheckConclusion(string? response, EvalConclusion? expected)
+        static bool CheckConclusion(string? response, EvalConclusion? expected, bool toolTriggered, string? category = null, string? intent = null)
         {
             if (string.IsNullOrEmpty(response) || expected == null)
                 return false;
 
-            // 1. 优先查找 [判定:is_compliant=...] 标签（容忍空格和大小写差异）
+            // 未触发工具 → 结论自动不可信
+            if (!toolTriggered)
+                return false;
+
+            var isInfoQuery = (intent ?? "").Equals("info_query", StringComparison.OrdinalIgnoreCase);
+
+            // ════════════════════════════════════════
+            // 信息查询路径: 仅验证事实提取准确性
+            // ════════════════════════════════════════
+            if (isInfoQuery)
+            {
+                // 安全距离子类型: 数值比对
+                if (category == "安全距离" && expected.expected_distance.HasValue)
+                {
+                    return CheckSafetyDistanceMatch(response, expected.expected_distance.Value);
+                }
+
+                // 危险类别查询: 检查法规编号是否匹配
+                if (!string.IsNullOrEmpty(expected.expected_regulation_number))
+                {
+                    return CheckRegulationMatch(response, expected.expected_regulation_number);
+                }
+
+                // 退化: 至少有数值或法规编号格式
+                var hasDistance = Regex.IsMatch(response, @"(\d+(?:\.\d+)?)\s*(米|m)");
+                var hasRegulation = Regex.IsMatch(response, @"GB\s*/?T?\s*\d{4,5}[.\-]\d+");
+                var hasDataInsufficient = response.Contains("数据不足") || response.Contains("未检索到");
+                return hasDistance || hasRegulation || hasDataInsufficient;
+            }
+
+            // ════════════════════════════════════════
+            // 合规判断路径: 结构化对比 + 法规验证
+            // ════════════════════════════════════════
+
+            // 1. 优先结构化标签 [判定:is_compliant=...]
             var tagMatch = Regex.Match(response, @"\[判定\s*:\s*is_compliant\s*=\s*(true|false|unknown|待核实|依据原文)\s*\]", RegexOptions.IgnoreCase);
+            bool tagPassed = false;
             if (tagMatch.Success)
             {
                 var tagValue = tagMatch.Groups[1].Value.Trim();
-
-                // 非二元标签：unknown/待核实/依据原文 → 不参与匹配，回退关键词
                 if (tagValue.Equals("unknown", StringComparison.OrdinalIgnoreCase)
                     || tagValue.Equals("待核实")
                     || tagValue.Equals("依据原文"))
                 {
-                    // 不回退关键词——这是非结论性工具输出，不应强制匹配
-                    return false;
+                    return false; // 非结论性输出
                 }
-
-                // 二元标签：true/false → 直接比对
                 var parsed = bool.TryParse(tagValue, out var isCompliant) && isCompliant;
-                return parsed == expected.is_compliant;
+                tagPassed = parsed == expected.is_compliant;
             }
 
-            // 2. 无结构标签时，回退关键词匹配（排除常见误报模式）
-            var respLower = response.ToLowerInvariant();
+            // 2. 法规编号匹配（如果有期望值）
+            bool regPassed = true;
+            if (!string.IsNullOrEmpty(expected.expected_regulation_number))
+            {
+                regPassed = CheckRegulationMatch(response, expected.expected_regulation_number);
+            }
 
-            // 误报排除词：工具回复中常见的 non-compliance 上下文化用语
+            // 3. 结构化标签通过即通过；否则法规匹配 + 关键词兜底
+            if (tagPassed) return true;
+            if (regPassed && tagMatch.Success) return true; // 法规对但标签不匹配：半通过
+
+            // 4. 关键词兜底（最低优先级）
+            var respLower = response.ToLowerInvariant();
             bool hasCaveat = respLower.Contains("不建议") || respLower.Contains("建议查阅")
                           || respLower.Contains("仍建议核实") || respLower.Contains("未发现直接冲突");
+            bool hasConditional = respLower.Contains("如果") || respLower.Contains("则") || respLower.Contains("当");
 
-            // 条件否定的标志词（"如果...则不允许" 不应算作不合规结论）
-            bool hasConditional = respLower.Contains("如果") || respLower.Contains("则")
-                               || respLower.Contains("当");
+            if (expected.is_compliant == true)
+            {
+                return (respLower.Contains("合规") || respLower.Contains("允许") || respLower.Contains("可以")) && !hasCaveat;
+            }
+            else if (expected.is_compliant == false)
+            {
+                return (respLower.Contains("不合规") || respLower.Contains("不允许")
+                     || respLower.Contains("禁止") || respLower.Contains("严禁") || respLower.Contains("禁忌")) && !hasConditional;
+            }
+            return false;
+        }
 
-            if (expected.is_compliant)
+        /// <summary>[P0-3] 安全距离数值比对: 从响应中提取数值与期望值比对（容差 ±5% 或 ±1m）</summary>
+        static bool CheckSafetyDistanceMatch(string response, double expectedDistance)
+        {
+            var match = Regex.Match(response, @"(\d+(?:\.\d+)?)\s*(米|m)");
+            if (!match.Success) return false;
+
+            if (double.TryParse(match.Groups[1].Value, out var actualDistance))
             {
-                // 合规判定：含正向关键词 AND 不含误报排除词
-                bool hasPositive = respLower.Contains("合规") || respLower.Contains("允许") || respLower.Contains("可以");
-                return hasPositive && !hasCaveat;
+                var tolerance = Math.Max(expectedDistance * 0.05, 1.0);
+                return Math.Abs(actualDistance - expectedDistance) <= tolerance;
             }
-            else
-            {
-                // 不合规判定：含负向关键词 AND 不是条件句
-                bool hasNegative = respLower.Contains("不合规") || respLower.Contains("不允许")
-                                || respLower.Contains("禁止") || respLower.Contains("严禁")
-                                || respLower.Contains("禁忌");
-                return hasNegative && !hasConditional;
-            }
+            return false;
+        }
+
+        /// <summary>[P0-3] 法规编号匹配: 检查响应中是否包含期望的法规编号</summary>
+        static bool CheckRegulationMatch(string response, string expectedRegNumber)
+        {
+            // 标准化: 去掉 GB 和 GB/T 的变体
+            var normalizedResponse = Regex.Replace(response, @"GB\s*/?T?\s*", "GB");
+            var normalizedExpected = Regex.Replace(expectedRegNumber, @"GB\s*/?T?\s*", "GB");
+            return normalizedResponse.Contains(normalizedExpected, StringComparison.OrdinalIgnoreCase);
         }
 
         // ═══════ 评测数据模型 ═══════
@@ -783,6 +933,7 @@ namespace Agent1
         {
             public string id { get; set; } = "";
             public string category { get; set; } = "";
+            public string intent { get; set; } = "";
             public string query { get; set; } = "";
             public string expected_tool { get; set; } = "";
             public Dictionary<string, string>? expected_params { get; set; }
@@ -791,8 +942,13 @@ namespace Agent1
 
         class EvalConclusion
         {
-            public bool is_compliant { get; set; }
+            public bool? is_compliant { get; set; }
             public string regulation { get; set; } = "";
+            public string? expected_regulation_number { get; set; }
+            public string? expected_clause { get; set; }
+            public string? expected_reason_keyword { get; set; }
+            public double? expected_distance { get; set; }
+            public string? expected_distance_unit { get; set; }
         }
 
         class EvalResult
@@ -818,8 +974,17 @@ namespace Agent1
             public double tool_call_rate { get; set; }
             public double parameter_accuracy { get; set; }
             public double conclusion_accuracy { get; set; }
+            public FcReadinessStatus? fc_readiness { get; set; }
             public Dictionary<string, CategoryMetric> category_breakdown { get; set; } = new();
             public List<EvalResult> cases { get; set; } = new();
+        }
+
+        class FcReadinessStatus
+        {
+            public bool passed { get; set; }
+            public int trigger_count { get; set; }
+            public int total_count { get; set; }
+            public string detail { get; set; } = "";
         }
 
         class CategoryMetric

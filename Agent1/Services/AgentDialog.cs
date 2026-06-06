@@ -208,13 +208,32 @@ namespace Agent1.Services
                 .Replace("{SystemRole}", t.SystemRole)
                 .Replace("{UserInput}", userInput);
 
+            return await ExecuteEvalInternalAsync(prompt, "评测");
+        }
+
+        /// <summary>
+        /// 评测快速通道 (信息查询意图): 使用 EvalFastQueryPrompt，禁止合规判断，仅提取事实。
+        /// </summary>
+        public async Task<string> ExecuteEvalFastQueryAsync(string userInput)
+        {
+            var t = AppConfig.Instance.PromptTemplates;
+            var prompt = t.EvalFastQueryPrompt
+                .Replace("{SystemRole}", t.SystemRole)
+                .Replace("{UserInput}", userInput);
+
+            return await ExecuteEvalInternalAsync(prompt, "评测(信息查询)");
+        }
+
+        /// <summary>评测快速通道内部实现</summary>
+        private async Task<string> ExecuteEvalInternalAsync(string prompt, string stageName)
+        {
             Console.Write("   [非流式] 调用中... ");
             var llmService = _llmService as LlmService;
             string answer;
 
             if (llmService != null)
             {
-                answer = await llmService.InvokeNonStreamingWithRetryAsync(prompt, "评测");
+                answer = await llmService.InvokeNonStreamingWithRetryAsync(prompt, stageName);
 
                 // 同步工具调用记录供评测器检查
                 if (llmService.LastFunctionCalls.Count > 0)
