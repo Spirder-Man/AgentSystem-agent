@@ -24,7 +24,10 @@
 │   │   ├── SemanticChunker.cs # 语义分块服务
 │   │   ├── AuditService.cs   # 审计日志服务
 │   │   ├── ReflectionVerifier.cs # 代码级反思验证引擎
+│   │   ├── ConclusionVerifier.cs # Post-hoc 结论验证 + KB 反向检索
 │   │   └── AgentDialog.cs    # Agent对话管理
+│   ├── IntentRouter.cs       # 意图路由（关键词匹配）
+│   ├── ChemicalComplianceTools.cs # 化工合规工具集（SK Plugin）
 │   ├── Config/               # 配置文件
 │   └── Program.cs            # 应用入口
 ├── ArchitectureTest/         # 架构测试模块
@@ -228,11 +231,20 @@ MIT License
 
 ---
 
-**文档版本**：v2.2  
-**最后更新**：2026年6月4日  
-**状态**：Phase 2a 评测增强（结构化判定标签 + Thinking 控制）| Phase 2d Reflection 代码级验证已完成
+**文档版本**：v2.3  
+**最后更新**：2026年6月6日  
+**状态**：Phase 2a 评测体系生产级修复完成 | 工具触发/意图路由/Citation结构化/KB反向验证
 
 ## 📋 近期更新
+
+### Phase 2a 评测体系生产级修复（2026-06-06）
+- **P0-1 强制工具调用**：`LlmService.cs` 中 `FunctionChoiceBehavior.Auto()` → `Required()`，LLM 不再能跳过工具调用
+- **P0-2 意图路由分离**：评测路径按 `info_query` / `compliance_judgment` 分流，信息查询用例使用 `EvalFastQueryPrompt`（禁止合规判断），合规判断用例使用 `EvalFastPrompt`
+- **P0-3 评测器结构化对比**：`CheckConclusion` 重写为 intent 驱动三层对比 — 安全距离数值容差比对（±5% 或 ±1m）、法规编号精确匹配、结构化标签 `[判定:is_compliant=...]` 解析
+- **P1-1 Citation 结构化输出**：`ChemicalComplianceTools.FormatRagResult` 自动从 chunk 元数据和内容中提取 `[REGULATIONS: ...]` 标签；降级方法同步输出结构化标签；Prompt 增加反幻觉指令（禁止编造法规编号）
+- **P1-2 KB 反向验证**：`ConclusionVerifier.VerifyAsync` 新增知识库反向检索 — 对 LLM 输出的每个法规编号到 KB 验证是否存在，替代静态 `KnownGbPrefixes` 白名单；评测循环中集成实时幻觉检出
+- **评测集升级**：`ComplianceEvalSet.json` v1.1 — 50 条用例增加 `intent`、`expected_regulation_number`、`expected_clause`、`expected_distance` 等结构化字段
+- **影响指标**：工具触发率预期 78% → 95%+；安全距离结论准确率预期 0% → 显著提升；法规编号幻觉可实时检出
 
 ### Phase 2a 评测增强：结构化判定标签 + Ollama Thinking 控制（2026-06-04）
 - **新增** `LlmService.OllamaThinkingHandler` — DelegatingHandler 拦截器，自动向 Ollama `/api/chat` 请求注入 `think` 参数
