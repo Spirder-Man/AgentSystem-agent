@@ -50,6 +50,13 @@ namespace Agent1.Config
                 errors.Add($"Database.Port 无效: {Database.Port}");
             if (string.IsNullOrWhiteSpace(Database.DatabaseName))
                 errors.Add("Database.DatabaseName 未配置");
+            if (string.IsNullOrWhiteSpace(Database.Password))
+            {
+                // 检查环境变量是否提供了密码
+                var envPwd = Environment.GetEnvironmentVariable("DB_PASSWORD");
+                if (string.IsNullOrEmpty(envPwd))
+                    errors.Add("Database.Password 未配置 — 请设置 DB_PASSWORD 环境变量或在 appsettings.json 中配置（禁止空密码连接）");
+            }
 
             if (string.IsNullOrWhiteSpace(VectorSearch.EmbeddingModelId))
                 errors.Add("VectorSearch.EmbeddingModelId 未配置（嵌入模型不能为空）");

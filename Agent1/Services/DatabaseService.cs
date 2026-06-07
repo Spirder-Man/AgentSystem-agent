@@ -227,16 +227,21 @@ namespace Agent1.Services
 
         private string BuildConnectionString()
         {
-            return new NpgsqlConnectionStringBuilder
+            // Task 6: 密码加固 — 空密码不写入连接字符串，防止误连
+            var builder = new NpgsqlConnectionStringBuilder
             {
                 Host = _dbConfig.Host,
                 Port = _dbConfig.Port,
                 Database = _dbConfig.DatabaseName,
                 Username = _dbConfig.Username,
-                Password = _dbConfig.Password,
                 Timeout = _dbConfig.ConnectionTimeout,
                 MaxPoolSize = _dbConfig.MaxPoolSize
-            }.ToString();
+            };
+            if (!string.IsNullOrEmpty(_dbConfig.Password))
+            {
+                builder.Password = _dbConfig.Password;
+            }
+            return builder.ToString();
         }
 
         private NpgsqlConnection CreateConnection()

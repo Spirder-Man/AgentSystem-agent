@@ -150,6 +150,9 @@ SK 1.74.0-alpha 的实际对象链路是装饰器模式（见§2），我们无�
 | **回退机制** | 反射失败时静默捕获异常，记录详细错误日志，程序继续以默认行为运行（不注入）。 |
 | **逻辑封装** | 所有反射逻辑封装在独立辅助类中，与业务代码完全隔离。 |
 | **运行时验证** | 发送轻量 `ping` 请求，检查响应中是否包含 `<think>` 标签，作为双重保险。 |
+| **BaseAddress 保底** | 替换 HttpClient 时必须显式设置 `BaseAddress = ModelConfig.Endpoint`（末尾加 `/`），否则 SK 内部使用相对 URI（`/api/chat`）时会抛出 `An invalid request URI was provided`。详见 §7.2。 |
+
+> **🔴 实战踩坑记录（2026-06-04）**：加固措施表最初缺少 BaseAddress 保底。在评测系统（非流式调用）上线后，`InjectThinkingHandler` 创建的新 `HttpClient` 未设置 `BaseAddress`，导致所有评测请求抛出 `An invalid request URI was provided`。根因：SK 内部 Ollama 连接器使用相对 URI 构造请求，替换 HttpClient 后丢失了原始 `BaseAddress`。修复后已在表中补充此项。
 
 以上加固措施已在当前项目（SK 1.74.0-alpha + Qwen3-8B + CPU 推理）中实际运行并通过 49 条合规评测验证。
 
@@ -291,6 +294,26 @@ internal class OllamaThinkingHandler : DelegatingHandler
 > **注入位置说明**：`think` 注入到 JSON body 的**根级别**（与 `model`、`messages`、`stream` 同级），而非 `options` 子对象内部。这是因为 Ollama API 的 `think` 是 `ChatRequest` 的一级属性，不是运行时调优参数。
 
 **反射注入链路（已验证）**：`Kernel` → `IChatCompletionService`(`ChatClientChatCompletionService`) → 递归搜索字段/属性 → `_chatClient`(`KernelFunctionInvokingChatClient`) → `InnerClient`(属性) → `OllamaApiClient` → `_client`(HttpClient) → 替换为携带 `OllamaThinkingHandler` 的新 `HttpClient`。递归搜索最多 5 层，失败时静默降级，不影响程序运行。
+
+#### 🛡️ HttpClient 替换代码（含 BaseAddress 保底）
+
+替换 `OllamaApiClient._client` 时，**必须显式设置 `BaseAddress`**，否则 SK 使用相对 URI 发请求时会失败：
+
+```csharp
+// InjectThinkingHandler 中替换 HttpClient 的正确写法
+var baseAddr = ModelConfig.Endpoint;              // http://localhost:11434
+if (!baseAddr.AbsoluteUri.EndsWith("/"))
+    baseAddr = new Uri(baseAddr.AbsoluteUri + "/"); // 尾部斜杠确保与相对路径正确拼接
+
+var newHttpClient = new HttpClient(handler)
+{
+    Timeout = TimeSpan.FromMinutes(15),
+    BaseAddress = baseAddr   // ⚠️ 必须设置！SK 内部使用 /api/chat 等相对 URI
+};
+httpClientField.SetValue(owner, newHttpClient);
+```
+
+> **🔴 踩坑警告**：初次实现时漏掉了 `BaseAddress`，导致流式调用（`InvokePromptStreamingAsync`）正常工作，但非流式调用（`InvokePromptAsync`）抛出 `An invalid request URI was provided`。这是因为 SK 的流式和非流式路径在构造请求 URI 时行为略有差异，流式路径可能使用了绝对 URI，而非流式路径依赖 `HttpClient.BaseAddress`。无论哪种情况，设置 `BaseAddress` 都是正确的做法。
 
 ### 7.3 诊断技巧：如何反向探查 NuGet 包的内部结构？
 

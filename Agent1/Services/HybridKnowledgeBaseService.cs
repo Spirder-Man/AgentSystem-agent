@@ -1,6 +1,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Agent1.Config;
@@ -111,18 +112,26 @@ namespace Agent1.Services
             if (!EvalMode.IsActive)
                 Console.WriteLine($"\n🔍 开始混合检索: {query}");
 
+            var sw = Stopwatch.StartNew();
+            List<RetrievedChunk> results;
             var mode = _kbConfig.SearchMode?.ToLowerInvariant() ?? "hybrid";
 
             switch (mode)
             {
                 case "bm25":
-                    return await Bm25RetrieveAsync(query, topK);
+                    results = await Bm25RetrieveAsync(query, topK);
+                    break;
                 case "vector":
-                    return await VectorRetrieveAsync(query, topK);
+                    results = await VectorRetrieveAsync(query, topK);
+                    break;
                 case "hybrid":
                 default:
-                    return await HybridRetrieveAsync(query, topK);
+                    results = await HybridRetrieveAsync(query, topK);
+                    break;
             }
+
+            MetricsCollector.RecordRagSearch(sw.ElapsedMilliseconds);
+            return results;
         }
 
         public string PreprocessQuery(string query)

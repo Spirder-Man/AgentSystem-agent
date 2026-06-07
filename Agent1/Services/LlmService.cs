@@ -7,6 +7,7 @@ using Microsoft.SemanticKernel.Connectors.Ollama;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -26,6 +27,13 @@ namespace Agent1.Services
 
         // Phase 2a 验证: 工具调用诊断 — 记录最近一次 SK Auto Function Calling 的执行信息
         public List<FunctionCallRecord> LastFunctionCalls { get; private set; } = new();
+
+        // ── Task 7: LLM 熔断器 — 连续失败达阈值后拒绝服务冷却期，防止雪崩 ──
+        private int _consecutiveFailures = 0;
+        private DateTime? _circuitOpenTime = null;
+        private readonly object _circuitLock = new();
+        private const int MaxConsecutiveFailures = 3;
+        private static readonly TimeSpan CircuitBreakDuration = TimeSpan.FromSeconds(30);
 
         /// <summary>
         /// [Thinking控制] 控制 Qwen3 思考模式开关。
@@ -274,9 +282,14 @@ namespace Agent1.Services
 
         public async Task<string> InvokeStreamWithRetryAsync(string prompt, ConsoleColor color, string stageName = "")
         {
+            // Task 7: 熔断器检查 — 电路打开时快速失败
+            CheckCircuitBreaker();
+
             // [Thinking控制] ReAct/Reflection/CoT 深度推理场景启用思考模式
             var previousThinking = EnableThinking;
             EnableThinking = true;
+            var sw = Stopwatch.StartNew();
+            int retries = 0;
             try
             {
                 Exception lastException = null;
@@ -287,10 +300,14 @@ namespace Agent1.Services
                     {
                         if (attempt > 1)
                         {
+                            retries = attempt - 1;
                             Console.WriteLine($"\n🔄 第{attempt}次重试 {stageName}...");
                         }
 
-                        return await InvokeStreamAsync(prompt, color);
+                        var result = await InvokeStreamAsync(prompt, color);
+                        RecordCircuitSuccess();
+                        MetricsCollector.RecordLlmCall(sw.ElapsedMilliseconds, true, retries);
+                        return result;
                     }
                     catch (OperationCanceledException ex)
                     {
@@ -310,6 +327,8 @@ namespace Agent1.Services
                     }
                 }
 
+                RecordCircuitFailure();
+                MetricsCollector.RecordLlmCall(sw.ElapsedMilliseconds, false, retries);
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine($"\n❌ 所有重试失败: {lastException?.Message}");
                 Console.ResetColor();
@@ -335,9 +354,14 @@ namespace Agent1.Services
         /// </summary>
         public async Task<string> InvokeNonStreamingWithRetryAsync(string prompt, string stageName = "")
         {
+            // Task 7: 熔断器检查 — 电路打开时快速失败
+            CheckCircuitBreaker();
+
             Exception? lastException = null;
             // 记录首次尝试中成功调用的工具结果，供重试时内联
             List<FunctionCallRecord>? firstAttemptToolResults = null;
+            var sw = Stopwatch.StartNew();
+            int retries = 0;
 
             for (int attempt = 1; attempt <= MaxRetries; attempt++)
             {
@@ -348,7 +372,10 @@ namespace Agent1.Services
                 try
                 {
                     if (attempt > 1)
+                    {
+                        retries = attempt - 1;
                         Console.WriteLine($"   🔄 第{attempt}次重试 {stageName}...");
+                    }
 
                     if (attempt == 1)
                     {
@@ -369,6 +396,8 @@ namespace Agent1.Services
                         // 保存工具调用结果，供重试使用
                         firstAttemptToolResults = new List<FunctionCallRecord>(LastFunctionCalls);
 
+                        RecordCircuitSuccess();
+                        MetricsCollector.RecordLlmCall(sw.ElapsedMilliseconds, true, retries);
                         return kernelResult.ToString();
                     }
                     else
@@ -399,6 +428,8 @@ namespace Agent1.Services
                         if (firstAttemptToolResults != null && firstAttemptToolResults.Count > 0)
                             LastFunctionCalls = firstAttemptToolResults;
 
+                        RecordCircuitSuccess();
+                        MetricsCollector.RecordLlmCall(sw.ElapsedMilliseconds, true, retries);
                         return kernelResult.ToString();
                     }
                 }
@@ -431,6 +462,8 @@ namespace Agent1.Services
                 }
             }
 
+            RecordCircuitFailure();
+            MetricsCollector.RecordLlmCall(sw.ElapsedMilliseconds, false, retries);
             Console.WriteLine($"   ❌ 所有重试失败: {lastException?.Message}");
             return $"生成失败: {lastException?.Message}";
         }
@@ -442,6 +475,64 @@ namespace Agent1.Services
         /// 返回 (是否基础通过, 触发数, 总数, 详细诊断文本)。
         /// 基础通过标准: 5 条至少 1 条触发了工具调用。
         /// </summary>
+        // ════════════════════════════════════════
+        // Task 7: LLM 熔断器方法
+        // ════════════════════════════════════════
+
+        /// <summary>
+        /// 检查熔断器状态。若连续失败达 3 次且冷却期未过(30秒)，
+        /// 抛出 CircuitBreakerOpenException 快速失败，由上层中间件处理。
+        /// </summary>
+        private void CheckCircuitBreaker()
+        {
+            lock (_circuitLock)
+            {
+                if (_consecutiveFailures >= MaxConsecutiveFailures && _circuitOpenTime.HasValue)
+                {
+                    var elapsed = DateTime.UtcNow - _circuitOpenTime.Value;
+                    if (elapsed < CircuitBreakDuration)
+                    {
+                        var remainingSeconds = (int)(CircuitBreakDuration - elapsed).TotalSeconds;
+                        throw new CircuitBreakerOpenException(
+                            $"LLM 服务熔断中：连续 {_consecutiveFailures} 次失败，" +
+                            $"请在 {Math.Max(1, remainingSeconds)} 秒后重试");
+                    }
+                    // 冷却期已过，半开状态：允许下一次尝试
+                    _consecutiveFailures = 0;
+                    _circuitOpenTime = null;
+                    Console.WriteLine("   🔓 [熔断器] 冷却期已过，进入半开状态，允许试探请求");
+                }
+            }
+        }
+
+        private void RecordCircuitSuccess()
+        {
+            lock (_circuitLock)
+            {
+                if (_consecutiveFailures > 0 || _circuitOpenTime.HasValue)
+                    Console.WriteLine($"   ✅ [熔断器] 调用成功，重置计数器 (之前失败 {_consecutiveFailures} 次)");
+                _consecutiveFailures = 0;
+                _circuitOpenTime = null;
+            }
+        }
+
+        private void RecordCircuitFailure()
+        {
+            lock (_circuitLock)
+            {
+                _consecutiveFailures++;
+                if (_consecutiveFailures >= MaxConsecutiveFailures)
+                {
+                    _circuitOpenTime = DateTime.UtcNow;
+                    Console.WriteLine($"   🔴 [熔断器] 连续 {_consecutiveFailures} 次失败，熔断器打开 ({CircuitBreakDuration.TotalSeconds}s 冷却)");
+                }
+                else
+                {
+                    Console.WriteLine($"   ⚠️ [熔断器] 失败计数: {_consecutiveFailures}/{MaxConsecutiveFailures}");
+                }
+            }
+        }
+
         public async Task<(bool passed, int triggerCount, int totalCount, string detail)> RunFcReadinessCheckAsync()
         {
             var testCases = new (string query, string expectedTools, string description)[]
@@ -745,6 +836,15 @@ namespace Agent1.Services
                 return await base.SendAsync(request, cancellationToken);
             }
         }
+    }
+
+    /// <summary>
+    /// Task 7: LLM 熔断器打开异常 — 电路打开时快速拒绝请求，避免雪崩。
+    /// GlobalExceptionMiddleware 会将其映射为 HTTP 503 Service Unavailable。
+    /// </summary>
+    public class CircuitBreakerOpenException : Exception
+    {
+        public CircuitBreakerOpenException(string message) : base(message) { }
     }
 
     // ════════════════════════════════════════

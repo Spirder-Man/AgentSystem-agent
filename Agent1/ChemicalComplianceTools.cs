@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Agent1.Models;
 using Agent1.Services;
 
 namespace Agent1
@@ -123,7 +124,17 @@ namespace Agent1
             if (string.IsNullOrWhiteSpace(name))
                 return name;
             var trimmed = name.Trim();
-            return SubstanceAliasMap.TryGetValue(trimmed, out var normalized) ? normalized : trimmed;
+
+            // Step 1: 硬编码别名映射（向后兼容）
+            if (SubstanceAliasMap.TryGetValue(trimmed, out var normalized))
+                return normalized;
+
+            // Step 2: [Task 10] 查询结构化化学品数据库（别名 → 标准名）
+            var substance = ChemicalSubstanceDatabase.Lookup(trimmed);
+            if (substance != null)
+                return substance.Name;
+
+            return trimmed;
         }
 
         // ════════════════════════════════════════
@@ -292,11 +303,118 @@ namespace Agent1
         }
 
         // ════════════════════════════════════════
+        // [Task 10] 新增工具：结构化化学品属性 + 重大危险源 + 法规版本
+        // ════════════════════════════════════════
+
+        [KernelFunction, Description("查询指定危化品的完整基础属性，包括CAS号、UN编号、分子式、闪点、沸点、爆炸极限、危险类别和适用国标。输入参数 substanceName: 危化品名称，如\"苯\"、\"甲醇\"。")]
+        public string LookupChemicalProperties(string substanceName)
+        {
+            substanceName = NormalizeSubstanceName(substanceName);
+            Console.WriteLine($"   [工具诊断] LookupChemicalProperties 被调用, substanceName=\"{substanceName}\"");
+
+            var sub = ChemicalSubstanceDatabase.Lookup(substanceName);
+            if (sub == null)
+            {
+                var searchResults = ChemicalSubstanceDatabase.Search(substanceName, 3);
+                if (searchResults.Count == 0)
+                    return $"未找到「{substanceName}」的化学品属性数据。建议在 knowledgebase/国标/ 目录下查阅 GB 30000 系列标准全文。";
+
+                var altSb = new StringBuilder();
+                altSb.AppendLine($"未精确匹配「{substanceName}」，找到以下相近化学品：");
+                foreach (var r in searchResults)
+                    altSb.AppendLine($"  - {r.Name} (CAS: {r.CasNumber}, UN: {r.UnNumber})");
+                altSb.AppendLine($"[判定:is_compliant=无精确数据]");
+                return altSb.ToString().TrimEnd();
+            }
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"📋 **{sub.Name}** ({sub.NameEn})");
+            sb.AppendLine($"   分子式: {sub.Formula}  |  CAS: {sub.CasNumber}  |  UN: {sub.UnNumber}");
+            sb.AppendLine($"   理化状态: {sub.PhysicalState}");
+            if (sub.FlashPointC.HasValue)
+                sb.AppendLine($"   闪点: {sub.FlashPointC}°C");
+            if (sub.BoilingPointC.HasValue)
+                sb.AppendLine($"   沸点: {sub.BoilingPointC}°C");
+            if (sub.ExplosiveLowerLimit.HasValue && sub.ExplosiveUpperLimit.HasValue)
+                sb.AppendLine($"   爆炸极限: {sub.ExplosiveLowerLimit}% ~ {sub.ExplosiveUpperLimit}% (V/V)");
+            if (sub.AutoIgnitionTempC.HasValue)
+                sb.AppendLine($"   自燃温度: {sub.AutoIgnitionTempC}°C");
+            if (sub.RelativeDensity.HasValue)
+                sb.AppendLine($"   相对密度(水=1): {sub.RelativeDensity}");
+            if (sub.VaporDensity.HasValue)
+                sb.AppendLine($"   蒸气密度(空气=1): {sub.VaporDensity}");
+
+            sb.AppendLine($"   危险类别:");
+            foreach (var hc in sub.HazardCategories)
+            {
+                var note = !string.IsNullOrEmpty(hc.SubCategory) ? $" ({hc.SubCategory})" : "";
+                sb.AppendLine($"     - {hc.Category}{note} [依据: {hc.GbStandard}]");
+            }
+
+            if (sub.MajorHazardThresholdTons > 0)
+                sb.AppendLine($"   ⚠️ GB 18218 重大危险源临界量: {sub.MajorHazardThresholdTons} 吨");
+
+            if (sub.IncompatibleWith.Count > 0)
+                sb.AppendLine($"   🚫 储存禁忌: {string.Join("、", sub.IncompatibleWith)}");
+
+            sb.AppendLine($"[判定:is_compliant=数据查询,来源:ChemicalSubstanceDatabase]");
+            return sb.ToString().TrimEnd();
+        }
+
+        [KernelFunction, Description("查询指定危化品在GB 18218《危险化学品重大危险源辨识》中的临界量（吨）。输入参数 substanceName: 危化品名称。")]
+        public string GetMajorHazardThreshold(string substanceName)
+        {
+            substanceName = NormalizeSubstanceName(substanceName);
+            Console.WriteLine($"   [工具诊断] GetMajorHazardThreshold 被调用, substanceName=\"{substanceName}\"");
+
+            var sub = ChemicalSubstanceDatabase.Lookup(substanceName);
+            if (sub == null)
+                return $"未找到「{substanceName}」的重大危险源临界量数据。请查阅 GB 18218-2018 表1/表2 获取完整名录。";
+
+            if (sub.MajorHazardThresholdTons <= 0)
+                return $"「{sub.Name}」不属于 GB 18218 明确列名的重大危险源物质 (CAS: {sub.CasNumber})。\n[REGULATIONS: GB 18218-2018]\n[判定:is_compliant=非列名物质]";
+
+            return $"[REGULATIONS: GB 18218-2018]\n📋 「{sub.Name}」(CAS: {sub.CasNumber})\n   重大危险源临界量: **{sub.MajorHazardThresholdTons} 吨**\n   若实际存在量 ≥ {sub.MajorHazardThresholdTons}t，则构成重大危险源，需按照《危险化学品安全管理条例》第19条和总局令40号进行登记备案和分级管理。\n[判定:is_compliant=依据GB18218待定量核查]";
+        }
+
+        [KernelFunction, Description("查询指定法规标准的版本状态（现行/废止）及全文收录情况。输入参数 regulationNumber: 法规编号，如\"GB 15603\"、\"GB 18218\"。")]
+        public string CheckRegulationVersion(string regulationNumber)
+        {
+            Console.WriteLine($"   [工具诊断] CheckRegulationVersion 被调用, regulationNumber=\"{regulationNumber}\"");
+
+            var version = ChemicalSubstanceDatabase.GetRegulationVersion(regulationNumber);
+            if (version == null)
+                return $"未找到「{regulationNumber}」的版本追踪数据。建议参考国家标准全文公开系统 (openstd.samr.gov.cn) 查询最新版本。";
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"📋 [{version.RegulationNumber}] {version.Title}");
+            sb.AppendLine($"   现行版本: {version.CurrentVersion}");
+            if (version.DeprecatedVersions.Count > 0)
+                sb.AppendLine($"   已废止版本: {string.Join(", ", version.DeprecatedVersions)}");
+            sb.AppendLine($"   知识库收录状态: {(version.HasFullText ? "✅ 已收录全文" : "⚠️ 仅收录摘要/引用（建议上传全文PDF）")}");
+            if (!string.IsNullOrEmpty(version.ChangeNotes))
+                sb.AppendLine($"   关键变更: {version.ChangeNotes}");
+            sb.AppendLine($"[判定:is_compliant=法规版本查询]");
+            return sb.ToString().TrimEnd();
+        }
+
+        // ════════════════════════════════════════
         // 降级方法：硬编码字典（RAG 检索失败 / 无 kbService 时兜底）
         // ════════════════════════════════════════
 
         private string CheckHazardCategoryFallback(string substanceName)
         {
+            // [Task 10] 优先查询结构化化学品数据库
+            var sub = ChemicalSubstanceDatabase.Lookup(substanceName);
+            if (sub != null && sub.HazardCategories.Count > 0)
+            {
+                var gbNums = sub.HazardCategories.Select(h => h.GbStandard).Distinct().ToList();
+                var catNames = sub.HazardCategories.Select(h =>
+                    string.IsNullOrEmpty(h.SubCategory) ? h.Category : $"{h.Category}({h.SubCategory})").ToList();
+                return $"[REGULATIONS: {string.Join(", ", gbNums)}]\n「{sub.Name}」危险类别: {string.Join("; ", catNames)} [判定:is_compliant=unknown]";
+            }
+
+            // 原降级逻辑：通用类别关键词匹配
             foreach (var kvp in HazardCategories)
             {
                 if (substanceName.Contains(kvp.Key) || kvp.Key.Contains(substanceName))
@@ -307,6 +425,17 @@ namespace Agent1
 
         private string CheckStorageCompatibilityFallback(string substanceA, string substanceB)
         {
+            // [Task 10] 优先查询精确化学品配对规则
+            var dbResult = ChemicalSubstanceDatabase.CheckCompatibility(substanceA, substanceB);
+            if (dbResult != null)
+            {
+                var regRef = !string.IsNullOrEmpty(dbResult.RegulationRef) ? $" [依据: {dbResult.RegulationRef}]" : "";
+                if (dbResult.IsCompatible)
+                    return $"[REGULATIONS: {(string.IsNullOrEmpty(dbResult.RegulationRef) ? "GB 15603" : dbResult.RegulationRef)}]\n✅ {dbResult.Reason}{regRef} [判定:is_compliant=true]";
+                return $"[REGULATIONS: {(string.IsNullOrEmpty(dbResult.RegulationRef) ? "GB 15603" : dbResult.RegulationRef)}]\n⚠️ 禁用：{dbResult.Reason}{regRef} [判定:is_compliant=false]";
+            }
+
+            // 原降级逻辑：通用类别禁忌匹配
             foreach (var kvp in StorageIncompatibilities)
             {
                 bool aIsIncompatible = kvp.Value.Any(s => substanceB.Contains(s));
@@ -314,12 +443,21 @@ namespace Agent1
                 if (aIsIncompatible || bIsIncompatible)
                     return $"[REGULATIONS: GB15603-1995]\n⚠️ 禁用：「{substanceA}」与「{substanceB}」存在配伍禁忌——{kvp.Key}类不可与之同库贮存。依据：GB15603-1995 第4.2.2条 禁忌物料不得同库贮存 [判定:is_compliant=false]";
             }
-            return $"[REGULATIONS: GB15603-1995]\n✅ 「{substanceA}」与「{substanceB}」在常见禁忌表中未发现直接冲突，但仍建议按照 GB15603 分类贮存原则进行核实（knowledgebase/国标/GB15603 已收录全文） [判定:is_compliant=true]";
+            return $"[REGULATIONS: GB15603]\n✅ 「{substanceA}」与「{substanceB}」在常见禁忌表中未发现直接冲突，但仍建议按照 GB15603 分类贮存原则进行核实（knowledgebase/国标/GB15603 已收录全文） [判定:is_compliant=true]";
         }
 
         private string GetSafetyDistanceFallback(string facilityType)
         {
             var key = facilityType.Trim();
+
+            // [Task 10] 优先查询扩展安全距离规则表
+            var dbRule = ChemicalSubstanceDatabase.GetSafetyDistance(key);
+            if (dbRule != null)
+            {
+                return $"[REGULATIONS: {dbRule.RegulationRef}]\n[DISTANCE: {dbRule.MinDistanceMeters}m]\n「{dbRule.FacilityPair}」的最小安全间距为 {dbRule.MinDistanceMeters} 米 (依据: {dbRule.RegulationRef}) [判定:is_compliant=待核实]";
+            }
+
+            // 原硬编码字典
             if (SafetyDistances.TryGetValue(key, out int distance))
                 return $"[REGULATIONS: GB50160]\n[DISTANCE: {distance}m]\n「{key}」的最小安全间距为 {distance} 米 [判定:is_compliant=待核实]";
             var matched = SafetyDistances.Keys.Where(k => k.Contains(key) || key.Contains(k)).ToList();
