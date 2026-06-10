@@ -28,14 +28,19 @@ RUN dotnet publish Agent1.Api/Agent1.Api.csproj -c Release -o /app/publish
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 
-# 创建非 root 用户
-RUN adduser --disabled-password --gecos "" appuser && \
-    mkdir -p /app/logs && \
+# 安装 wget（用于健康检查）+ 创建非 root 用户
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends wget && \
+    rm -rf /var/lib/apt/lists/* && \
+    adduser --disabled-password --gecos "" appuser
+
+COPY --from=build /app/publish .
+
+# COPY 后 chown，确保发布文件属主为 appuser
+RUN mkdir -p /app/logs && \
     chown -R appuser:appuser /app
 
 USER appuser
-
-COPY --from=build /app/publish .
 
 # ASP.NET Core 监听端口
 ENV ASPNETCORE_URLS=http://+:8080
@@ -43,6 +48,6 @@ EXPOSE 8080
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
 ENTRYPOINT ["dotnet", "Agent1.Api.dll"]

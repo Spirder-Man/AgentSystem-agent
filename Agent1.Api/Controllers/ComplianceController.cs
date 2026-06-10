@@ -17,20 +17,26 @@ public class ComplianceController : ControllerBase
     private readonly ILlmService _llmService;
     private readonly IKnowledgeBaseService _knowledgeBaseService;
     private readonly IAuditService _auditService;
+    private readonly ResponseCacheService _cache;
     private readonly ILogger<ComplianceController> _logger;
+    private readonly SemaphoreSlim _llmGate;
 
     public ComplianceController(
         AgentDialog agentDialog,
         ILlmService llmService,
         IKnowledgeBaseService knowledgeBaseService,
         IAuditService auditService,
-        ILogger<ComplianceController> logger)
+        ResponseCacheService cache,
+        ILogger<ComplianceController> logger,
+        SemaphoreSlim llmGate)
     {
         _agentDialog = agentDialog;
         _llmService = llmService;
         _knowledgeBaseService = knowledgeBaseService;
         _auditService = auditService;
+        _cache = cache;
         _logger = logger;
+        _llmGate = llmGate;
     }
 
     /// <summary>
@@ -42,40 +48,79 @@ public class ComplianceController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Query))
             return BadRequest(new { error = "查询内容不能为空" });
 
-        _logger.LogInformation("合规审核请求: {Query}", SensitiveDataMasker.MaskChemicalQuery(request.Query));
-
-        try
+        // ═══ 缓存命中：直接返回 ═══
+        var cached = _cache.Get(request.Query);
+        if (cached != null)
         {
-            var session = _agentDialog.CreateSession(SessionType.ChemicalCompliance);
-            var response = await _agentDialog.ExecuteEvalFastAsync(request.Query);
-
-            // Post-hoc 验证
-            var llmSvc = _llmService as LlmService;
-            var toolCalls = llmSvc?.LastFunctionCalls ?? new List<FunctionCallRecord>();
-            var verification = await ConclusionVerifier.VerifyAsync(
-                response ?? "", toolCalls, _knowledgeBaseService, request.Query);
-
-            // 审计日志 (Task 3: isSensitive=true 触发脱敏)
-            await _auditService.LogOperationAsync(
-                GetCurrentUsername(), "合规审核",
-                $"查询: {request.Query} | 工具: [{string.Join(",", toolCalls.Select(t => t.FunctionName))}] | " +
-                $"验证法规: {verification.VerifiedRegulations.Count}条 | 幻觉法规: {verification.HallucinatedRegulations.Count}条",
-                isSensitive: true);
-
+            _logger.LogInformation("合规审核缓存命中: {Query}", SensitiveDataMasker.MaskChemicalQuery(request.Query));
             return Ok(new ComplianceResponse
             {
-                Query = request.Query,
-                Response = response,
-                ToolsUsed = toolCalls.Select(t => t.FunctionName).ToList(),
-                VerifiedRegulations = verification.VerifiedRegulations,
-                HallucinatedRegulations = verification.HallucinatedRegulations,
-                Warnings = verification.Warnings
+                Query = cached.Query,
+                Response = cached.Response,
+                ToolsUsed = cached.ToolsUsed,
+                VerifiedRegulations = cached.VerifiedRegulations,
+                HallucinatedRegulations = cached.HallucinatedRegulations,
+                Warnings = cached.Warnings
             });
         }
-        catch (Exception ex)
+
+        _logger.LogInformation("合规审核请求: {Query}", SensitiveDataMasker.MaskChemicalQuery(request.Query));
+
+        // ═══ LLM 并发保护: CPU 推理最多 2 并发，超限返回 503 ═══
+        if (!await _llmGate.WaitAsync(TimeSpan.FromSeconds(5)))
         {
-            _logger.LogError(ex, "合规审核失败: {Query}", SensitiveDataMasker.MaskChemicalQuery(request.Query));
-            return StatusCode(500, new { error = "审核处理失败，请稍后重试" });
+            _logger.LogWarning("合规审核拒绝(服务繁忙): {Query}", SensitiveDataMasker.MaskChemicalQuery(request.Query));
+            return StatusCode(503, new { error = "服务繁忙，请稍后重试", retryAfter = 10 });
+        }
+        try
+        {
+            try
+            {
+                var session = _agentDialog.CreateSession(SessionType.ChemicalCompliance);
+                var response = await _agentDialog.ExecuteEvalFastAsync(request.Query);
+
+                var llmSvc = _llmService as LlmService;
+                var toolCalls = llmSvc?.LastFunctionCalls ?? new List<FunctionCallRecord>();
+                var verification = await ConclusionVerifier.VerifyAsync(
+                    response ?? "", toolCalls, _knowledgeBaseService, request.Query);
+
+                await _auditService.LogOperationAsync(
+                    GetCurrentUsername(), "合规审核",
+                    $"查询: {request.Query} | 工具: [{string.Join(",", toolCalls.Select(t => t.FunctionName))}] | " +
+                    $"验证法规: {verification.VerifiedRegulations.Count}条 | 幻觉法规: {verification.HallucinatedRegulations.Count}条",
+                    isSensitive: true);
+
+                // ═══ 存入缓存 ═══
+                _cache.Set(request.Query, new CachedComplianceResponse
+                {
+                    Query = request.Query,
+                    Response = response,
+                    ToolsUsed = toolCalls.Select(t => t.FunctionName).ToList(),
+                    VerifiedRegulations = verification.VerifiedRegulations,
+                    HallucinatedRegulations = verification.HallucinatedRegulations,
+                    Warnings = verification.Warnings
+                });
+                _logger.LogInformation("合规审核已缓存: {Query}", SensitiveDataMasker.MaskChemicalQuery(request.Query));
+
+                return Ok(new ComplianceResponse
+                {
+                    Query = request.Query,
+                    Response = response,
+                    ToolsUsed = toolCalls.Select(t => t.FunctionName).ToList(),
+                    VerifiedRegulations = verification.VerifiedRegulations,
+                    HallucinatedRegulations = verification.HallucinatedRegulations,
+                    Warnings = verification.Warnings
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "合规审核失败: {Query}", SensitiveDataMasker.MaskChemicalQuery(request.Query));
+                return StatusCode(500, new { error = "审核处理失败，请稍后重试" });
+            }
+        }
+        finally
+        {
+            _llmGate.Release();
         }
     }
 
@@ -88,32 +133,66 @@ public class ComplianceController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.SubstanceName))
             return BadRequest(new { error = "化学品名称不能为空" });
 
-        _logger.LogInformation("危化品查询: {Substance}", SensitiveDataMasker.MaskChemicalQuery(request.SubstanceName));
-
-        try
+        // ═══ 缓存命中 ═══
+        var cacheQuery = $"hazard:{request.SubstanceName}";
+        var cached = _cache.Get(cacheQuery);
+        if (cached != null)
         {
-            var response = await _agentDialog.ExecuteEvalFastQueryAsync(
-                $"{request.SubstanceName} 属于什么危险类别 适用国标");
-
-            var llmSvc = _llmService as LlmService;
-            var toolCalls = llmSvc?.LastFunctionCalls ?? new List<FunctionCallRecord>();
-
-            await _auditService.LogOperationAsync(
-                GetCurrentUsername(), "危化品查询",
-                $"化学品: {request.SubstanceName} | 工具: [{string.Join(",", toolCalls.Select(t => t.FunctionName))}]",
-                isSensitive: true);
-
+            _logger.LogInformation("危化品查询缓存命中: {Substance}", SensitiveDataMasker.MaskChemicalQuery(request.SubstanceName));
             return Ok(new HazardQueryResponse
             {
-                SubstanceName = request.SubstanceName,
-                Response = response,
-                ToolsUsed = toolCalls.Select(t => t.FunctionName).ToList()
+                SubstanceName = cached.Query,
+                Response = cached.Response,
+                ToolsUsed = cached.ToolsUsed
             });
         }
-        catch (Exception ex)
+
+        _logger.LogInformation("危化品查询: {Substance}", SensitiveDataMasker.MaskChemicalQuery(request.SubstanceName));
+
+        // ═══ LLM 并发保护 ═══
+        if (!await _llmGate.WaitAsync(TimeSpan.FromSeconds(5)))
         {
-            _logger.LogError(ex, "危化品查询失败: {Substance}", SensitiveDataMasker.MaskChemicalQuery(request.SubstanceName));
-            return StatusCode(500, new { error = "查询处理失败，请稍后重试" });
+            _logger.LogWarning("危化品查询拒绝(服务繁忙): {Substance}", SensitiveDataMasker.MaskChemicalQuery(request.SubstanceName));
+            return StatusCode(503, new { error = "服务繁忙，请稍后重试", retryAfter = 10 });
+        }
+        try
+        {
+            try
+            {
+                var response = await _agentDialog.ExecuteEvalFastQueryAsync(
+                    $"{request.SubstanceName} 属于什么危险类别 适用国标");
+
+                var llmSvc = _llmService as LlmService;
+                var toolCalls = llmSvc?.LastFunctionCalls ?? new List<FunctionCallRecord>();
+
+                await _auditService.LogOperationAsync(
+                    GetCurrentUsername(), "危化品查询",
+                    $"化学品: {request.SubstanceName} | 工具: [{string.Join(",", toolCalls.Select(t => t.FunctionName))}]",
+                    isSensitive: true);
+
+                _cache.Set(cacheQuery, new CachedComplianceResponse
+                {
+                    Query = request.SubstanceName,
+                    Response = response,
+                    ToolsUsed = toolCalls.Select(t => t.FunctionName).ToList()
+                });
+
+                return Ok(new HazardQueryResponse
+                {
+                    SubstanceName = request.SubstanceName,
+                    Response = response,
+                    ToolsUsed = toolCalls.Select(t => t.FunctionName).ToList()
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "危化品查询失败: {Substance}", SensitiveDataMasker.MaskChemicalQuery(request.SubstanceName));
+                return StatusCode(500, new { error = "查询处理失败，请稍后重试" });
+            }
+        }
+        finally
+        {
+            _llmGate.Release();
         }
     }
 
@@ -126,37 +205,77 @@ public class ComplianceController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.SubstanceA) || string.IsNullOrWhiteSpace(request.SubstanceB))
             return BadRequest(new { error = "两种化学品名称均不能为空" });
 
-        _logger.LogInformation("储存兼容性检查: {A} vs {B}",
-            SensitiveDataMasker.MaskChemicalQuery(request.SubstanceA),
-            SensitiveDataMasker.MaskChemicalQuery(request.SubstanceB));
-
-        try
+        // ═══ 缓存命中（A/B 顺序无关） ═══
+        var sorted = new[] { request.SubstanceA, request.SubstanceB }.OrderBy(s => s).ToArray();
+        var cacheQuery = $"storage:{sorted[0]}+{sorted[1]}";
+        var cached = _cache.Get(cacheQuery);
+        if (cached != null)
         {
-            var query = $"{request.SubstanceA} 和 {request.SubstanceB} 能同库储存吗";
-            var response = await _agentDialog.ExecuteEvalFastAsync(query);
-
-            var llmSvc = _llmService as LlmService;
-            var toolCalls = llmSvc?.LastFunctionCalls ?? new List<FunctionCallRecord>();
-
-            await _auditService.LogOperationAsync(
-                GetCurrentUsername(), "储存兼容性",
-                $"{request.SubstanceA} vs {request.SubstanceB} | 工具: [{string.Join(",", toolCalls.Select(t => t.FunctionName))}]",
-                isSensitive: true);
-
+            _logger.LogInformation("储存兼容性缓存命中: {A} vs {B}",
+                SensitiveDataMasker.MaskChemicalQuery(request.SubstanceA),
+                SensitiveDataMasker.MaskChemicalQuery(request.SubstanceB));
             return Ok(new StorageCompatibilityResponse
             {
                 SubstanceA = request.SubstanceA,
                 SubstanceB = request.SubstanceB,
-                Response = response,
-                ToolsUsed = toolCalls.Select(t => t.FunctionName).ToList()
+                Response = cached.Response,
+                ToolsUsed = cached.ToolsUsed
             });
         }
-        catch (Exception ex)
+
+        _logger.LogInformation("储存兼容性检查: {A} vs {B}",
+            SensitiveDataMasker.MaskChemicalQuery(request.SubstanceA),
+            SensitiveDataMasker.MaskChemicalQuery(request.SubstanceB));
+
+        // ═══ LLM 并发保护 ═══
+        if (!await _llmGate.WaitAsync(TimeSpan.FromSeconds(5)))
         {
-            _logger.LogError(ex, "储存兼容性检查失败: {A} vs {B}",
+            _logger.LogWarning("储存兼容性拒绝(服务繁忙): {A} vs {B}",
                 SensitiveDataMasker.MaskChemicalQuery(request.SubstanceA),
                 SensitiveDataMasker.MaskChemicalQuery(request.SubstanceB));
-            return StatusCode(500, new { error = "兼容性检查失败，请稍后重试" });
+            return StatusCode(503, new { error = "服务繁忙，请稍后重试", retryAfter = 10 });
+        }
+        try
+        {
+            try
+            {
+                var query = $"{request.SubstanceA} 和 {request.SubstanceB} 能同库储存吗";
+                var response = await _agentDialog.ExecuteEvalFastAsync(query);
+
+                var llmSvc = _llmService as LlmService;
+                var toolCalls = llmSvc?.LastFunctionCalls ?? new List<FunctionCallRecord>();
+
+                await _auditService.LogOperationAsync(
+                    GetCurrentUsername(), "储存兼容性",
+                    $"{request.SubstanceA} vs {request.SubstanceB} | 工具: [{string.Join(",", toolCalls.Select(t => t.FunctionName))}]",
+                    isSensitive: true);
+
+                _cache.Set(cacheQuery, new CachedComplianceResponse
+                {
+                    Query = $"{request.SubstanceA}/{request.SubstanceB}",
+                    Response = response,
+                    ToolsUsed = toolCalls.Select(t => t.FunctionName).ToList()
+                });
+
+                return Ok(new StorageCompatibilityResponse
+                {
+                    SubstanceA = request.SubstanceA,
+                    SubstanceB = request.SubstanceB,
+                    Response = response,
+                    ToolsUsed = toolCalls.Select(t => t.FunctionName).ToList()
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "储存兼容性检查失败: {A} vs {B}",
+                    SensitiveDataMasker.MaskChemicalQuery(request.SubstanceA),
+                    SensitiveDataMasker.MaskChemicalQuery(request.SubstanceB));
+                return StatusCode(500, new { error = "兼容性检查失败，请稍后重试" });
+            }
+        }
+        finally
+        {
+            _llmGate.Release();
         }
     }
 

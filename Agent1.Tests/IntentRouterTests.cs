@@ -1,4 +1,6 @@
 using System;
+using Agent1.Models;
+using Agent1.Services;
 using FluentAssertions;
 using Xunit;
 

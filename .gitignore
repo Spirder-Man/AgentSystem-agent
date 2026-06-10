@@ -24,6 +24,7 @@ packages/
 
 # Logs
 *.log
+logs/archive/
 测试结果报告.txt
 
 # 临时文件
@@ -60,3 +61,17 @@ agent_test.py
 
 # ������Ŀ�� NuGet ����
 !nuget.config
+
+# 临时测试脚本 + 调试输出
+debug_chat.ps1
+load_test.ps1
+temp_input.txt
+test_result.txt
+
+# Qoder/Agent 内部目录
+.cowork-temp/
+
+# 本地运行时数据
+memory/
+gravity-maze/
+wechat-group-report/

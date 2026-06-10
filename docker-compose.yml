@@ -19,7 +19,7 @@ services:
     environment:
       POSTGRES_DB: ${DB_NAME:-chemical_park_ai_agent}
       POSTGRES_USER: ${DB_USERNAME:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-agent_dev_2024}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?生产环境必须设置 DB_PASSWORD}
     volumes:
       # 数据持久化（容器重启不丢失数据）
       - postgres_data:/var/lib/postgresql/data
@@ -45,8 +45,9 @@ services:
       - DB_PORT=5432
       - DB_NAME=${DB_NAME:-chemical_park_ai_agent}
       - DB_USERNAME=${DB_USERNAME:-postgres}
-      - DB_PASSWORD=${DB_PASSWORD:-agent_dev_2024}
+      - DB_PASSWORD=${DB_PASSWORD:?生产环境必须设置 DB_PASSWORD}
       - JWT_KEY=${JWT_KEY:-}
+      - AUTH_ACCOUNTS_JSON=${AUTH_ACCOUNTS_JSON}
       - LLM__Endpoint=${LLM_ENDPOINT:-http://host.docker.internal:11434}
       - KnowledgeBase__BasePath=/app/knowledgebase
     volumes:
@@ -58,7 +59,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/health/live || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

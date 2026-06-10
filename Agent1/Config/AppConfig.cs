@@ -1,3 +1,6 @@
+using System;
+using Microsoft.Extensions.Configuration;
+
 namespace Agent1.Config
 {
     public class AppConfig
@@ -28,6 +31,44 @@ namespace Agent1.Config
 
         // Prompt 模板配置
         public PromptTemplateConfig PromptTemplates { get; set; } = new();
+
+        // ── 单例 ──
+        private static AppConfig? _instance;
+
+        public static AppConfig Instance
+        {
+            get
+            {
+                if (_instance == null)
+                    throw new InvalidOperationException("AppConfig 尚未加载。请先调用 AppConfig.Load(configuration)");
+                return _instance;
+            }
+        }
+
+        public static void Load(IConfiguration configuration)
+        {
+            var config = new AppConfig();
+            configuration.Bind(config);
+
+            var dbPassword = Environment.GetEnvironmentVariable("DB_PASSWORD");
+            if (!string.IsNullOrEmpty(dbPassword))
+                config.Database.Password = dbPassword;
+
+            var dbUser = Environment.GetEnvironmentVariable("DB_USERNAME");
+            if (!string.IsNullOrEmpty(dbUser))
+                config.Database.Username = dbUser;
+
+            var dbHost = Environment.GetEnvironmentVariable("DB_HOST");
+            if (!string.IsNullOrEmpty(dbHost))
+                config.Database.Host = dbHost;
+
+            var dbName = Environment.GetEnvironmentVariable("DB_NAME");
+            if (!string.IsNullOrEmpty(dbName))
+                config.Database.DatabaseName = dbName;
+
+            _instance = config;
+            ModelConfig.Initialize(config);
+        }
 
         /// <summary>
         /// 启动时校验关键配置项，防止运行时才发现配错。

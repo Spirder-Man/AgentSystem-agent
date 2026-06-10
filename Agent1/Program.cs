@@ -112,6 +112,25 @@ namespace Agent1
             services.AddSingleton<IAuditService, AuditService>();
             services.AddSingleton<IModuleFactory, ModuleFactory>();
             services.AddSingleton<ModuleDispatcher>();
+            services.AddSingleton<ResponseCacheService>();
+
+            // Phase 2: 长期记忆服务
+            services.AddSingleton<ILongTermMemoryService>(sp =>
+            {
+                var db = sp.GetRequiredService<IDatabaseService>();
+                var llm = sp.GetRequiredService<ILlmService>();
+                return new LongTermMemoryService(db, llm);
+            });
+
+            // Phase 4.1: 记忆协调器
+            services.AddSingleton<MemoryCoordinator>(sp =>
+            {
+                var shortMem = sp.GetRequiredService<IMemoryService>();
+                var longMem = sp.GetRequiredService<ILongTermMemoryService>();
+                var cache = sp.GetRequiredService<ResponseCacheService>();
+                var audit = sp.GetRequiredService<IAuditService>();
+                return new MemoryCoordinator(shortMem, longMem, cache, audit);
+            });
 
             var serviceProvider = services.BuildServiceProvider();
 
@@ -151,7 +170,7 @@ namespace Agent1
                 Console.WriteLine("⚠️ 数据库连接失败，请检查配置");
             }
 
-            var chemicalRAG = new ChemicalRAG(AppConfig.Instance.KnowledgeBase.BasePath, knowledgeBaseService);
+            var chemicalRAG = new ChemicalRAG(AppConfig.Instance.KnowledgeBase.BasePath, knowledgeBaseService, databaseService);
 
             // 预加载化工知识库
             await chemicalRAG.LoadKnowledgeBaseAsync();
@@ -500,7 +519,8 @@ namespace Agent1
         // ═══════════════════════════════════════════════════════
         static async Task RunComplianceEval(AgentDialog agentDialog, ILlmService llmService, IKnowledgeBaseService knowledgeBaseService)
         {
-            var engine = new EvalEngine(agentDialog, llmService, knowledgeBaseService);
+            var reflectionVerifier = new ReflectionVerifier(knowledgeBaseService);
+            var engine = new EvalEngine(agentDialog, llmService, knowledgeBaseService, reflectionVerifier);
             await engine.RunComplianceEvalAsync();
         }
 

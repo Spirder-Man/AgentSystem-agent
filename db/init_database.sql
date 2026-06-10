@@ -112,49 +112,7 @@ CREATE INDEX IF NOT EXISTS idx_chemical_documents_created_at
 ON chemical_documents (created_at);
 
 -- ============================================================================
--- 7. 长期记忆表 (pgvector 向量检索)
--- ============================================================================
-CREATE TABLE IF NOT EXISTS long_term_memories (
-    id UUID PRIMARY KEY,
-    user_id VARCHAR(100) NOT NULL,
-    memory_type VARCHAR(50) NOT NULL,
-    content TEXT NOT NULL,
-    embedding vector(768),
-    source_session_id UUID,
-    source_turn_index INT DEFAULT 0,
-    importance FLOAT DEFAULT 0.5,
-    hit_count INT DEFAULT 0,
-    last_hit_at TIMESTAMPTZ,
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_ltm_user_id ON long_term_memories(user_id);
-CREATE INDEX IF NOT EXISTS idx_ltm_memory_type ON long_term_memories(memory_type);
-CREATE INDEX IF NOT EXISTS idx_ltm_is_active ON long_term_memories(is_active);
-CREATE INDEX IF NOT EXISTS idx_ltm_user_active ON long_term_memories(user_id, is_active);
-
--- HNSW 向量索引
-CREATE INDEX IF NOT EXISTS idx_ltm_embedding_hnsw
-ON long_term_memories USING hnsw (embedding vector_cosine_ops)
-WITH (m = 16, ef_construction = 64);
-
--- ============================================================================
--- 8. Refresh Token 表（认证安全）
--- ============================================================================
-CREATE TABLE IF NOT EXISTS refresh_tokens (
-    token_hash VARCHAR(128) PRIMARY KEY,
-    username VARCHAR(100) NOT NULL,
-    expires_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires ON refresh_tokens(expires_at);
-CREATE INDEX IF NOT EXISTS idx_refresh_tokens_username ON refresh_tokens(username);
-
--- ============================================================================
--- 9. 验证表结构
+-- 7. 验证表结构
 -- ============================================================================
 \dt
 \d+ chemical_documents

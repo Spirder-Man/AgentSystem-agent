@@ -55,6 +55,13 @@ public class EvalCase
     [JsonPropertyName("expected_conclusion")]
     public EvalConclusion? ExpectedConclusion { get; set; }
 
+    // ── RAG 检索质量评估 ──
+    [JsonPropertyName("expected_relevant_docs")]
+    public List<string>? ExpectedRelevantDocs { get; set; }  // 预期应检索到的文档/片段ID或关键词
+
+    [JsonPropertyName("expected_faithfulness_checks")]
+    public List<FaithfulnessCheck>? ExpectedFaithfulnessChecks { get; set; }  // 预期答案中应出现的可验证声明
+
     // 兼容旧代码 snake_case 属性
     [JsonIgnore] public string id { get => Id; set => Id = value; }
     [JsonIgnore] public string category { get => Category; set => Category = value; }
@@ -133,6 +140,35 @@ public class EvalResult
     [JsonPropertyName("error")]
     public string? Error { get; set; }
 
+    // ── RAG 检索质量指标 ──
+    [JsonPropertyName("retrieved_chunks")]
+    public List<RetrievalHit>? RetrievedChunks { get; set; }  // 实际检索到的文档片段
+
+    [JsonPropertyName("precision_at_k")]
+    public double? PrecisionAtK { get; set; }   // Precision@K (K=检索到的文档数)
+
+    [JsonPropertyName("recall_at_k")]
+    public double? RecallAtK { get; set; }      // Recall@K
+
+    [JsonPropertyName("mrr")]
+    public double? MRR { get; set; }            // Mean Reciprocal Rank
+
+    [JsonPropertyName("retrieval_evaluated")]
+    public bool RetrievalEvaluated { get; set; } // 是否进行了检索评估
+
+    // ── 生成忠实度指标 ──
+    [JsonPropertyName("total_claims")]
+    public int TotalClaims { get; set; }        // 从回复中提取的声明总数
+
+    [JsonPropertyName("verified_claims")]
+    public int VerifiedClaims { get; set; }     // 可在知识库中验证的声明数
+
+    [JsonPropertyName("hallucinated_claims")]
+    public int HallucinatedClaims { get; set; }  // 无法验证的声明数（疑似幻觉）
+
+    [JsonPropertyName("faithfulness_score")]
+    public double? FaithfulnessScore { get; set; } // 忠实度 = verified / total
+
     // 兼容旧代码
     [JsonIgnore] public string id { get => Id; set => Id = value; }
     [JsonIgnore] public string category { get => Category; set => Category = value; }
@@ -166,6 +202,26 @@ public class EvalReport
 
     [JsonPropertyName("conclusion_accuracy")]
     public double ConclusionAccuracy { get; set; }
+
+    // ── RAG 检索质量汇总 ──
+    [JsonPropertyName("mean_precision_at_k")]
+    public double? MeanPrecisionAtK { get; set; }
+
+    [JsonPropertyName("mean_recall_at_k")]
+    public double? MeanRecallAtK { get; set; }
+
+    [JsonPropertyName("mean_mrr")]
+    public double? MeanMRR { get; set; }
+
+    // ── 生成忠实度汇总 ──
+    [JsonPropertyName("mean_faithfulness")]
+    public double? MeanFaithfulness { get; set; }
+
+    [JsonPropertyName("total_verified_claims")]
+    public int TotalVerifiedClaims { get; set; }
+
+    [JsonPropertyName("total_hallucinated_claims")]
+    public int TotalHallucinatedClaims { get; set; }
 
     [JsonPropertyName("fc_readiness")]
     public FcReadinessStatus? FcReadiness { get; set; }
@@ -223,9 +279,55 @@ public class CategoryMetric
     [JsonPropertyName("conclusion_ok")]
     public int ConclusionOk { get; set; }
 
+    // ── RAG 检索质量 ──
+    [JsonPropertyName("precision_at_k")]
+    public double? PrecisionAtK { get; set; }
+
+    [JsonPropertyName("recall_at_k")]
+    public double? RecallAtK { get; set; }
+
+    [JsonPropertyName("mrr")]
+    public double? MRR { get; set; }
+
+    // ── 忠实度 ──
+    [JsonPropertyName("faithfulness")]
+    public double? Faithfulness { get; set; }
+
     // 兼容旧代码
     [JsonIgnore] public int total { get => Total; set => Total = value; }
     [JsonIgnore] public int tool_ok { get => ToolOk; set => ToolOk = value; }
     [JsonIgnore] public int param_ok { get => ParamOk; set => ParamOk = value; }
     [JsonIgnore] public int conclusion_ok { get => ConclusionOk; set => ConclusionOk = value; }
+}
+
+/// <summary>检索命中的文档片段记录</summary>
+public class RetrievalHit
+{
+    [JsonPropertyName("chunk_id")]
+    public string ChunkId { get; set; } = "";
+
+    [JsonPropertyName("content_preview")]
+    public string ContentPreview { get; set; } = "";
+
+    [JsonPropertyName("score")]
+    public double Score { get; set; }
+
+    [JsonPropertyName("rank")]
+    public int Rank { get; set; }
+
+    [JsonPropertyName("is_relevant")]
+    public bool? IsRelevant { get; set; }  // 是否与基准答案相关
+}
+
+/// <summary>忠实度检查项：答案中应出现的可验证声明</summary>
+public class FaithfulnessCheck
+{
+    [JsonPropertyName("claim_text")]
+    public string ClaimText { get; set; } = "";
+
+    [JsonPropertyName("claim_type")]
+    public string ClaimType { get; set; } = "";  // "regulation_number" | "chemical_name" | "distance_value" | "compliance_conclusion"
+
+    [JsonPropertyName("expected_source")]
+    public string? ExpectedSource { get; set; }  // 预期该声明在知识库中的来源
 }

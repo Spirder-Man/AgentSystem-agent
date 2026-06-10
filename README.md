@@ -1,65 +1,103 @@
 # AgentSystem - 化工园区危化品合规审查 AI Agent
 
-基于 .NET 8 + Semantic Kernel 构建的企业级化工园区危化品合规审查智能助手系统。
+基于 .NET 8 + Semantic Kernel + Ollama 构建的企业级化工园区危化品合规审查 AI Agent。已完成生产级容器化部署，支持 PostgreSQL+pgvector 混合检索、JWT 认证、速率限制、OpenTelemetry 可观测性。
 
 ## 🏗️ 项目架构
 
 ```
-├── Agent1/                    # 主应用模块
-│   ├── Modules/              # 推理模块
-│   │   ├── RAGModule.cs      # RAG检索增强生成
-│   │   ├── CoTSolidModule.cs # CoT思维链推理
-│   │   ├── ReActStreamModule.cs # ReAct交互式推理
-│   │   ├── ReflectionModule.cs # 自我反思纠错（代码级验证）
-│   │   └── ComplianceCheckModule.cs # 合规审查模块
-│   ├── Services/             # 核心服务
-│   │   ├── LlmService.cs     # LLM服务接口
-│   │   ├── SessionService.cs # 会话管理
-│   │   ├── KnowledgeBaseService.cs # 知识库服务（BM25检索）
-│   │   ├── HybridKnowledgeBaseService.cs # 混合检索服务（BM25+向量）
-│   │   ├── DatabaseService.cs # 数据库服务（PostgreSQL + pgvector）
-│   │   ├── PdfExtractor.cs   # PDF 文档提取器（PdfPig）
-│   │   ├── DocExtractor.cs   # DOC/DOCX 文档提取器（OpenXml）
-│   │   ├── TextCleaner.cs    # 文本清洗服务
-│   │   ├── SemanticChunker.cs # 语义分块服务
-│   │   ├── AuditService.cs   # 审计日志服务
-│   │   ├── ReflectionVerifier.cs # 代码级反思验证引擎
-│   │   ├── ConclusionVerifier.cs # Post-hoc 结论验证 + KB 反向检索
-│   │   └── AgentDialog.cs    # Agent对话管理
-│   ├── IntentRouter.cs       # 意图路由（关键词匹配）
-│   ├── ChemicalComplianceTools.cs # 化工合规工具集（SK Plugin）
-│   ├── Config/               # 配置文件
-│   └── Program.cs            # 应用入口
-├── ArchitectureTest/         # 架构测试模块
-├── docs/                     # 文档库（已整理）
-│   ├── architecture/         # 架构设计文档
-│   ├── technical-principles/ # 技术原理解析
-│   ├── testing/              # 测试文档
-│   ├── troubleshooting/      # 故障排查文档
-│   ├── learning-notes/       # 学习笔记
-│   └── project/              # 项目基本文档
-├── knowledgebase/            # 化工合规知识库
-│   ├── 国标/                 # 国家标准文档
-│   ├── 园区规则/             # 园区规章制度
-│   └── 历史案例/             # 事故案例与整改经验
-└── Agent1.sln                # 解决方案文件
+├── Agent1/                       # 核心类库
+│   ├── Models/                   # 数据模型
+│   │   ├── ChemicalSubstanceModels.cs  # 化学品属性/法规版本/安全距离
+│   │   ├── EvalModels.cs         # 评测数据模型
+│   │   ├── DialogTypes.cs        # 对话类型
+│   │   ├── LongTermMemoryModels.cs     # 长期记忆模型
+│   │   └── ModuleType.cs         # 模块枚举
+│   ├── Modules/                  # 推理模块
+│   │   ├── RAGModule.cs          # RAG 检索增强生成
+│   │   ├── CoTSolidModule.cs / CoTStreamModule.cs  # CoT 思维链
+│   │   ├── ReActSolidModule.cs / ReActStreamModule.cs  # ReAct 推理
+│   │   ├── ReflectionModule.cs   # 自我反思纠错
+│   │   └── ComplianceCheckModule.cs / UnifiedDialogModule.cs
+│   ├── Services/
+│   │   ├── AI/                   # LLM 服务
+│   │   │   └── LlmService.cs     # Ollama 集成/Thinking控制/熔断器/重试
+│   │   ├── Compliance/           # 化工合规
+│   │   │   ├── ChemicalComplianceTools.cs  # 7 个 SK Plugin 工具
+│   │   │   ├── ChemicalSubstanceDatabase.cs # 30+ 危化品结构化数据库
+│   │   │   └── ChemicalRAG.cs    # 化工 RAG 管道
+│   │   ├── Knowledge/            # 知识库
+│   │   │   ├── KnowledgeBaseService.cs          # BM25 检索
+│   │   │   ├── HybridKnowledgeBaseService.cs    # BM25+向量混合检索
+│   │   │   ├── PdfExtractor.cs / DocExtractor.cs # 文档解析
+│   │   │   ├── TextCleaner.cs / SemanticChunker.cs  # 清洗分块
+│   │   │   └── RetrievedChunk.cs # 检索结果模型
+│   │   ├── Dialog/               # 对话管理
+│   │   │   ├── AgentDialog.cs    # Agent 对话编排
+│   │   │   ├── SessionManager.cs / SessionService.cs
+│   │   │   └── IntentRouter.cs   # 意图路由
+│   │   ├── Memory/               # 记忆系统
+│   │   │   ├── MemoryService.cs  # 短期记忆
+│   │   │   ├── MemoryCoordinator.cs  # 记忆协调器
+│   │   │   └── ResponseCacheService.cs # 响应缓存(SHA256 键/TTL)
+│   │   ├── Infrastructure/       # 基础设施
+│   │   │   ├── DatabaseService.cs # PostgreSQL + pgvector
+│   │   │   ├── AuditService.cs    # 等保三级审计
+│   │   │   ├── MetricsCollector.cs # Prometheus 指标
+│   │   │   └── SensitiveDataMasker.cs # 数据脱敏
+│   │   └── Eval/                 # 评测引擎
+│   │       ├── EvalEngine.cs
+│   │       ├── ConclusionVerifier.cs  # Post-hoc 结论验证
+│   │       └── ReflectionVerifier.cs  # 代码级反思验证
+│   ├── Config/
+│   │   ├── AppConfig.cs          # 配置中心（外部化）
+│   │   └── ModelConfig.cs        # 模型配置入口
+│   └── Program.cs                # 控制台入口
+├── Agent1.Api/                   # Web API 层
+│   ├── Controllers/
+│   │   ├── AuthController.cs     # JWT 登录/刷新（BCrypt + RefreshToken 轮转）
+│   │   └── ComplianceController.cs # 合规检查/Hazard查询/储存兼容性
+│   ├── Middleware/
+│   │   ├── GlobalExceptionMiddleware.cs    # 全局异常处理
+│   │   ├── RateLimitingMiddleware.cs       # 速率限制(100次/分钟/IP)
+│   │   ├── RequestIdMiddleware.cs          # 请求ID透传
+│   │   └── RequestMetricsMiddleware.cs     # 请求指标
+│   └── Program.cs                # API 启动（DI/Serilog/JWT/OTel/健康检查）
+├── Agent1.Tests/                 # xUnit 测试（133 tests）
+├── Benchmark/                    # C# HTTP 压测工具
+├── prometheus/                   # Prometheus 录制规则
+├── grafana/                      # Grafana 仪表盘 JSON
+├── .github/workflows/            # CI/CD（构建→测试→Docker→GHCR）
+├── Data/ComplianceEvalSet.json   # 64 条化工合规评测集
+├── knowledgebase/                # 化工合规知识库
+│   ├── 国标/ 园区规则/ 历史案例/ 化工专业条例/
+│   └── H166-危险化学品化工企业安全生产三级标准化/
+├── docker-compose.yml            # 一键部署（PostgreSQL + API）
+├── Dockerfile                    # 多阶段构建（非 root 运行）
+└── Agent1.sln                    # 解决方案文件
 ```
 
 ## 🛠️ 技术栈
 
 | 层级 | 技术 | 版本 | 状态 |
 |------|------|------|------|
-| 语言 | C# | 12.0 | ✅ 已实现 |
-| 框架 | .NET | 8.0 | ✅ 已实现 |
-| AI框架 | Semantic Kernel | 1.74.0 | ✅ 已实现 |
-| PDF 解析 | PdfPig | 0.1.9 | ✅ 已实现 |
-| DOCX 解析 | DocumentFormat.OpenXml | 3.2.0 | ✅ 已实现 |
-| 检索算法 | BM25 + pgvector 混合 | - | ✅ 已实现 |
-| 数据库 | PostgreSQL | 16.x | ✅ 已实现 |
-| 向量扩展 | pgvector | 0.7.x | ✅ 已实现 |
-| 本地 LLM | Ollama | latest | ✅ 已实现 |
-| DI 容器 | Microsoft.Extensions.DI | 8.0+ | ✅ 已实现 |
-| 结构化日志 | Serilog | 4.0+ | ✅ 已实现 |
+| 语言 | C# | 12.0 | ✅ |
+| 框架 | .NET | 8.0 | ✅ |
+| AI 框架 | Semantic Kernel | 1.74.0 | ✅ |
+| 本地 LLM | Ollama (qwen3:8b) | latest | ✅ |
+| 推理模型 | Qwen3-8B (Q4_K_M) | 8B | ✅ |
+| 嵌入模型 | nomic-embed-text | latest | ✅ |
+| 数据库 | PostgreSQL + pgvector | 16.x | ✅ |
+| PDF 解析 | PdfPig | 0.1.9 | ✅ |
+| DOCX 解析 | DocumentFormat.OpenXml | 3.2.0 | ✅ |
+| 认证 | JWT Bearer + BCrypt | 8.0+ | ✅ |
+| 速率限制 | 自定义 Middleware | - | ✅ |
+| 结构化日志 | Serilog + Seq | 4.0+ | ✅ |
+| 指标监控 | Prometheus Text Format | - | ✅ |
+| 可视化 | Grafana 仪表盘 | latest | ✅ |
+| 分布式追踪 | OpenTelemetry | 1.9+ | ✅ |
+| CI/CD | GitHub Actions → GHCR | - | ✅ |
+| 容器化 | Docker multi-stage | 26.x | ✅ |
+| 负载测试 | Benchmark 模块 | 内置 | ✅ |
 
 ## ✨ 核心功能
 
@@ -83,6 +121,24 @@
 - 动火作业许可预审
 - 安全距离合规验证
 - 历史案例相似匹配
+
+### 5. 结构化化学品数据库（★ Task 10 新增）
+- 30+ 常见工业危化品结构化属性（CAS号/UN编号/分子式/闪点/沸点/爆炸极限）
+- 危险类别与 GB 30000 标准号精确映射
+- 20+ 精确化学品储存禁忌配对规则 + 类别级自动推断
+- 20 对安全距离规则（GB 50160 / GB 50016）
+- GB 18218 重大危险源临界量集成
+- 8 项关键法规标准版本追踪（GB 15603/18218/30871 等）
+- 40+ 化学品别名自动归一化
+
+### 6. AI 工具集（7 个 KernelFunction）
+- `CheckHazardCategory` — 危险类别查询
+- `CheckStorageCompatibility` — 储存兼容性检查
+- `GetSafetyDistance` — 安全距离查询
+- `LookupChemicalProperties` — 化学品全属性查询（★新增）
+- `GetMajorHazardThreshold` — GB 18218 重大危险源临界量（★新增）
+- `CheckRegulationVersion` — 法规版本状态查询（★新增）
+- `GetCurrentTime` / `Calculate` — 通用工具
 
 ## 📁 文档结构
 
@@ -115,95 +171,108 @@ docs/
 
 ## 🚀 快速开始
 
-### 环境要求
-- .NET 8 SDK
-- Docker Desktop（⭐ 推荐，数据库免安装）**或** PostgreSQL 16 + pgvector 手动安装
-- Ollama（本地 LLM 推理，需拉取 `deepseek-r1:local7b` 和 `nomic-embed-text:latest`）
+### 前置条件
+- Docker Desktop（⭐ 推荐，数据库免安装）
+- Ollama（本地 LLM 推理，需拉取 `qwen3:8b` 和 `nomic-embed-text:latest`）
 
-### 方式一：Docker 一键启动（需先安装 Docker Desktop）
-
-如果你已安装 Docker Desktop，30 秒内完成：
+### Docker 一键部署（推荐）
 
 ```bash
 # 1. 克隆项目
-git clone https://gitee.com/liuchao_yue/agent-system.git
-cd agent-system
+git clone https://gitee.com/liuchao_yue/agent-system.git && cd agent-system
 
-# 2. 启动数据库（首次自动建库 + 执行建表脚本 + 启用 pgvector）
-docker-compose up -d
-
-# 3. 启动应用
-dotnet run --project Agent1
-```
-
-配置文件 `docker-compose.yml` 已内置默认密码，开箱即用。如需自定义：
-```bash
-cp .env.example .env    # 编辑密码后 docker-compose 会自动读取
-```
-
-### 方式二：手动安装数据库（不需要 Docker）
-
-如果你没有 Docker 或想手动管理 PostgreSQL：
-
-### 1. 初始化数据库
-
-先创建数据库并导入建表脚本：
-
-```sql
--- PostgreSQL 中执行
-CREATE DATABASE your_chemical_db;
-```
-
-```bash
-psql -U postgres -d your_chemical_db -f init_database.sql
-```
-
-### 2. 配置
-
-所有配置集中在 `Agent1/appsettings.json`，无需修改代码。
-
-**数据库连接**（敏感信息通过环境变量注入，禁止硬编码）：
-
-```bash
-# 1. 复制环境变量模板
+# 2. 配置密钥（生产环境必做，开发可用默认值）
 cp .env.example .env
+# 编辑 .env 填入你的密码和 JWT 密钥
 
-# 2. 编辑 .env 填入你的数据库密码
-#    Windows 记事本: notepad .env
-#    VSCode: code .env
+# 3. 启动 Ollama（如未运行）
+ollama serve
+
+# 4. 一键启动（PostgreSQL + API 容器）
+docker-compose up -d --build
+
+# 5. 验证部署
+curl http://localhost:8080/health/live
+# → "Healthy"
 ```
 
-或直接通过 PowerShell 设置（永久生效，需重启终端）：
+首次启动后，知识库会自动加载嵌入向量（~4528 条文档，约 5-10 分钟）。
+通过 `docker logs -f chemical_agent_api` 可查看进度。
 
-```powershell
-[System.Environment]::SetEnvironmentVariable("DB_PASSWORD", "你的数据库密码", "User")
-[System.Environment]::SetEnvironmentVariable("DB_USERNAME", "postgres", "User")
+### API 端点
+
+| 方法 | 路径 | 说明 | 认证 |
+|------|------|------|------|
+| `POST` | `/api/auth/login` | 登录获取 Token | 否 |
+| `POST` | `/api/auth/refresh` | 刷新 Token | Bearer |
+| `POST` | `/api/compliance/hazard/query` | 危化品危险类别查询 | Bearer |
+| `POST` | `/api/compliance/storage/check` | 储存兼容性检查 | Bearer |
+| `POST` | `/api/compliance/check` | 合规综合检查 | Bearer |
+| `GET` | `/health` | 全量健康检查 | 否 |
+| `GET` | `/health/live` | 存活检查 | 否 |
+| `GET` | `/health/ready` | 就绪检查 | 否 |
+| `GET` | `/metrics` | Prometheus 指标 | 否 |
+| `GET` | `/swagger` | Swagger 文档 | 否 |
+
+调用示例：
+```bash
+# 1. 登录
+curl -X POST http://localhost:8080/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"your_password"}'
+
+# 2. 查询危化品（用返回的 token）
+curl -X POST http://localhost:8080/api/compliance/hazard/query \
+  -H 'Authorization: Bearer <token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"substanceName":"苯"}'
 ```
 
-> ⚠️ **安全提醒**：
-> - 密码通过 `DB_PASSWORD` 环境变量注入，**绝不**写入 `appsettings.json` 或提交到 Git
-> - 生产环境建议创建专用数据库账号并授予最小权限，而非使用 `postgres` 超级用户
-> - 本地开发使用 `postgres` + 环境变量即可，这是个人项目的合理折中
-
-**LLM 模型**（默认值可直接使用，也可按需调整）：
-
-```json
-// appsettings.json 关键配置项
-"Llm": { "ModelId": "deepseek-r1:local7b", "Endpoint": "http://localhost:11434" },
-"KnowledgeBase": { "BasePath": "<your-project-path>/knowledgebase" },
-"VectorSearch": { "EmbeddingModelId": "nomic-embed-text:latest" },
-"Database": { "Host": "localhost", "Port": 5432, "DatabaseName": "your_chemical_db" }
-```
-
-### 2. 运行
+### 本地开发（不依赖 Docker）
 
 ```bash
-cd Agent1
-dotnet restore
-dotnet run --project Agent1
+# 1. 安装 PostgreSQL 16 + pgvector，创建数据库
+# 2. 配置 .env（同上）
+# 3. 启动 API
+dotnet run --project Agent1.Api
 ```
 
-启动后按菜单选择功能（推荐首选「8. 化工合规自查」或「9. 化工合规RAG测试」验证环境）。
+## 🔐 生产环境安全配置
+
+所有敏感信息通过 `.env` 环境变量注入，**绝不**硬编码或提交 Git：
+
+| 变量 | 说明 | 生产要求 |
+|------|------|----------|
+| `DB_PASSWORD` | PostgreSQL 密码 | **强制设置**，否则启动失败 |
+| `JWT_KEY` | JWT 签名密钥（≥32字符） | **强制设置**，否则启动失败 |
+| `AUTH_ACCOUNTS_JSON` | 账号列表 JSON | **强制设置**，否则拒绝开发默认账号 |
+| `ASPNETCORE_ENVIRONMENT` | 运行环境 | 设为 `Production` |
+
+AUTH_ACCOUNTS_JSON 格式：
+```json
+[{"Username":"admin","Password":"xxx","Role":"admin"},{"Username":"auditor","Password":"xxx","Role":"auditor"}]
+```
+
+> ⚠️ 生产环境启动时会检查以上三项，不满足则直接 `Exit(1)` 拒绝启动。
+
+## 📊 可观测性
+
+```
+http://localhost:8080/metrics               # Prometheus 指标
+http://localhost:9090                        # Prometheus UI（需单独启动）
+http://localhost:3000                        # Grafana（需单独启动）
+```
+
+Prometheus 录制规则位于 `prometheus/` 目录，Grafana 仪表盘 JSON 位于 `grafana/` 目录。
+
+## 🔄 CI/CD
+
+GitHub Actions 工作流（`.github/workflows/ci.yml`）：
+```
+Push → Build (.NET 8) → Test (133 tests) → Docker Build → Push GHCR
+```
+
+镜像自动推送到 `ghcr.io/<org>/agent-system:latest`。
 
 ## 📚 学习路径
 
@@ -231,11 +300,30 @@ MIT License
 
 ---
 
-**文档版本**：v2.3  
-**最后更新**：2026年6月6日  
-**状态**：Phase 2a 评测体系生产级修复完成 | 工具触发/意图路由/Citation结构化/KB反向验证
+**文档版本**：v3.0  
+**最后更新**：2026年6月10日  
+**状态**：生产级容器化部署完成 | JWT 认证 | 速率限制 | CI/CD | OpenTelemetry | 133 tests 全通过
 
 ## 📋 近期更新
+
+### Task 10: 化工知识库专业覆盖增强（2026-06-06）
+- **新增** `Models/ChemicalSubstanceModels.cs` — 5 个数据模型：ChemicalSubstance / HazardCategoryRef / RegulationVersion / StorageIncompatibilityRule / SafetyDistanceRule
+- **新增** `Services/ChemicalSubstanceDatabase.cs` — 30+ 危化品结构化属性数据库（~1000 行）
+  - 核心字段: CAS号 / UN编号 / 分子式 / 闪点 / 沸点 / 爆炸极限(LEL-UEL) / 自燃温度 / 相对密度 / 蒸气密度
+  - 危险类别精确映射 GB 30000 标准号 + 子类别
+  - 储存禁忌类别列表 + 精确化学品配对规则（20 条）
+  - GB 18218 重大危险源临界量（苯 50t / 氯 5t / 氨 10t / 氰化钠 1t 等）
+  - 40+ 别名自动归一化（双氧水→过氧化氢、液氯→氯、烧碱→氢氧化钠 等）
+  - 20 对安全距离规则（甲类仓库-明火点 30m、氯气储存区-居住区 200m 等）
+  - 8 项关键法规版本追踪（GB 15603: 2022版 / GB 18218: 2018版 等）
+- **扩充** `ChemicalComplianceTools.cs` — 3 个新 KernelFunction 工具:
+  - `LookupChemicalProperties` — 化学品全属性查询（含安全提示）
+  - `GetMajorHazardThreshold` — GB 18218 重大危险源临界量查询
+  - `CheckRegulationVersion` — 法规版本状态 + 全文收录情况查询
+  - 降级方法升级为数据库优先：Fallback 先查结构化数据库，再降级到通用关键词匹配
+- **扩充** `Data/ComplianceEvalSet.json` — 64 条评测用例（+17 条新增：属性查询 G 系列 + 重大危险源 H 系列 + 法规版本 I 系列）
+- **新增** `Agent1.Tests/ChemicalSubstanceDatabaseTests.cs` — 56 个测试（查询/别名/兼容性/安全距离/法规版本/数据质量/评测集覆盖）
+- **效果**: 化工知识库从 27 条硬编码 → 30+ 结构化数据库；评测集 31 种化学品 100% 覆盖；133 tests 全通过
 
 ### Phase 2a 评测体系生产级修复（2026-06-06）
 - **P0-1 强制工具调用**：`LlmService.cs` 中 `FunctionChoiceBehavior.Auto()` → `Required()`，LLM 不再能跳过工具调用
@@ -316,5 +404,6 @@ MIT License
   - 强化 Step5 校验 Prompt 格式约束，防止 LLM 自我复制
 
 ### 编译状态
+✅ `dotnet test`：133 通过，0 失败
 ✅ `dotnet build`：0 错误，19 警告（全部为既有的 nullable 引用类型警告）
 

@@ -1,0 +1,142 @@
+{
+  "dashboard": {
+    "title": "Agent1 API SLO Dashboard",
+    "uid": "agent1-slo",
+    "panels": [
+      {
+        "title": "HTTP QPS by Endpoint",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total[1m])) by (http_route)",
+            "legendFormat": "{{http_route}}"
+          }
+        ],
+        "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 }
+      },
+      {
+        "title": "P95 Latency",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, http_route))",
+            "legendFormat": "{{http_route}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "s" }
+        },
+        "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 }
+      },
+      {
+        "title": "5xx Error Rate",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total{status_code=~\"5..\"}[1m])) / sum(rate(http_requests_total[1m]))",
+            "legendFormat": "error_rate"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 0.01, "color": "orange" },
+                { "value": 0.05, "color": "red" }
+              ]
+            }
+          }
+        },
+        "gridPos": { "x": 0, "y": 8, "w": 6, "h": 8 }
+      },
+      {
+        "title": "LLM Call Success Rate",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "1 - (rate(llm_error_count_total[5m]) / rate(llm_call_count_total[5m]))",
+            "legendFormat": "llm_success_rate"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": {
+              "steps": [
+                { "value": 0.95, "color": "green" },
+                { "value": 0.8, "color": "orange" },
+                { "value": 0, "color": "red" }
+              ]
+            }
+          }
+        },
+        "gridPos": { "x": 6, "y": 8, "w": 6, "h": 8 }
+      },
+      {
+        "title": "Cache Hit Ratio",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "cache_hits_total / (cache_hits_total + cache_misses_total)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "percentunit" }
+        },
+        "gridPos": { "x": 12, "y": 8, "w": 6, "h": 4 }
+      },
+      {
+        "title": "Circuit Breaker Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "agent1_circuit_breaker_open"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              { "value": "0", "text": "CLOSED (OK)" },
+              { "value": "1", "text": "OPEN (BLOCKED)" }
+            ]
+          }
+        },
+        "gridPos": { "x": 18, "y": 8, "w": 6, "h": 4 }
+      },
+      {
+        "title": "LLM Calls Rate",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(llm_call_count_total[5m])",
+            "legendFormat": "llm_calls/s"
+          }
+        ],
+        "gridPos": { "x": 0, "y": 16, "w": 8, "h": 6 }
+      },
+      {
+        "title": "503 Rate (LLM Concurrency Gate)",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total{status_code=\"503\"}[1m])",
+            "legendFormat": "503_rate"
+          }
+        ],
+        "gridPos": { "x": 8, "y": 16, "w": 8, "h": 6 }
+      },
+      {
+        "title": "Active LLM Concurrency",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "agent1_llm_active_requests"
+          }
+        ],
+        "gridPos": { "x": 16, "y": 16, "w": 8, "h": 6 }
+      }
+    ]
+  }
+}
