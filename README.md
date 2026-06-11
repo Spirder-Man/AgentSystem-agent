@@ -172,8 +172,8 @@ docs/
 ## 🚀 快速开始
 
 ### 前置条件
-- Docker Desktop（⭐ 推荐，数据库免安装）
-- Ollama（本地 LLM 推理，需拉取 `qwen3:8b` 和 `nomic-embed-text:latest`）
+- Docker Desktop（⭐ 推荐，一键启动全部服务）
+- 无需单独安装 Ollama 或拉取模型 — docker-compose 自动处理
 
 ### Docker 一键部署（推荐）
 
@@ -185,10 +185,7 @@ git clone https://gitee.com/liuchao_yue/agent-system.git && cd agent-system
 cp .env.example .env
 # 编辑 .env 填入你的密码和 JWT 密钥
 
-# 3. 启动 Ollama（如未运行）
-ollama serve
-
-# 4. 一键启动（PostgreSQL + API 容器）
+# 3. 一键启动（PostgreSQL + Ollama + API 容器，首次自动拉取模型 ~5GB）
 docker-compose up -d --build
 
 # 5. 验证部署
@@ -196,8 +193,8 @@ curl http://localhost:8080/health/live
 # → "Healthy"
 ```
 
-首次启动后，知识库会自动加载嵌入向量（~4528 条文档，约 5-10 分钟）。
-通过 `docker logs -f chemical_agent_api` 可查看进度。
+首次启动后，Ollama 自动拉取 qwen3:8b (~4.7GB) + nomic-embed-text (~274MB)，然后知识库加载嵌入向量（~4528 条文档），全程约 10-15 分钟。
+通过 `docker-compose logs -f` 可查看各服务进度。
 
 ### API 端点
 

@@ -29,17 +29,16 @@ CREATE TABLE IF NOT EXISTS sessions (
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS audit_logs (
     id SERIAL PRIMARY KEY,
-    session_id UUID NOT NULL,
     user_id VARCHAR(100) NOT NULL,
-    action_type VARCHAR(50) NOT NULL,
-    action_details TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    action VARCHAR(100) NOT NULL,
+    detail TEXT,
+    ip_address VARCHAR(50),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 创建索引
-CREATE INDEX IF NOT EXISTS idx_audit_logs_session_id ON audit_logs(session_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
 
 -- ============================================================================

@@ -1,10 +1,10 @@
 # ==========================================
 # AgentSystem - Docker Compose 配置
-# 一键启动 PostgreSQL 16 + pgvector + API 服务
+# 一键启动 PostgreSQL 16 + pgvector + Ollama + API 服务
 # ==========================================
 # 使用方式：
 #   1. cp .env.example .env        （首次或根据需要修改密码）
-#   2. docker-compose up -d        （启动全部服务）
+#   2. docker-compose up -d        （启动全部服务，首次自动拉取模型）
 #   3. docker-compose logs -f api  （查看 API 日志）
 #   4. docker-compose down         （停止全部服务）
 # ==========================================
@@ -31,6 +31,55 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── Ollama 本地 LLM 推理服务 ──
+  ollama:
+    image: ollama/ollama:latest
+    container_name: chemical_agent_ollama
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_NUM_PARALLEL=2
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    # GPU 加速（NVIDIA GPU，取消注释启用）:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # ── 模型自动拉取（首次启动完成后退出）──
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: chemical_agent_ollama_pull
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "[ollama-pull] Waiting for Ollama server..."
+        until ollama list > /dev/null 2>&1; do sleep 2; done
+        echo "[ollama-pull] Ollama ready, pulling qwen3:8b (~4.7GB)..."
+        ollama pull qwen3:8b
+        echo "[ollama-pull] Pulling nomic-embed-text (~274MB)..."
+        ollama pull nomic-embed-text
+        echo "[ollama-pull] All models pulled successfully"
+    environment:
+      - OLLAMA_HOST=ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -48,7 +97,7 @@ services:
       - DB_PASSWORD=${DB_PASSWORD:?生产环境必须设置 DB_PASSWORD}
       - JWT_KEY=${JWT_KEY:-}
       - AUTH_ACCOUNTS_JSON=${AUTH_ACCOUNTS_JSON}
-      - LLM__Endpoint=${LLM_ENDPOINT:-http://host.docker.internal:11434}
+      - LLM__Endpoint=http://ollama:11434
       - KnowledgeBase__BasePath=/app/knowledgebase
     volumes:
       # 日志持久化
@@ -58,6 +107,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      ollama-pull:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/health/live || exit 1"]
       interval: 30s
@@ -70,3 +121,5 @@ volumes:
     name: chemical_agent_postgres_data
   api_logs:
     name: chemical_agent_api_logs
+  ollama_data:
+    name: chemical_agent_ollama_data
