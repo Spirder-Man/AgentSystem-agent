@@ -217,6 +217,9 @@ namespace Agent1.Config
         // 向量嵌入模型
         public string EmbeddingModelId { get; set; } = "nomic-embed-text:latest";
 
+        // Embedding 服务端点地址（llama.cpp OpenAI兼容接口）
+        public string EmbeddingEndpoint { get; set; } = "http://localhost:8081/v1";
+
         // 向量维度
         public int EmbeddingDimension { get; set; } = 768;
 

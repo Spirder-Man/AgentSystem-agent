@@ -51,7 +51,7 @@ namespace Agent1.Services
             var thinkingHandler = new OllamaThinkingHandler(this);
 
             var kernelBuilder = Kernel.CreateBuilder();
-            kernelBuilder.AddOllamaChatCompletion(ModelConfig.ModelId, ModelConfig.Endpoint);
+            kernelBuilder.AddOpenAIChatCompletion(ModelConfig.ModelId, ModelConfig.Endpoint, "not-needed");
             // Phase 2a: 使用 RAG-backed 实例注册，SK Auto Function Calling 直接调用知识库检索
             kernelBuilder.Plugins.AddFromObject(_complianceTools, "ChemicalCompliance");
             _kernel = kernelBuilder.Build();
@@ -643,15 +643,15 @@ namespace Agent1.Services
             try
             {
                 var config = AppConfig.Instance.VectorSearch;
-                var baseUrl = ModelConfig.Endpoint;
-                var url = new Uri(baseUrl, "/api/embeddings").ToString();
+                var embedEndpoint = config.EmbeddingEndpoint;
+                var url = $"{embedEndpoint.TrimEnd('/')}/embeddings";
                 // 创建请求对象
                 var request = new
                 {
                     //模型ID
                     model = config.EmbeddingModelId,
                     //输入文本
-                    prompt = text
+                    input = text
                 };
 
                 var json = JsonSerializer.Serialize(request);
@@ -670,7 +670,7 @@ namespace Agent1.Services
                 var responseJson = await response.Content.ReadAsStringAsync();
                 
                 using var doc = JsonDocument.Parse(responseJson);
-                var embedding = doc.RootElement.GetProperty("embedding").EnumerateArray()
+                var embedding = doc.RootElement.GetProperty("data")[0].GetProperty("embedding").EnumerateArray()
                     .Select(e => e.GetSingle())
                     .ToArray();
 
