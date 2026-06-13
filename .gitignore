@@ -1,5 +1,5 @@
 
-# 敏感配置文件（本地环境变量，禁止提交）
+# 敏感配置文件（本地环境变量，禁止提交�?
 .env
 
 # .NET
@@ -49,12 +49,12 @@ run_rag_test.py
 测试结果报告.txt
 ReAct断点调试.txt
 
-# 本地 SK 源码副本（非项目依赖�?Agent1/Microsoft.SemanticKernel/
+# 本地 SK 源码副本（非项目依赖�?Agent1/Microsoft.SemanticKernel/
 
 # VSCode
 .vscode/
 
-# ������Խű�
+# ������Խű�?
 test_*.py
 simple_test.py
 agent_test.py
@@ -71,7 +71,7 @@ test_result.txt
 # Qoder/Agent 内部目录
 .cowork-temp/
 
-# 本地运行时数据
-memory/
+# 本地运行时数�?
+/memory/
 gravity-maze/
 wechat-group-report/
