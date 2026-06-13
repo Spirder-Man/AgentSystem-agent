@@ -97,7 +97,6 @@ namespace Agent1.Services
                 // Phase 2a: 启用 SK Auto Function Calling — LLM 自主决定调用工具
                 var settings = new OpenAIPromptExecutionSettings
                 {
-                    ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
                     FunctionChoiceBehavior = FunctionChoiceBehavior.Required(),
                     Temperature = 0.3,
                 };
@@ -382,7 +381,6 @@ namespace Agent1.Services
                         // ── 第 1 次: 完整 Function Calling 模式 ──
                         var settings = new OpenAIPromptExecutionSettings
                         {
-                            ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
                             FunctionChoiceBehavior = FunctionChoiceBehavior.Required(),
                             Temperature = 0.0,
                             MaxTokens = 512,
@@ -428,7 +426,7 @@ namespace Agent1.Services
                         var retrySettings = new OpenAIPromptExecutionSettings
                         {
                             // 禁用工具调用：避免重复触发 RAG 检索
-                            ToolCallBehavior = null,
+                            FunctionChoiceBehavior = null,
                             Temperature = 0.3,
                             MaxTokens = 512,
                         };
@@ -619,7 +617,7 @@ namespace Agent1.Services
             {
                 var settings = new OpenAIPromptExecutionSettings
                 {
-                    ToolCallBehavior = null,  // 不触发工具调用
+                    FunctionChoiceBehavior = null,  // 不触发工具调用
                     Temperature = 0.1,
                     MaxTokens = maxTokens
                 };
