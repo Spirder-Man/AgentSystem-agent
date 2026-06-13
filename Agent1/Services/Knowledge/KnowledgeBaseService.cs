@@ -30,6 +30,41 @@ namespace Agent1.Services
         /// </summary>
         private const double B = 0.75;
 
+        // [P2] GB编号标准化正则：匹配 GB/T? 数字.子编号-年份 等变体，统一为紧凑格式
+        // 例如 "GB 30000.14" / "GB30000.14" / "GB/T 30000.14-2013" → "gb3000014" / "gb/t30000142013"
+        private static readonly Regex _gbNumberRegex = new Regex(
+            @"\bGB\s*/?\s*[TZ]?\s*(\d{4,5})[.\s]*(\d*)(?:[-\s]*(\d{4}))?\b",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        /// <summary>
+        /// [P2] GB编号标准化：将 GB30000.14 / GB 30000.14 / GB/T 30000.14-2013 等
+        /// 统一为无分隔符紧凑格式 gb3000014，避免 tokenizer 按 . 和空格拆散导致 BM25 失配。
+        /// </summary>
+        public static string NormalizeGbNumbers(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return text;
+
+            return _gbNumberRegex.Replace(text, match =>
+            {
+                var fullMatch = match.Value;
+                var prefix = fullMatch.Contains("/T", StringComparison.OrdinalIgnoreCase) ? "gb/t"
+                           : fullMatch.Contains("/Z", StringComparison.OrdinalIgnoreCase) ? "gb/z"
+                           : "gb";
+
+                var mainNumber = match.Groups[1].Value;
+                var subNumber = match.Groups[2].Value;
+                var year = match.Groups[3].Value;
+
+                var result = prefix + mainNumber;
+                if (!string.IsNullOrEmpty(subNumber))
+                    result += subNumber;
+                if (!string.IsNullOrEmpty(year))
+                    result += year;
+
+                return result.ToLowerInvariant();
+            });
+        }
+
         /// <summary>
         /// 知识库中的文档列表。
         /// </summary>
@@ -190,7 +225,8 @@ namespace Agent1.Services
         /// <returns>预处理后的查询文本。</returns>
         public string PreprocessQuery(string query)
         {
-            return query.Trim();
+            // [P2] GB编号标准化：查询词也做同样归一化
+            return NormalizeGbNumbers(query.Trim());
         }
         /// <summary>
         /// 获取知识库中文档的数量。
@@ -217,7 +253,9 @@ namespace Agent1.Services
             if (string.IsNullOrWhiteSpace(text))
                 return new List<string>();
 
-            var cleanedText = text.Replace("\n", " ").Replace("\r", " ");
+            // [P2] GB编号标准化：先规范化为紧凑格式，避免分词器按 . - 空格拆散
+            var normalized = NormalizeGbNumbers(text);
+            var cleanedText = normalized.Replace("\n", " ").Replace("\r", " ");
             // 初始化分词列表
             var tokens = new List<string>();
 
@@ -306,7 +344,7 @@ namespace Agent1.Services
             "甲苯", "甲醇", "乙醇", "丙酮", "过氧化氢", "硫酸", "盐酸", "硝酸",
             "危化品", "危险化学品", "储罐", "防火堤", "消防通道", "安全距离",
             "甲类", "乙类", "丙类", "贮存", "存储", "国标", "GB15603", "GB30000",
-            "禁忌物料", "氧化剂", "易燃液体", "易燃固体", "泄漏", "应急"
+            "gb15603", "gb30000", "禁忌物料", "氧化剂", "易燃液体", "易燃固体", "泄漏", "应急"
         };
         
         // 化工规则优先级（用于重排序，key 匹配 Metadata["Priority"] 的值）

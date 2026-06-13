@@ -182,7 +182,9 @@ public class EvalEngine
 
                         if (tc.ExpectedConclusion != null)
                         {
-                            result.conclusion_match = CheckConclusion(response, tc.ExpectedConclusion, result.tool_match, tc.Category, tc.Intent);
+                            // [P1 FIX] 安全距离：工具结果中含距离数值，LLM回答可能丢失数值 → 传工具结果供后备检查
+                            var toolResult = matchedCall?.Result;
+                            result.conclusion_match = CheckConclusion(response, tc.ExpectedConclusion, result.tool_match, tc.Category, tc.Intent, toolResult);
                             var isInfoQ = (tc.Intent ?? "") == "info_query";
                             Console.WriteLine($"      {(result.conclusion_match ? "✅" : "⚠️")} 结论: {(isInfoQ ? $"reg={tc.ExpectedConclusion.ExpectedRegulationNumber ?? "?"}" : $"is_compliant={tc.ExpectedConclusion.IsCompliant}")}");
                         }
@@ -462,13 +464,18 @@ public class EvalEngine
                 return;
             }
 
+            // [P2] GB编号标准化：将检索内容和相关指标都做规范化后再比对
+            var normalizedIndicators = relevanceIndicators
+                .Select(ind => KnowledgeBaseService.NormalizeGbNumbers(ind))
+                .ToList();
+
             // ── 判断每个检索结果是否相关 ──
             int relevantCount = 0;
             int firstRelevantRank = -1;
             for (int i = 0; i < retrievedChunks.Count; i++)
             {
-                var content = retrievedChunks[i].Content ?? "";
-                bool isRelevant = relevanceIndicators.Any(indicator =>
+                var content = KnowledgeBaseService.NormalizeGbNumbers(retrievedChunks[i].Content ?? "");
+                bool isRelevant = normalizedIndicators.Any(indicator =>
                     content.Contains(indicator, StringComparison.OrdinalIgnoreCase));
 
                 if (result.RetrievedChunks != null && i < result.RetrievedChunks.Count)
@@ -550,7 +557,7 @@ public class EvalEngine
         return false;
     }
 
-    public static bool CheckConclusion(string? response, EvalConclusion? expected, bool toolTriggered, string? category = null, string? intent = null)
+    public static bool CheckConclusion(string? response, EvalConclusion? expected, bool toolTriggered, string? category = null, string? intent = null, string? toolResult = null)
     {
         if (string.IsNullOrEmpty(response) || expected == null)
             return false;
@@ -562,7 +569,14 @@ public class EvalEngine
         if (isInfoQuery)
         {
             if (category == "安全距离" && expected.ExpectedDistance.HasValue)
-                return CheckSafetyDistanceMatch(response, expected.ExpectedDistance.Value);
+            {
+                // [P1 FIX] 先查LLM回答，若不含距离则回退查工具原始结果
+                if (CheckSafetyDistanceMatch(response, expected.ExpectedDistance.Value))
+                    return true;
+                if (!string.IsNullOrEmpty(toolResult) && CheckSafetyDistanceMatch(toolResult, expected.ExpectedDistance.Value))
+                    return true;
+                return false;
+            }
 
             if (!string.IsNullOrEmpty(expected.ExpectedRegulationNumber))
                 return CheckRegulationMatch(response, expected.ExpectedRegulationNumber);
