@@ -154,8 +154,14 @@ public static class ChemicalSubstanceDatabase
 
     public static RegulationVersion? GetRegulationVersion(string number)
     {
+        // [P3 FIX] GB编号标准化后再匹配，确保 "GB30871-2022" 能匹配到 "GB 30871"
+        var normalizedQuery = KnowledgeBaseService.NormalizeGbNumbers(number);
         return _regulationVersions.FirstOrDefault(r =>
-            r.RegulationNumber.Contains(number, StringComparison.OrdinalIgnoreCase));
+            KnowledgeBaseService.NormalizeGbNumbers(r.RegulationNumber)
+                .Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase)
+            || normalizedQuery.Contains(
+                KnowledgeBaseService.NormalizeGbNumbers(r.RegulationNumber),
+                StringComparison.OrdinalIgnoreCase));
     }
 
     public static IReadOnlyList<RegulationVersion> GetAllRegulationVersions() => _regulationVersions;

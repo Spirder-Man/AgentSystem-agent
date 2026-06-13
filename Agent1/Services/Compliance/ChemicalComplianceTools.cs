@@ -235,23 +235,25 @@ namespace Agent1.Services
                 ExtractRegulationRefs(c.Content, regSet);
             }
 
+            // [P3 FIX] RAG 提取不到距离时，回退到硬编码字典/数据库，确保工具结果始终含 [DISTANCE: Xm]
+            if (!distance.HasValue)
+            {
+                Console.WriteLine($"   [工具诊断] RAG 未提取到距离，回退硬编码字典");
+                var fallback = GetSafetyDistanceFallback(facilityType);
+                // 若有 RAG 检索到的法规编号，补充到回退结果前面
+                if (regSet.Count > 0 && !fallback.Contains("[REGULATIONS:"))
+                    return $"[REGULATIONS: {string.Join(", ", regSet.OrderBy(r => r))}]\n{fallback}";
+                return fallback;
+            }
+
             var sb = new StringBuilder();
             if (regSet.Count > 0)
                 sb.AppendLine($"[REGULATIONS: {string.Join(", ", regSet.OrderBy(r => r))}]");
-            if (distance.HasValue)
-                sb.AppendLine($"[DISTANCE: {distance.Value}{unit}]");
+            sb.AppendLine($"[DISTANCE: {distance.Value}{unit}]");
             sb.AppendLine($"📋 「{facilityType}」安全间距检索结果");
-            if (distance.HasValue)
-            {
-                sb.AppendLine($"🔢 **提取数值**: {distance.Value} {unit} (来源: {source})");
-                sb.AppendLine($"⚠️  实际距离需对照 {facilityType} 场景具体判定");
-                sb.AppendLine($"[判定:is_compliant=待核实, 参考距离={distance.Value}{unit}]");
-            }
-            else
-            {
-                sb.AppendLine("⚠️  未从检索结果中提取到具体数值距离");
-                sb.AppendLine("[判定:is_compliant=数据不足]");
-            }
+            sb.AppendLine($"🔢 **提取数值**: {distance.Value} {unit} (来源: {source})");
+            sb.AppendLine($"⚠️  实际距离需对照 {facilityType} 场景具体判定");
+            sb.AppendLine($"[判定:is_compliant=待核实, 参考距离={distance.Value}{unit}]");
             sb.AppendLine();
             for (int i = 0; i < chunks.Count; i++)
             {
