@@ -142,7 +142,7 @@ namespace Agent1.Services
         // 工具返回知识库原文，不依赖 LLM 流式生成
         // ════════════════════════════════════════
 
-        [KernelFunction, Description("查询指定危化品的危险类别及适用国标（GB 30000 系列）。输入参数 substanceName: 危化品名称，如\"苯\"、\"硫酸\"。")]
+        [KernelFunction, Description("查询指定危化品的危险类别、危险特性、GHS分类及适用国标（GB 30000 系列）。适用于「XX属于什么危险类别」「XX的危险特性」「XX的GHS分类」等问题。输入参数 substanceName: 危化品名称，如\"苯\"、\"硫酸\"。")]
         public async Task<string> CheckHazardCategory(string substanceName)
         {
             // [P2-1] 别名归一化
@@ -199,7 +199,7 @@ namespace Agent1.Services
             return FormatRagResult($"「{substanceA}」与「{substanceB}」储存兼容性检索结果", chunks);
         }
 
-        [KernelFunction, Description("查询指定设施类型的安全距离要求（依据 GB50160/GB50016）。参数 facilityType: 设施类型，如\"储罐-建筑\"、\"甲类仓库-明火点\"。")]
+        [KernelFunction, Description("查询指定设施类型的安全距离/防火间距要求（依据 GB50160/GB50016）。适用于「XX与XX的安全距离」「XX与XX的防火间距」「XX与XX的最小间距」等问题。参数 facilityType: 设施类型描述，如\"储罐-建筑\"、\"甲类仓库-明火点\"、\"气柜-办公楼\"。")]
         public async Task<string> GetSafetyDistance(string facilityType)
         {
             Console.WriteLine($"   [工具诊断] GetSafetyDistance 被调用, facilityType=\"{facilityType}\"");
@@ -211,8 +211,8 @@ namespace Agent1.Services
             }
 
             var chunks = await GetCachedOrRetrieveAsync(
-                $"{facilityType} 安全间距 距离 米",
-                regulationType: "国标", topK: 3);
+                $"{facilityType} GB50160 防火间距 安全距离",
+                regulationType: "国标", topK: 5);
 
             Console.WriteLine($"   [工具诊断] RAG 检索完成, 命中 {chunks.Count} 条结果");
 
@@ -224,7 +224,7 @@ namespace Agent1.Services
 
             // [P0-1] 从 RAG 原文中提取数值距离，增强可判读性
             var allText = string.Join("\n", chunks.Select(c => c.Content));
-            var (distance, unit, source) = ExtractDistanceFromText(allText);
+            var (distance, unit, source) = ExtractDistanceFromText(allText, facilityType);
 
             // [P1-1] 从 chunk 中提取法规编号
             var regSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -271,13 +271,45 @@ namespace Agent1.Services
         /// <summary>
         /// [P0-1] 从 RAG 原文中提取安全距离数值。
         /// 匹配模式：不小于X米 / >=Xm / 最小安全距离为Xm / 不得小于X米 等
+        /// [P6] contextHint 用于在多距离文档中定位正确的距离值
         /// </summary>
-        private static (double? distance, string unit, string source) ExtractDistanceFromText(string text)
+        private static (double? distance, string unit, string source) ExtractDistanceFromText(string text, string? contextHint = null)
+        {
+            // 若有上下文提示（如 facilityType），先尝试在该提示所在的段落/区域中匹配
+            if (!string.IsNullOrWhiteSpace(contextHint))
+            {
+                // 在文本中查找包含 facilityType 的段落，优先从该段落提取
+                var hintKeywords = contextHint.Split('-', ' ', '的', '与', '和')
+                    .Where(k => k.Length >= 2)
+                    .ToArray();
+
+                foreach (var kw in hintKeywords)
+                {
+                    var idx = text.IndexOf(kw, StringComparison.OrdinalIgnoreCase);
+                    if (idx >= 0)
+                    {
+                        // 取该关键词前后各 200 字符作为上下文窗口
+                        var start = Math.Max(0, idx - 50);
+                        var len = Math.Min(400, text.Length - start);
+                        var context = text.Substring(start, len);
+
+                        var (d, u, s) = ExtractDistancePatterns(context);
+                        if (d.HasValue)
+                            return (d, u, s);
+                    }
+                }
+            }
+
+            return ExtractDistancePatterns(text);
+        }
+
+        /// <summary>在给定文本中通过正则提取距离数值</summary>
+        private static (double? distance, string unit, string source) ExtractDistancePatterns(string text)
         {
             // 模式1: "不小于 X 米" / "不得小于 X m" / "≥ X m"
             var patterns = new[]
             {
-                @"(不小于|不得小于|≥|>=s*)s*(\d+(?:\.\d+)?)\s*(米|m)",
+                @"(不小于|不应小于|不得小于|≥|>=s*)s*(\d+(?:\.\d+)?)\s*(米|m)",
                 @"(最小.*?(?:安全|防火)?间距.*?为)\s*(\d+(?:\.\d+)?)\s*(米|m)",
                 @"(安全距离.*?)\s*(\d+(?:\.\d+)?)\s*(米|m)",
                 @"(间距).*?(\d+(?:\.\d+)?)\s*(米|m)",
@@ -308,7 +340,7 @@ namespace Agent1.Services
         // [Task 10] 新增工具：结构化化学品属性 + 重大危险源 + 法规版本
         // ════════════════════════════════════════
 
-        [KernelFunction, Description("查询指定危化品的完整基础属性，包括CAS号、UN编号、分子式、闪点、沸点、爆炸极限、危险类别和适用国标。输入参数 substanceName: 危化品名称，如\"苯\"、\"甲醇\"。")]
+        [KernelFunction, Description("查询指定危化品的完整基础属性，包括CAS号、UN编号、分子式、闪点、沸点、爆炸极限和适用国标。注意：如需查询危险类别/GHS分类，请使用 CheckHazardCategory。输入参数 substanceName: 危化品名称，如\"苯\"、\"甲醇\"。")]
         public string LookupChemicalProperties(string substanceName)
         {
             substanceName = NormalizeSubstanceName(substanceName);
