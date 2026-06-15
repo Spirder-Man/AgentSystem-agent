@@ -59,9 +59,14 @@ namespace Agent1.Services
             // [Thinking控制] 通过反射将 OllamaThinkingHandler 注入到 SK 内部 HttpClient 中
             InjectThinkingHandler(_kernel, thinkingHandler);
 
-            _httpClient = new HttpClient
+            _httpClient = new HttpClient(new SocketsHttpHandler
             {
-                Timeout = TimeSpan.FromMinutes(2)
+                PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+                MaxConnectionsPerServer = AppConfig.Instance.VectorSearch.MaxConcurrentEmbeddings,
+                EnableMultipleHttp2Connections = true
+            })
+            {
+                Timeout = TimeSpan.FromSeconds(AppConfig.Instance.VectorSearch.EmbeddingTimeoutSeconds)
             };
 
             // Phase 2a 验证: 注册 Function Calling 拦截过滤器，捕获每次工具调用
@@ -694,6 +699,87 @@ namespace Agent1.Services
                     results.Add(emb);
             }
             return results.ToArray();
+        }
+
+        // Sprint 1: 真正的批量嵌入——单次 API 调用处理多个文本，利用 GPU 批处理
+        public async Task<float[][]?> GetEmbeddingsBatchAsync(IEnumerable<string> texts)
+        {
+            var textList = texts.ToList();
+            if (textList.Count == 0)
+                return Array.Empty<float[]>();
+
+            var config = AppConfig.Instance.VectorSearch;
+
+            try
+            {
+                // 按配置的批大小拆分，防止单次请求过大
+                var batchSize = Math.Max(1, config.EmbeddingBatchSize);
+                var allEmbeddings = new List<float[]>();
+
+                for (int batchIdx = 0; batchIdx < textList.Count; batchIdx += batchSize)
+                {
+                    var batch = textList.Skip(batchIdx).Take(batchSize).ToList();
+
+                    var embedEndpoint = config.EmbeddingEndpoint;
+                    var url = $"{embedEndpoint.TrimEnd('/')}/embeddings";
+
+                    // 批量请求：llama.cpp /v1/embeddings 支持 input 为字符串数组
+                    var request = new
+                    {
+                        model = config.EmbeddingModelId,
+                        input = batch.ToArray()  // 数组形式，一次请求处理多个
+                    };
+
+                    var json = JsonSerializer.Serialize(request);
+                    var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(config.EmbeddingTimeoutSeconds));
+                    var response = await _httpClient.PostAsync(url, content, cts.Token);
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        var errorContent = await response.Content.ReadAsStringAsync();
+                        Console.WriteLine($"   ⚠️ 批量向量请求失败 [{response.StatusCode}]: {errorContent.Substring(0, Math.Min(200, errorContent.Length))}");
+
+                        // 降级：逐条调用
+                        Console.WriteLine($"   🔄 降级为逐条嵌入...");
+                        foreach (var text in batch)
+                        {
+                            var singleEmb = await GetEmbeddingAsync(text);
+                            if (singleEmb != null)
+                                allEmbeddings.Add(singleEmb);
+                        }
+                        continue;
+                    }
+
+                    var responseJson = await response.Content.ReadAsStringAsync();
+                    using var doc = JsonDocument.Parse(responseJson);
+                    var dataArray = doc.RootElement.GetProperty("data");
+
+                    foreach (var item in dataArray.EnumerateArray())
+                    {
+                        var embedding = item.GetProperty("embedding").EnumerateArray()
+                            .Select(e => e.GetSingle())
+                            .ToArray();
+                        allEmbeddings.Add(embedding);
+                    }
+
+                    if (!EvalMode.IsActive)
+                        Console.WriteLine($"   ✅ 批量嵌入成功: {batch.Count} 条, 维度={allEmbeddings.LastOrDefault()?.Length ?? 0}");
+                }
+
+                return allEmbeddings.ToArray();
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine($"   ⚠️ 批量嵌入超时 ({config.EmbeddingTimeoutSeconds}s)，降级为逐条嵌入...");
+                return await GetEmbeddingsAsync(textList);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ⚠️ 批量嵌入失败: {ex.Message}，降级为逐条嵌入...");
+                return await GetEmbeddingsAsync(textList);
+            }
         }
 
         // 释放资源

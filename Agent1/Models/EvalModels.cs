@@ -5,6 +5,7 @@ namespace Agent1.Models;
 /// <summary>
 /// 评测数据模型 — 从 Program.cs 内联类迁移为独立公共模型。
 /// Task 5: 支持 JSON 序列化/反序列化，同时保持底层 JSON 键名不变以保证兼容性。
+/// Sprint 1: 新增 Answer Relevance, Citation Accuracy, 工程指标(latency/token) 维度。
 /// </summary>
 
 public class EvalSet
@@ -21,15 +22,10 @@ public class EvalSet
     [JsonPropertyName("test_cases")]
     public List<EvalCase> TestCases { get; set; } = new();
 
-    // 兼容旧代码 snake_case 属性
-    [JsonIgnore]
-    public string name { get => Name; set => Name = value; }
-    [JsonIgnore]
-    public string version { get => Version; set => Version = value; }
-    [JsonIgnore]
-    public string created { get => Created; set => Created = value; }
-    [JsonIgnore]
-    public List<EvalCase> test_cases { get => TestCases; set => TestCases = value; }
+    [JsonIgnore] public string name { get => Name; set => Name = value; }
+    [JsonIgnore] public string version { get => Version; set => Version = value; }
+    [JsonIgnore] public string created { get => Created; set => Created = value; }
+    [JsonIgnore] public List<EvalCase> test_cases { get => TestCases; set => TestCases = value; }
 }
 
 public class EvalCase
@@ -57,12 +53,11 @@ public class EvalCase
 
     // ── RAG 检索质量评估 ──
     [JsonPropertyName("expected_relevant_docs")]
-    public List<string>? ExpectedRelevantDocs { get; set; }  // 预期应检索到的文档/片段ID或关键词
+    public List<string>? ExpectedRelevantDocs { get; set; }
 
     [JsonPropertyName("expected_faithfulness_checks")]
-    public List<FaithfulnessCheck>? ExpectedFaithfulnessChecks { get; set; }  // 预期答案中应出现的可验证声明
+    public List<FaithfulnessCheck>? ExpectedFaithfulnessChecks { get; set; }
 
-    // 兼容旧代码 snake_case 属性
     [JsonIgnore] public string id { get => Id; set => Id = value; }
     [JsonIgnore] public string category { get => Category; set => Category = value; }
     [JsonIgnore] public string intent { get => Intent; set => Intent = value; }
@@ -95,7 +90,6 @@ public class EvalConclusion
     [JsonPropertyName("expected_distance_unit")]
     public string? ExpectedDistanceUnit { get; set; }
 
-    // 兼容旧代码
     [JsonIgnore] public bool? is_compliant { get => IsCompliant; set => IsCompliant = value; }
     [JsonIgnore] public string regulation { get => Regulation; set => Regulation = value; }
     [JsonIgnore] public string? expected_regulation_number { get => ExpectedRegulationNumber; set => ExpectedRegulationNumber = value; }
@@ -142,32 +136,45 @@ public class EvalResult
 
     // ── RAG 检索质量指标 ──
     [JsonPropertyName("retrieved_chunks")]
-    public List<RetrievalHit>? RetrievedChunks { get; set; }  // 实际检索到的文档片段
+    public List<RetrievalHit>? RetrievedChunks { get; set; }
 
     [JsonPropertyName("precision_at_k")]
-    public double? PrecisionAtK { get; set; }   // Precision@K (K=检索到的文档数)
+    public double? PrecisionAtK { get; set; }
 
     [JsonPropertyName("recall_at_k")]
-    public double? RecallAtK { get; set; }      // Recall@K
+    public double? RecallAtK { get; set; }
 
     [JsonPropertyName("mrr")]
-    public double? MRR { get; set; }            // Mean Reciprocal Rank
+    public double? MRR { get; set; }
 
     [JsonPropertyName("retrieval_evaluated")]
-    public bool RetrievalEvaluated { get; set; } // 是否进行了检索评估
+    public bool RetrievalEvaluated { get; set; }
 
     // ── 生成忠实度指标 ──
     [JsonPropertyName("total_claims")]
-    public int TotalClaims { get; set; }        // 从回复中提取的声明总数
+    public int TotalClaims { get; set; }
 
     [JsonPropertyName("verified_claims")]
-    public int VerifiedClaims { get; set; }     // 可在知识库中验证的声明数
+    public int VerifiedClaims { get; set; }
 
     [JsonPropertyName("hallucinated_claims")]
-    public int HallucinatedClaims { get; set; }  // 无法验证的声明数（疑似幻觉）
+    public int HallucinatedClaims { get; set; }
 
     [JsonPropertyName("faithfulness_score")]
-    public double? FaithfulnessScore { get; set; } // 忠实度 = verified / total
+    public double? FaithfulnessScore { get; set; }
+
+    // ── Sprint 1 新增评估维度 ──
+    [JsonPropertyName("answer_relevance")]
+    public double? AnswerRelevance { get; set; }
+
+    [JsonPropertyName("citation_accuracy")]
+    public double? CitationAccuracy { get; set; }
+
+    [JsonPropertyName("latency_ms")]
+    public long LatencyMs { get; set; }
+
+    [JsonPropertyName("token_count")]
+    public int TokenCount { get; set; }
 
     // 兼容旧代码
     [JsonIgnore] public string id { get => Id; set => Id = value; }
@@ -213,15 +220,25 @@ public class EvalReport
     [JsonPropertyName("mean_mrr")]
     public double? MeanMRR { get; set; }
 
-    // ── 生成忠实度汇总 ──
+    // ── 生成维度汇总 ──
     [JsonPropertyName("mean_faithfulness")]
     public double? MeanFaithfulness { get; set; }
+
+    [JsonPropertyName("mean_answer_relevance")]
+    public double? MeanAnswerRelevance { get; set; }
+
+    [JsonPropertyName("mean_citation_accuracy")]
+    public double? MeanCitationAccuracy { get; set; }
 
     [JsonPropertyName("total_verified_claims")]
     public int TotalVerifiedClaims { get; set; }
 
     [JsonPropertyName("total_hallucinated_claims")]
     public int TotalHallucinatedClaims { get; set; }
+
+    // ── 工程维度 ──
+    [JsonPropertyName("engineering_metrics")]
+    public EngineeringMetrics? EngineeringMetrics { get; set; }
 
     [JsonPropertyName("fc_readiness")]
     public FcReadinessStatus? FcReadiness { get; set; }
@@ -244,6 +261,41 @@ public class EvalReport
     [JsonIgnore] public List<EvalResult> cases { get => Cases; set => Cases = value; }
 }
 
+/// <summary>Sprint 1+5: 工程指标汇总（含 GPU 监控）</summary>
+public class EngineeringMetrics
+{
+    [JsonPropertyName("avg_latency_ms")]
+    public double AvgLatencyMs { get; set; }
+
+    [JsonPropertyName("p50_latency_ms")]
+    public double P50LatencyMs { get; set; }
+
+    [JsonPropertyName("p95_latency_ms")]
+    public double P95LatencyMs { get; set; }
+
+    [JsonPropertyName("avg_tokens_per_query")]
+    public double AvgTokensPerQuery { get; set; }
+
+    [JsonPropertyName("estimated_cost_per_1k_queries_usd")]
+    public double EstimatedCostPer1kQueriesUsd { get; set; }
+
+    // Sprint 5: GPU 监控指标
+    [JsonPropertyName("gpu_embedding_latency_ms")]
+    public double? GpuEmbeddingLatencyMs { get; set; }
+
+    [JsonPropertyName("gpu_search_latency_ms")]
+    public double? GpuSearchLatencyMs { get; set; }
+
+    [JsonPropertyName("reranker_latency_ms")]
+    public double? RerankerLatencyMs { get; set; }
+
+    [JsonPropertyName("vram_usage_mb")]
+    public double? VramUsageMb { get; set; }
+
+    [JsonPropertyName("query_cache_hit_rate")]
+    public double? QueryCacheHitRate { get; set; }
+}
+
 public class FcReadinessStatus
 {
     [JsonPropertyName("passed")]
@@ -258,7 +310,6 @@ public class FcReadinessStatus
     [JsonPropertyName("detail")]
     public string Detail { get; set; } = "";
 
-    // 兼容旧代码
     [JsonIgnore] public bool passed { get => Passed; set => Passed = value; }
     [JsonIgnore] public int trigger_count { get => TriggerCount; set => TriggerCount = value; }
     [JsonIgnore] public int total_count { get => TotalCount; set => TotalCount = value; }
@@ -293,7 +344,13 @@ public class CategoryMetric
     [JsonPropertyName("faithfulness")]
     public double? Faithfulness { get; set; }
 
-    // 兼容旧代码
+    // ── Sprint 1 新增 ──
+    [JsonPropertyName("answer_relevance")]
+    public double? AnswerRelevance { get; set; }
+
+    [JsonPropertyName("citation_accuracy")]
+    public double? CitationAccuracy { get; set; }
+
     [JsonIgnore] public int total { get => Total; set => Total = value; }
     [JsonIgnore] public int tool_ok { get => ToolOk; set => ToolOk = value; }
     [JsonIgnore] public int param_ok { get => ParamOk; set => ParamOk = value; }
@@ -316,7 +373,7 @@ public class RetrievalHit
     public int Rank { get; set; }
 
     [JsonPropertyName("is_relevant")]
-    public bool? IsRelevant { get; set; }  // 是否与基准答案相关
+    public bool? IsRelevant { get; set; }
 }
 
 /// <summary>忠实度检查项：答案中应出现的可验证声明</summary>
@@ -326,8 +383,8 @@ public class FaithfulnessCheck
     public string ClaimText { get; set; } = "";
 
     [JsonPropertyName("claim_type")]
-    public string ClaimType { get; set; } = "";  // "regulation_number" | "chemical_name" | "distance_value" | "compliance_conclusion"
+    public string ClaimType { get; set; } = "";
 
     [JsonPropertyName("expected_source")]
-    public string? ExpectedSource { get; set; }  // 预期该声明在知识库中的来源
+    public string? ExpectedSource { get; set; }
 }

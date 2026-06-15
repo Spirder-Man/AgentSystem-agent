@@ -13,6 +13,9 @@ namespace Agent1.Services
         Task<float[]?> GetEmbeddingAsync(string text);
         Task<float[][]?> GetEmbeddingsAsync(IEnumerable<string> texts);
 
+        // Sprint 1: 批量嵌入（单次 API 调用处理多个文本，利用 GPU 批处理能力）
+        Task<float[][]?> GetEmbeddingsBatchAsync(IEnumerable<string> texts);
+
         // Phase 2c: 轻量级文本生成（无工具调用，用于摘要/压缩）
         Task<string> GenerateSimpleResponseAsync(string prompt, int maxTokens = 512);
     }

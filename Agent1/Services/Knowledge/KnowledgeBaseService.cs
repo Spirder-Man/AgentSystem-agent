@@ -507,5 +507,156 @@ namespace Agent1.Services
             if (lowerFileName.Contains("盐酸")) return "盐酸";
             return "通用";
         }
+
+        // ═══════════════════════════════════════
+        // Sprint 4.1: 智能分块器
+        // ═══════════════════════════════════════
+
+        /// <summary>
+        /// Sprint 4.1: 智能文本分块，支持重叠窗口和语义边界识别。
+        /// </summary>
+        /// <param name="text">待分块文本</param>
+        /// <param name="maxChunkSize">每个块的最大字符数</param>
+        /// <param name="overlap">块间重叠字符数（0=无重叠）</param>
+        /// <param name="enableSemantic">是否启用语义分块（识别标题/章节）</param>
+        public static List<string> SplitTextIntoChunks(string text, int maxChunkSize = 500, int overlap = 100, bool enableSemantic = true)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return new List<string>();
+
+            var chunks = new List<string>();
+
+            // Step 1: 语义边界识别（按标题/章节/段落分割）
+            var paragraphs = enableSemantic
+                ? SplitBySemanticBoundaries(text)
+                : text.Split(new[] { "\n\n", "\r\n\r\n" }, StringSplitOptions.RemoveEmptyEntries).ToList();
+
+            // Step 2: 按 chunkSize 组装段落，保留 overlap
+            string? pendingOverlap = null;
+            var currentChunk = new System.Text.StringBuilder();
+
+            foreach (var para in paragraphs)
+            {
+                var paraTrimmed = para.Trim();
+                if (string.IsNullOrWhiteSpace(paraTrimmed))
+                    continue;
+
+                // 如果当前段落本身就超过 chunkSize，单独切割
+                if (paraTrimmed.Length > maxChunkSize)
+                {
+                    // 先刷出当前积累的块
+                    if (currentChunk.Length > 0)
+                    {
+                        chunks.Add(currentChunk.ToString().Trim());
+                        currentChunk.Clear();
+                    }
+
+                    // 切割长段落（保留 overlap）
+                    int pos = 0;
+                    while (pos < paraTrimmed.Length)
+                    {
+                        var chunkLen = Math.Min(maxChunkSize, paraTrimmed.Length - pos);
+                        var chunkText = paraTrimmed.Substring(pos, chunkLen);
+
+                        // 尝试在句号/换行处断开（语义友好）
+                        if (chunkLen == maxChunkSize && pos + chunkLen < paraTrimmed.Length)
+                        {
+                            var breakPoint = FindBestBreakPoint(chunkText);
+                            if (breakPoint > maxChunkSize / 2)
+                            {
+                                chunkText = chunkText.Substring(0, breakPoint);
+                                chunkLen = breakPoint;
+                            }
+                        }
+
+                        chunks.Add(chunkText);
+                        pos += chunkLen - (chunkLen < maxChunkSize ? 0 : overlap);
+                        if (pos < 0) pos = 0;
+                    }
+                    continue;
+                }
+
+                // 当前块装不下这个段落 → 刷出当前块，开始新块
+                if (currentChunk.Length + paraTrimmed.Length > maxChunkSize && currentChunk.Length > 0)
+                {
+                    var chunkText = currentChunk.ToString().Trim();
+                    chunks.Add(chunkText);
+
+                    // overlap: 保留当前块末尾 overlap 字符作为新块开头
+                    if (overlap > 0 && chunkText.Length > overlap)
+                    {
+                        pendingOverlap = chunkText.Substring(chunkText.Length - overlap);
+                        currentChunk.Clear();
+                        currentChunk.Append(pendingOverlap);
+                        currentChunk.Append(' ');
+                    }
+                    else
+                    {
+                        currentChunk.Clear();
+                    }
+                }
+
+                if (currentChunk.Length > 0)
+                    currentChunk.Append(' ');
+                currentChunk.Append(paraTrimmed);
+            }
+
+            // 最后剩余的块
+            if (currentChunk.Length > 0)
+                chunks.Add(currentChunk.ToString().Trim());
+
+            return chunks;
+        }
+
+        /// <summary>
+        /// Sprint 4.1: 按语义边界分割——识别章节标题、法规条款编号等。
+        /// </summary>
+        private static List<string> SplitBySemanticBoundaries(string text)
+        {
+            var result = new List<string>();
+
+            // 语义边界模式：
+            // - "第X章" / "第X节" (中文法规章节)
+            // - "X.X.X" (编号条款，如 "3.1.2")
+            // - 双换行（段落分隔）
+            var pattern = @"(?<=\n|^)(?=(?:第[\d零一二三四五六七八九十百]+[章节条]|\d+(?:\.\d+)+\s))|\n\s*\n";
+
+            try
+            {
+                var sections = System.Text.RegularExpressions.Regex.Split(text, pattern, System.Text.RegularExpressions.RegexOptions.Compiled);
+                foreach (var section in sections)
+                {
+                    var trimmed = section.Trim();
+                    if (!string.IsNullOrWhiteSpace(trimmed))
+                        result.Add(trimmed);
+                }
+            }
+            catch
+            {
+                // 正则失败时降级为简单双换行分割
+                result = text.Split(new[] { "\n\n", "\r\n\r\n" }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(s => s.Trim())
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .ToList();
+            }
+
+            return result.Count > 0 ? result : new List<string> { text };
+        }
+
+        /// <summary>
+        /// Sprint 4.1: 在文本中寻找最佳断点（句号、换行等自然边界）。
+        /// </summary>
+        private static int FindBestBreakPoint(string text)
+        {
+            // 优先级：句号 > 分号 > 换行 > 逗号
+            var breakChars = new[] { '。', '；', '\n', '，', ',' };
+            foreach (var ch in breakChars)
+            {
+                var lastIdx = text.LastIndexOf(ch);
+                if (lastIdx > text.Length / 2)
+                    return lastIdx + 1;
+            }
+            return text.Length;
+        }
     }
 }

@@ -421,6 +421,71 @@ namespace Agent1.Services
             }
         }
 
+        // Sprint 1: 批量入库，单连接写入多条（减少连接开销）
+        public async Task AddChemicalDocumentsBatchAsync(List<ChemicalDocumentRecord> records)
+        {
+            if (records.Count == 0) return;
+
+            try
+            {
+                using var connection = CreateConnection();
+                await connection.OpenAsync();
+
+                using var transaction = await connection.BeginTransactionAsync();
+
+                try
+                {
+                    var sql = @"
+                        INSERT INTO chemical_documents (
+                            content, embedding, regulation_type, priority,
+                            source_file, chemical_type
+                        )
+                        VALUES (
+                            @content, @embedding::vector, @regulationType, @priority,
+                            @sourceFile, @chemicalType
+                        );
+                    ";
+
+                    int successCount = 0;
+                    foreach (var record in records)
+                    {
+                        if (record.IsDirty) continue;
+
+                        using var command = new NpgsqlCommand(sql, connection, transaction);
+                        command.Parameters.AddWithValue("@content", record.Content);
+                        if (record.Embedding != null)
+                        {
+                            var vectorString = "[" + string.Join(",", record.Embedding.Select(x => x.ToString("G", System.Globalization.CultureInfo.InvariantCulture))) + "]";
+                            command.Parameters.AddWithValue("@embedding", vectorString);
+                        }
+                        else
+                        {
+                            command.Parameters.AddWithValue("@embedding", DBNull.Value);
+                        }
+                        command.Parameters.AddWithValue("@regulationType", record.RegulationType);
+                        command.Parameters.AddWithValue("@priority", record.Priority);
+                        command.Parameters.AddWithValue("@sourceFile", record.SourceFile ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@chemicalType", record.ChemicalType ?? (object)DBNull.Value);
+
+                        await command.ExecuteNonQueryAsync();
+                        successCount++;
+                    }
+
+                    await transaction.CommitAsync();
+                    Console.WriteLine($"   ✅ 批量入库完成: {successCount}/{records.Count} 条");
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ❌ 批量入库失败: {ex.Message}");
+            }
+        }
+
         // 向量检索
         public async Task<List<RetrievedChunk>> VectorSearchAsync(string query, float[] queryEmbedding, int topK = 5)
         {
@@ -556,6 +621,72 @@ namespace Agent1.Services
                 Console.WriteLine($"   ⚠️ 从数据库加载文档失败: {ex.Message}");
             }
             return results;
+        }
+
+        // Sprint 2: 加载全量文档及向量嵌入
+        public async Task<List<ChemicalDocumentRecord>> GetAllChemicalDocumentsWithEmbeddingsAsync()
+        {
+            var results = new List<ChemicalDocumentRecord>();
+            try
+            {
+                using var connection = CreateConnection();
+                await connection.OpenAsync();
+                using var command = new NpgsqlCommand(
+                    @"SELECT id, content, embedding, regulation_type, priority, source_file, chemical_type
+                      FROM chemical_documents
+                      WHERE embedding IS NOT NULL
+                      ORDER BY id;",
+                    connection);
+                using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    var record = new ChemicalDocumentRecord
+                    {
+                        Id = reader.GetInt32(0),
+                        Content = reader.GetString(1),
+                        RegulationType = reader.IsDBNull(3) ? "通用" : reader.GetString(3),
+                        Priority = reader.IsDBNull(4) ? "中" : reader.GetString(4),
+                        SourceFile = reader.IsDBNull(5) ? null : reader.GetString(5),
+                        ChemicalType = reader.IsDBNull(6) ? null : reader.GetString(6)
+                    };
+
+                    // 解析 pgvector 格式: [0.1,0.2,...]
+                    if (!reader.IsDBNull(2))
+                    {
+                        var vectorStr = reader.GetValue(2).ToString() ?? "";
+                        record.Embedding = ParsePgVectorString(vectorStr);
+                    }
+
+                    results.Add(record);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ⚠️ 加载全量向量文档失败: {ex.Message}");
+            }
+            return results;
+        }
+
+        // 解析 pgvector 字符串格式 "[0.1,0.2,0.3]" 为 float[]
+        private static float[]? ParsePgVectorString(string vectorStr)
+        {
+            if (string.IsNullOrWhiteSpace(vectorStr))
+                return null;
+
+            var trimmed = vectorStr.Trim('[', ']', ' ');
+            if (string.IsNullOrWhiteSpace(trimmed))
+                return null;
+
+            try
+            {
+                return trimmed.Split(',')
+                    .Select(s => float.Parse(s.Trim(), System.Globalization.CultureInfo.InvariantCulture))
+                    .ToArray();
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         // ═══════════════════════════════════════════

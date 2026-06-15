@@ -14,6 +14,9 @@ namespace Agent1.Services
         // 文档管理（P0修复：接收完整 ChemicalDocumentRecord，承载全链路元数据）
         Task AddChemicalDocumentAsync(ChemicalDocumentRecord record);
 
+        // Sprint 1: 批量文档入库（一次 DB 连接写入多条，减少往返开销）
+        Task AddChemicalDocumentsBatchAsync(List<ChemicalDocumentRecord> records);
+
         // 兼容旧版签名（标记为过时，逐步迁移）
         [Obsolete("请使用 AddChemicalDocumentAsync(ChemicalDocumentRecord) 代替")]
         Task AddChemicalDocumentAsync(string content, string regulationType, string priority, string? sourceFile = null, string? chemicalType = null, float[]? embedding = null);
@@ -27,6 +30,9 @@ namespace Agent1.Services
         // 启动加速：检查数据库是否已有文档（避免重复嵌入生成）
         Task<int> GetChemicalDocumentCountAsync();
         Task<List<(string Content, string RegulationType, string Priority, string? SourceFile)>> GetAllChemicalDocumentTextsAsync();
+
+        // Sprint 2: 加载全量文档及向量嵌入（GPU 索引重建 / 内存检索用）
+        Task<List<ChemicalDocumentRecord>> GetAllChemicalDocumentsWithEmbeddingsAsync();
 
         // ── 审计日志持久化（生产安全加固）──
         Task AddAuditLogAsync(string userId, string operation, string details, string? ipAddress = null);

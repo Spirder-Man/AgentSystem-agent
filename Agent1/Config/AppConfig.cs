@@ -139,6 +139,21 @@ namespace Agent1.Config
         };
         public int ChunkSize { get; set; } = 500;
         
+        // Sprint 4: 分块重叠窗口（字符数），0 表示禁用
+        public int ChunkOverlap { get; set; } = 100;
+
+        // Sprint 4: 是否启用语义分块（按标题/章节识别）
+        public bool EnableSemanticChunking { get; set; } = true;
+
+        // Sprint 4: 是否启用查询扩展
+        public bool EnableQueryExpansion { get; set; } = true;
+
+        // Sprint 5: 检索缓存 TTL（分钟），0 表示禁用
+        public int QueryCacheTtlMinutes { get; set; } = 5;
+
+        // Sprint 5: 检索缓存最大条目数
+        public int QueryCacheMaxEntries { get; set; } = 500;
+        
         // 检索模式：BM25 / Vector / Hybrid
         public string SearchMode { get; set; } = "Hybrid";
     }
@@ -190,7 +205,7 @@ namespace Agent1.Config
         public List<ToolDefinition> Tools { get; set; } = new()
         {
             new() { Name = "CheckHazardCategory",   Description = "查询危化品危险类别及适用国标",   KeywordTriggers = new() { "类别", "分类", "属于", "国标", "GB" } },
-            new() { Name = "CheckStorageCompatibility", Description = "检查两种危化品是否可同库储存", KeywordTriggers = new() { "同库", "共存", "混合", "禁忌", "配伍", "储存冲突" } },
+            new() { Name = "CheckStorageCompatibility", Description = "检查两种危险化学品是否可以在同一仓库中储存，用于判断同库储存合规性。当用户询问两种化学品能否放在一起、共存、同库存放时，必须调用此工具", KeywordTriggers = new() { "同库", "共存", "混合", "禁忌", "配伍", "储存冲突", "同一仓库", "放在一起", "相邻存放", "共库", "一起存放", "同库存放", "能否同存" } },
             new() { Name = "GetSafetyDistance",      Description = "查询设施间安全间距要求",        KeywordTriggers = new() { "安全距离", "间距", "消防通道", "储罐间距", "防火间距" } },
             new() { Name = "GetCurrentTime",         Description = "获取当前时间",                   KeywordTriggers = new() { "时间", "几点", "日期" } },
             new() { Name = "Calculate",              Description = "数学计算",                       KeywordTriggers = new() { "计算", "等于" } },
@@ -234,6 +249,47 @@ namespace Agent1.Config
         public int HnswM { get; set; } = 16;  // 每层最大连接数
         public int HnswEfConstruction { get; set; } = 200;  // 构建时考察邻居数
         public int HnswEfSearch { get; set; } = 64;  // 查询时考察邻居数
+
+        // ═══════════════════════════════════════
+        // Sprint 1-2: GPU 加速配置
+        // ═══════════════════════════════════════
+        
+        // 是否启用 GPU 嵌入生成（llama.cpp -ngl 99）
+        public bool GpuEmbeddingEnabled { get; set; } = true;
+
+        // 是否启用 GPU 向量检索（FAISS/cuVS 内存索引）
+        public bool GpuSearchEnabled { get; set; } = true;
+
+        // 是否启用 Cross-Encoder Reranker
+        public bool RerankerEnabled { get; set; } = true;
+
+        // GPU 不可用时是否自动降级为 CPU
+        public bool GpuFallbackEnabled { get; set; } = true;
+
+        // 嵌入批处理大小（llama.cpp --batch-size）
+        public int EmbeddingBatchSize { get; set; } = 32;
+
+        // 嵌入服务超时（秒）
+        public int EmbeddingTimeoutSeconds { get; set; } = 30;
+
+        // HttpClient 最大并发连接数
+        public int MaxConcurrentEmbeddings { get; set; } = 4;
+
+        // ═══════════════════════════════════════
+        // Sprint 3: Reranker 配置
+        // ═══════════════════════════════════════
+        
+        // Reranker 服务端点
+        public string RerankerEndpoint { get; set; } = "http://localhost:8082/rerank";
+
+        // Reranker 模型名称
+        public string RerankerModelId { get; set; } = "bge-reranker-v2-m3";
+
+        // Reranker 粗排召回数 (BM25+向量融合后取 topN 送 Reranker)
+        public int RerankerCandidateTopK { get; set; } = 20;
+
+        // Reranker 精排后保留数
+        public int RerankerFinalTopK { get; set; } = 5;
     }
 
     // 业务评测配置
@@ -271,6 +327,7 @@ namespace Agent1.Config
             "【强制工具调用指令】回答前必须调用至少一个可用的函数工具获取数据。\n" +
             "严禁跳过工具直接凭记忆回答——即使你认为你知道答案，也必须先通过工具验证。\n" +
             "如果工具返回的数据不足以做出判断，必须如实声明「数据不足」而非编造结论。\n\n" +
+            "【输出格式】每条查询结果用一句话概括，禁止输出法规全文。只提取关键结论，不要复制粘贴整段原文。\n\n" +
             "【当前问题】{UserInput}\n\n" +
             "获取工具数据后，严格按以下模板输出（每项一行，不要多余内容）：\n" +
             "【合规判断】是/否\n" +
@@ -281,11 +338,12 @@ namespace Agent1.Config
         // 评测快速通道（信息查询版）: 仅提取事实，禁止合规判断
         public string EvalFastQueryPrompt { get; set; } =
             "{SystemRole}\n\n" +
+            "【输出格式】每条查询结果用一句话概括，禁止输出法规全文。只提取关键信息，不要复制粘贴整段原文。\n\n" +
             "【强制工具调用指令】回答前必须调用至少一个可用的函数工具获取数据。\n" +
             "【当前问题（信息查询，仅提取事实，禁止做合规判断）】{UserInput}\n\n" +
             "请仅提取并输出与该问题相关的具体信息（如数值、类别、法规编号等），不要主动判断是否合规。\n" +
             "输出格式：\n" +
-            "【查询结果】直接给出具体信息内容\n" +
+            "【查询结果】直接给出具体信息内容（一句话概括）\n" +
             "【法规依据】引用具体标准编号+条款（如有）";
     }
 }

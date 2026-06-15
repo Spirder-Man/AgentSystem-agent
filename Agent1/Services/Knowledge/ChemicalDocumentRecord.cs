@@ -7,6 +7,9 @@ namespace Agent1.Services
     /// </summary>
     public class ChemicalDocumentRecord
     {
+        /// <summary>数据库主键 ID（加载时填充，新增时为 0）</summary>
+        public int Id { get; set; } = 0;
+
         /// <summary>块文本内容（必填）</summary>
         public string Content { get; set; } = string.Empty;
 

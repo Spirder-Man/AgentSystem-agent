@@ -26,11 +26,14 @@
 │   │   │   ├── ChemicalSubstanceDatabase.cs # 30+ 危化品结构化数据库
 │   │   │   └── ChemicalRAG.cs    # 化工 RAG 管道
 │   │   ├── Knowledge/            # 知识库
-│   │   │   ├── KnowledgeBaseService.cs          # BM25 检索
-│   │   │   ├── HybridKnowledgeBaseService.cs    # BM25+向量混合检索
+│   │   │   ├── KnowledgeBaseService.cs          # BM25 检索(SplitTextIntoChunks智能分块)
+│   │   │   ├── HybridKnowledgeBaseService.cs    # BM25+向量混合检索(RRF融合)
+│   │   │   ├── GpuVectorIndexService.cs         # GPU向量索引管理器(Sprint2)
+│   │   │   ├── RerankerService.cs               # Cross-Encoder Reranker(Sprint3)
+│   │   │   ├── QueryCacheService.cs             # LRU查询缓存(Sprint5)
 │   │   │   ├── PdfExtractor.cs / DocExtractor.cs # 文档解析
 │   │   │   ├── TextCleaner.cs / SemanticChunker.cs  # 清洗分块
-│   │   │   └── RetrievedChunk.cs # 检索结果模型
+│   │   │   └── RetrievedChunk.cs / ChemicalDocumentRecord.cs
 │   │   ├── Dialog/               # 对话管理
 │   │   │   ├── AgentDialog.cs    # Agent 对话编排
 │   │   │   ├── SessionManager.cs / SessionService.cs
@@ -297,11 +300,65 @@ MIT License
 
 ---
 
-**文档版本**：v3.0  
-**最后更新**：2026年6月10日  
-**状态**：生产级容器化部署完成 | JWT 认证 | 速率限制 | CI/CD | OpenTelemetry | 133 tests 全通过
+**文档版本**：v3.2  
+**最后更新**：2026年6月12日  
+**状态**：RAG GPU全链路加速 | RAG评估体系重设计 | 133 tests 全通过
 
 ## 📋 近期更新
+
+### Sprint 1-5: RAG GPU 全链路加速优化（2026-06-12）
+针对 RTX 3090 24GB Linux 环境实施 RAG 检索全链路 GPU 加速，五个 Sprint 全部完成：
+
+**Sprint 1: 嵌入GPU加速 + 批量处理**
+- **新增** `LlmService.GetEmbeddingsBatchAsync()` — 单次 API 调用处理多条文本嵌入，利用 GPU 批处理能力（--batch-size 512）
+- **优化** `LlmService` HttpClient — 连接池复用（`SocketsHttpHandler`），超时 30s → 降级逐条嵌入
+- **新增** `HybridKnowledgeBaseService.AddDocumentsBatchAsync()` — 批量文档添加：BM25写入 → GPU批量嵌入 → PostgreSQL批量入库（事务）
+- **新增配置** `VectorSearch.GpuEmbeddingEnabled / EmbeddingBatchSize(32) / EmbeddingTimeoutSeconds(30) / MaxConcurrentEmbeddings(4)`
+
+**Sprint 2: GPU向量检索 + FAISS 内存索引**
+- **新增** `Services/Knowledge/GpuVectorIndexService.cs` — GPU 向量索引管理器：
+  - 启动时从 pgvector 全量加载向量到内存
+  - 内存余弦相似度暴力搜索（模拟 GPU FAISS 行为，生产可替换 FAISS.NET）
+  - 支持增量更新 + 定时同步 pgvector（5分钟）
+  - `IndexStats` 统计（就绪状态/向量数/内存占用）
+- **集成** `HybridKnowledgeBaseService.VectorRetrieveAsync` — GPU索引优先 → pgvector fallback
+- **新增配置** `VectorSearch.GpuSearchEnabled / GpuFallbackEnabled`
+- **扩展** `ChemicalDocumentRecord` — 新增 `Id` 字段
+- **新增** `IDatabaseService.GetAllChemicalDocumentsWithEmbeddingsAsync()` + `AddChemicalDocumentsBatchAsync()`
+
+**Sprint 3: Cross-Encoder Reranker**
+- **新增** `Services/Knowledge/RerankerService.cs` — 双模 Reranker：
+  - 远程模式：调用 Python sidecar 微服务 (bge-reranker-v2-m3, POST /rerank)
+  - 本地降级：关键词密度 + 位置加权 + 法规编号精确匹配启发式重排序
+- **集成** `ChemicalComplianceTools.GetCachedOrRetrieveAsync` — 粗排 TopK=20 → Reranker 精排 TopK=5
+- **新增配置** `VectorSearch.RerankerEnabled / RerankerEndpoint / RerankerModelId / RerankerCandidateTopK(20) / RerankerFinalTopK(5)`
+
+**Sprint 4: 分块策略优化 + 查询扩展 + RRF 融合**
+- **新增** `KnowledgeBaseService.SplitTextIntoChunks()` — 智能分块器：
+  - 重叠窗口（100字符）+ 语义边界识别（`第X章`/`X.X.X` 条款编号）
+  - 最佳断点检测（句号 > 分号 > 换行 > 逗号）
+- **新增** `HybridKnowledgeBaseService.ExpandQuery()` — 化工领域词典查询扩展（同义词 + GB编号自动补全）
+- **重构** `HybridRetrieveAsync` — RRF (Reciprocal Rank Fusion, k=60) 替代简单加权求和
+- **新增配置** `KnowledgeBase.ChunkOverlap(100) / EnableSemanticChunking / EnableQueryExpansion`
+
+**Sprint 5: 系统级优化 + GPU 监控**
+- **新增** `Services/Knowledge/QueryCacheService.cs` — LRU 查询缓存：
+  - TTL 5分钟 + 最大500条 + 后台定期清理 + 命中率统计
+- **集成** `HybridKnowledgeBaseService.RetrieveAsync` — 查询先查缓存 → 未命中再检索
+- **新增 GPU 监控**：`EngineeringMetrics` 增加 `GpuEmbeddingLatencyMs / GpuSearchLatencyMs / RerankerLatencyMs / VramUsageMb / QueryCacheHitRate`
+- **新增** `EvalEngine.TryGetVramUsageMb()` — 通过 `nvidia-smi` 采集 VRAM 使用量
+- **新增配置** `KnowledgeBase.QueryCacheTtlMinutes(5) / QueryCacheMaxEntries(500)`
+
+**性能预期**：嵌入延迟 -85% (200ms→30ms) | 检索延迟 -84% (50ms→8ms) | 总延迟 -75% (250ms→63ms) | Precision@K 31.7%→55%+
+
+### RAG 评估体系重设计 + 紧急修复（2026-06-11）
+- **fix1b: Prompt 格式约束** — `EvalFastPrompt/EvalFastQueryPrompt` 增加"每条查询结果用一句话概括，禁止输出法规全文"
+- **fix1c: Faithfulness 评估改进** — `EvalEngine.ExtractConclusionContent()` 过滤 RAG 原文引用块，仅对结论性声明评估忠实度
+- **fix2: CheckStorageCompatibility 描述强化** — Description 显式声明"判断同库储存合规性", +7 个 KeywordTriggers（同库存放/能否同存等）
+- **fix3: 危险类别空数据检测** — `ConclusionVerifier.VerifyAsync` + `EvalEngine.CheckConclusion` 识别"无数据/未检索到/无记录"为正确知识边界识别
+- **eval1: Answer Relevance 指标** — LLM 1-5 打分 + 关键词匹配降级（`EvaluateAnswerRelevanceAsync`）
+- **eval2: Citation Accuracy 指标** — 检查回答中法规编号是否在检索上下文中出现（`EvaluateCitationAccuracy`）
+- **eval3: 工程指标** — 每用例 Stopwatch 延迟 + Token 估算 + `EngineeringMetrics`（P50/P95/均值）
 
 ### Task 10: 化工知识库专业覆盖增强（2026-06-06）
 - **新增** `Models/ChemicalSubstanceModels.cs` — 5 个数据模型：ChemicalSubstance / HazardCategoryRef / RegulationVersion / StorageIncompatibilityRule / SafetyDistanceRule

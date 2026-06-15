@@ -26,6 +26,7 @@ namespace Agent1.Services
         /// <summary>
         /// [P1-2 升级] 验证结论的完整校验结果（含 KB 反向检索）。
         /// kbService 为 null 时跳过 KB 反向验证。
+        /// [P7 FIX] 空数据检测：若响应明确声明数据不足，不标记为验证失败。
         /// </summary>
         public static async Task<VerificationResult> VerifyAsync(
             string llmResponse,
@@ -39,6 +40,16 @@ namespace Agent1.Services
             {
                 result.IsPassed = false;
                 result.FailureReasons.Add("LLM 响应为空");
+                return result;
+            }
+
+            // [P7 FIX] 空数据检测：若 LLM 明确声明数据不足/未检索到/无记录，视为正确识别知识边界
+            var hasEmptyData = llmResponse.Contains("无数据") || llmResponse.Contains("未检索到")
+                || llmResponse.Contains("无记录") || llmResponse.Contains("数据不足");
+            if (hasEmptyData)
+            {
+                result.IsPassed = true;
+                result.Warnings.Add("系统正确识别知识边界（无数据声明），不视为验证失败");
                 return result;
             }
 

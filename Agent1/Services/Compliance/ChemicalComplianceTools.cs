@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Agent1.Config;
 using Agent1.Models;
 using Agent1.Services;
 
@@ -18,7 +19,10 @@ namespace Agent1.Services
     /// </summary>
     public class ChemicalComplianceTools
     {
+        // [P7 FIX] Faithfulness崩塌修复：RAG结果chunk内容截断上限，防止LLM输出全文导致幻觉误判
+        private const int MAX_CHUNK_CHARS = 300;
         private IKnowledgeBaseService? _kbService;
+        private RerankerService? _rerankerService;
 
         /// <summary>完整构造：启用 RAG 检索模式。kbService 为 null 时降级到硬编码字典</summary>
         public ChemicalComplianceTools(IKnowledgeBaseService? kbService = null)
@@ -32,13 +36,19 @@ namespace Agent1.Services
             _kbService = kbService;
         }
 
+        /// <summary>Sprint 3: 注入 Reranker 服务</summary>
+        public void SetRerankerService(RerankerService rerankerService)
+        {
+            _rerankerService = rerankerService;
+        }
+
         /// <summary>是否启用了 RAG 检索</summary>
         private bool UseRag => _kbService != null;
 
         // [P2-2] RAG 检索缓存：评测时同化学品不重复查向量库
         private static readonly Dictionary<string, List<RetrievedChunk>> RagCache = new();
 
-        /// <summary>[P2-2] 带缓存的 RAG 检索</summary>
+        /// <summary>[P2-2] 带缓存的 RAG 检索 + Sprint 3 Reranker 精排</summary>
         private async Task<List<RetrievedChunk>> GetCachedOrRetrieveAsync(string query, string regulationType = "国标", int topK = 3)
         {
             var cacheKey = $"{query}|{regulationType}|{topK}";
@@ -47,7 +57,24 @@ namespace Agent1.Services
                 Console.WriteLine($"   [缓存命中] RAG 结果复用: \"{query}\" ({cached.Count} 条)");
                 return cached;
             }
-            var chunks = await _kbService!.RetrieveChemicalRegulationAsync(query, regulationType: regulationType, topK: topK);
+
+            // Sprint 3: 粗排召回更多候选 → Reranker 精排
+            var candidateTopK = _rerankerService != null && _rerankerService.IsEnabled
+                ? Math.Max(topK, AppConfig.Instance.VectorSearch.RerankerCandidateTopK)
+                : topK;
+
+            var chunks = await _kbService!.RetrieveChemicalRegulationAsync(query, regulationType: regulationType, topK: candidateTopK);
+
+            // Sprint 3: Reranker 精排
+            if (_rerankerService != null && _rerankerService.IsEnabled && chunks.Count > topK)
+            {
+                chunks = await _rerankerService.RerankAsync(query, chunks, topK);
+            }
+            else if (chunks.Count > topK)
+            {
+                chunks = chunks.Take(topK).ToList();
+            }
+
             RagCache[cacheKey] = chunks;
             return chunks;
         }
@@ -240,7 +267,6 @@ namespace Agent1.Services
             {
                 Console.WriteLine($"   [工具诊断] RAG 未提取到距离，回退硬编码字典");
                 var fallback = GetSafetyDistanceFallback(facilityType);
-                // 若有 RAG 检索到的法规编号，补充到回退结果前面
                 if (regSet.Count > 0 && !fallback.Contains("[REGULATIONS:"))
                     return $"[REGULATIONS: {string.Join(", ", regSet.OrderBy(r => r))}]\n{fallback}";
                 return fallback;
@@ -262,7 +288,7 @@ namespace Agent1.Services
                 if (chunk.Metadata != null && chunk.Metadata.TryGetValue("source", out var src))
                     chunkSource = src.ToString() ?? "未知来源";
                 sb.AppendLine($"**【检索结果 {i + 1}】** (来源: {chunkSource}, 相关度: {chunk.Score:P0})");
-                sb.AppendLine(chunk.Content);
+                sb.AppendLine(TruncateChunk(chunk.Content));
                 sb.AppendLine();
             }
             return sb.ToString().TrimEnd();
@@ -275,10 +301,8 @@ namespace Agent1.Services
         /// </summary>
         private static (double? distance, string unit, string source) ExtractDistanceFromText(string text, string? contextHint = null)
         {
-            // 若有上下文提示（如 facilityType），先尝试在该提示所在的段落/区域中匹配
             if (!string.IsNullOrWhiteSpace(contextHint))
             {
-                // 在文本中查找包含 facilityType 的段落，优先从该段落提取
                 var hintKeywords = contextHint.Split('-', ' ', '的', '与', '和')
                     .Where(k => k.Length >= 2)
                     .ToArray();
@@ -288,7 +312,6 @@ namespace Agent1.Services
                     var idx = text.IndexOf(kw, StringComparison.OrdinalIgnoreCase);
                     if (idx >= 0)
                     {
-                        // 取该关键词前后各 200 字符作为上下文窗口
                         var start = Math.Max(0, idx - 50);
                         var len = Math.Min(400, text.Length - start);
                         var context = text.Substring(start, len);
@@ -306,14 +329,13 @@ namespace Agent1.Services
         /// <summary>在给定文本中通过正则提取距离数值</summary>
         private static (double? distance, string unit, string source) ExtractDistancePatterns(string text)
         {
-            // 模式1: "不小于 X 米" / "不得小于 X m" / "≥ X m"
             var patterns = new[]
             {
                 @"(不小于|不应小于|不得小于|≥|>=s*)s*(\d+(?:\.\d+)?)\s*(米|m)",
                 @"(最小.*?(?:安全|防火)?间距.*?为)\s*(\d+(?:\.\d+)?)\s*(米|m)",
                 @"(安全距离.*?)\s*(\d+(?:\.\d+)?)\s*(米|m)",
                 @"(间距).*?(\d+(?:\.\d+)?)\s*(米|m)",
-                @"(\d+(?:\.\d+)?)\s*(米|m)",  // 最宽泛：直接找 "X米"或"X m"
+                @"(\d+(?:\.\d+)?)\s*(米|m)",
             };
 
             foreach (var pattern in patterns)
@@ -438,7 +460,6 @@ namespace Agent1.Services
 
         private string CheckHazardCategoryFallback(string substanceName)
         {
-            // [Task 10] 优先查询结构化化学品数据库
             var sub = ChemicalSubstanceDatabase.Lookup(substanceName);
             if (sub != null && sub.HazardCategories.Count > 0)
             {
@@ -448,7 +469,6 @@ namespace Agent1.Services
                 return $"[REGULATIONS: {string.Join(", ", gbNums)}]\n「{sub.Name}」危险类别: {string.Join("; ", catNames)} [判定:is_compliant=unknown]";
             }
 
-            // 原降级逻辑：通用类别关键词匹配
             foreach (var kvp in HazardCategories)
             {
                 if (substanceName.Contains(kvp.Key) || kvp.Key.Contains(substanceName))
@@ -459,7 +479,6 @@ namespace Agent1.Services
 
         private string CheckStorageCompatibilityFallback(string substanceA, string substanceB)
         {
-            // [Task 10] 优先查询精确化学品配对规则
             var dbResult = ChemicalSubstanceDatabase.CheckCompatibility(substanceA, substanceB);
             if (dbResult != null)
             {
@@ -469,7 +488,6 @@ namespace Agent1.Services
                 return $"[REGULATIONS: {(string.IsNullOrEmpty(dbResult.RegulationRef) ? "GB 15603" : dbResult.RegulationRef)}]\n⚠️ 禁用：{dbResult.Reason}{regRef} [判定:is_compliant=false]";
             }
 
-            // 原降级逻辑：通用类别禁忌匹配
             foreach (var kvp in StorageIncompatibilities)
             {
                 bool aIsIncompatible = kvp.Value.Any(s => substanceB.Contains(s));
@@ -484,14 +502,12 @@ namespace Agent1.Services
         {
             var key = facilityType.Trim();
 
-            // [Task 10] 优先查询扩展安全距离规则表
             var dbRule = ChemicalSubstanceDatabase.GetSafetyDistance(key);
             if (dbRule != null)
             {
                 return $"[REGULATIONS: {dbRule.RegulationRef}]\n[DISTANCE: {dbRule.MinDistanceMeters}m]\n「{dbRule.FacilityPair}」的最小安全间距为 {dbRule.MinDistanceMeters} 米 (依据: {dbRule.RegulationRef}) [判定:is_compliant=待核实]";
             }
 
-            // 原硬编码字典
             if (SafetyDistances.TryGetValue(key, out int distance))
                 return $"[REGULATIONS: GB50160]\n[DISTANCE: {distance}m]\n「{key}」的最小安全间距为 {distance} 米 [判定:is_compliant=待核实]";
             var matched = SafetyDistances.Keys.Where(k => k.Contains(key) || key.Contains(k)).ToList();
@@ -504,21 +520,28 @@ namespace Agent1.Services
         // 辅助：格式化 RAG 检索结果为 Markdown 原文
         // ════════════════════════════════════════
 
+        /// <summary>[P7 FIX] chunk 内容截断，防止 LLM 输出全文导致 Faithfulness 误判</summary>
+        private static string TruncateChunk(string content)
+        {
+            if (string.IsNullOrEmpty(content))
+                return content;
+            return content.Length > MAX_CHUNK_CHARS
+                ? content.Substring(0, MAX_CHUNK_CHARS) + "..."
+                : content;
+        }
+
         private static string FormatRagResult(string title, List<RetrievedChunk> chunks)
         {
             var sb = new StringBuilder();
 
-            // [P1-1] 结构化法规编号提取: 从 chunk 元数据和内容中提取法规引用
             var regulationSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var chunk in chunks)
             {
-                // 从元数据 source 字段提取
                 if (chunk.Metadata != null && chunk.Metadata.TryGetValue("source", out var src))
                 {
                     var sourceStr = src.ToString() ?? "";
                     ExtractRegulationRefs(sourceStr, regulationSet);
                 }
-                // 从 chunk 内容中提取法规编号
                 ExtractRegulationRefs(chunk.Content, regulationSet);
             }
             if (regulationSet.Count > 0)
@@ -533,7 +556,7 @@ namespace Agent1.Services
                 if (chunk.Metadata != null && chunk.Metadata.TryGetValue("source", out var src))
                     source = src.ToString() ?? "未知来源";
                 sb.AppendLine($"**【检索结果 {i + 1}】** (来源: {source}, 相关度: {chunk.Score:P0})");
-                sb.AppendLine(chunk.Content);
+                sb.AppendLine(TruncateChunk(chunk.Content));
                 sb.AppendLine();
             }
             sb.AppendLine("[判定:is_compliant=依据原文]");
