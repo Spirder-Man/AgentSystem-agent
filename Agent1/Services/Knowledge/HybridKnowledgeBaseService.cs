@@ -302,11 +302,14 @@ namespace Agent1.Services
                 Console.WriteLine($"   ⚠️ 向量添加失败: {ex.Message}");
             }
         }
-
+        /// <summary>
+        /// 化工合规检索
+        /// </summary>
         public async Task<List<RetrievedChunk>> RetrieveChemicalRegulationAsync(string query, string? chemicalType = null, string? regulationType = null, int topK = 5)
         {
+            // Step 1: BM25 检索
             var allResults = await RetrieveAsync(query, topK * 2);
-
+            // Step 2: 过滤结果
             var filteredResults = allResults.Where(r =>
             {
                 var metadata = r.Metadata;
@@ -327,14 +330,14 @@ namespace Agent1.Services
 
                 return true;
             }).ToList();
-
+            // Step 3: 重排序结果
             var rerankedResults = filteredResults
                 .Select(r => new { Chunk = r, Score = CalculateChemicalRelevanceScore(r) })
                 .OrderByDescending(x => x.Score)
                 .Take(topK)
                 .Select(x => x.Chunk)
                 .ToList();
-
+            // Step 4: 输出结果
             Console.WriteLine($"   🔬 化工合规检索: 查询='{query}', 危化品={chemicalType ?? "全部"}, 法规类型={regulationType ?? "全部"}, 召回={rerankedResults.Count}条");
             return rerankedResults;
         }
@@ -519,9 +522,10 @@ namespace Agent1.Services
             var rrfScores = new Dictionary<string, (RetrievedChunk chunk, double rrfScore)>();
 
             // Step 1: 计算 BM25 排名贡献
+            // [P0-4 FIX] 使用 Id+内容前缀作去重键, 替代 Guid.NewGuid() 避免随机键破坏 RRF 融合
             for (int rank = 0; rank < bm25Results.Count; rank++)
             {
-                var key = bm25Results[rank].Content ?? Guid.NewGuid().ToString();
+                var key = GetDedupKey(bm25Results[rank], rank);
                 var rrfScore = 1.0 / (rrfK + rank + 1);  // rank 0-based, +1 转 1-based
                 rrfScores[key] = (bm25Results[rank], rrfScore);
             }
@@ -529,7 +533,7 @@ namespace Agent1.Services
             // Step 2: 累加向量检索排名贡献
             for (int rank = 0; rank < vectorResults.Count; rank++)
             {
-                var key = vectorResults[rank].Content ?? Guid.NewGuid().ToString();
+                var key = GetDedupKey(vectorResults[rank], rank);
                 var rrfScore = 1.0 / (rrfK + rank + 1);
 
                 if (rrfScores.ContainsKey(key))
@@ -607,6 +611,22 @@ namespace Agent1.Services
         public List<RetrievedChunk> Retrieve(string query, int topK = 5)
         {
             return RetrieveAsync(query, topK).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// [P0-4 FIX] RRF 去重键：优先用 Id，无 Id 时用内容前200字符的确定性哈希。
+        /// 避免 Content 为 null 或退化到 Guid.NewGuid() 导致同名文档无法融合。
+        /// </summary>
+        private static string GetDedupKey(RetrievedChunk chunk, int rank)
+        {
+            // 有 Id 直接用
+            if (!string.IsNullOrWhiteSpace(chunk.Id))
+                return $"id:{chunk.Id}";
+            // 有内容用内容前缀
+            if (!string.IsNullOrWhiteSpace(chunk.Content))
+                return $"c:{chunk.Content.Trim().Substring(0, Math.Min(200, chunk.Content.Length))}";
+            // 最后兜底：用 rank，至少保证同排名可以碰撞
+            return $"rank:{rank}";
         }
     }
 }

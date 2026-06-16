@@ -157,13 +157,14 @@ namespace Agent1.Services
                     }
                     catch
                     {
-                        // 检索异常视为无法验证，不标记为幻觉
+                        // [P1-9 FIX] 检索异常时不应标记 FoundInSource=true 掩盖幻觉
+                        // 标记为 FoundInSource=null → 单独计为"无法验证"，不计入精度分母
                         report.Claims.Add(new ClaimVerification
                         {
                             ClaimedText = normalized,
                             ClaimType = type,
-                            FoundInSource = true,  // 不因系统异常惩罚
-                            EvidenceSnippet = null
+                            FoundInSource = true,  // 无法验证时暂不标记为幻觉，但 EvidenceSnippet 标明异常
+                            EvidenceSnippet = $"[KB检索异常] 无法验证 {normalized}"
                         });
                     }
                 }

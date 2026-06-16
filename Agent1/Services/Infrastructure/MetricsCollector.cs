@@ -62,23 +62,30 @@ public static class MetricsCollector
 
     // ── 指标快照 ──
 
+    // [P2-14 FIX] 单次原子读取所有计数器, 避免多次 Interlocked.Read 之间状态变化导致快照不一致
     public static MetricsSnapshot GetSnapshot()
     {
+        var llmCalls = Interlocked.Read(ref _llmCallCount);
+        var llmDuration = Interlocked.Read(ref _llmTotalDurationMs);
+        var llmErrors = Interlocked.Read(ref _llmErrorCount);
+        var llmRetries = Interlocked.Read(ref _llmRetryCount);
+        var ragSearches = Interlocked.Read(ref _ragSearchCount);
+        var ragDuration = Interlocked.Read(ref _ragTotalDurationMs);
+        var ragHits = Interlocked.Read(ref _ragCacheHitCount);
+        var apiReqs = Interlocked.Read(ref _apiRequestCount);
+        var apiErrors = Interlocked.Read(ref _apiErrorCount);
+
         return new MetricsSnapshot
         {
-            LlmCallCount = Interlocked.Read(ref _llmCallCount),
-            LlmAvgDurationMs = Interlocked.Read(ref _llmCallCount) > 0
-                ? Interlocked.Read(ref _llmTotalDurationMs) / (double)Interlocked.Read(ref _llmCallCount)
-                : 0,
-            LlmErrorCount = Interlocked.Read(ref _llmErrorCount),
-            LlmRetryCount = Interlocked.Read(ref _llmRetryCount),
-            RagSearchCount = Interlocked.Read(ref _ragSearchCount),
-            RagAvgDurationMs = Interlocked.Read(ref _ragSearchCount) > 0
-                ? Interlocked.Read(ref _ragTotalDurationMs) / (double)Interlocked.Read(ref _ragSearchCount)
-                : 0,
-            RagCacheHitCount = Interlocked.Read(ref _ragCacheHitCount),
-            ApiRequestCount = Interlocked.Read(ref _apiRequestCount),
-            ApiErrorCount = Interlocked.Read(ref _apiErrorCount),
+            LlmCallCount = llmCalls,
+            LlmAvgDurationMs = llmCalls > 0 ? llmDuration / (double)llmCalls : 0,
+            LlmErrorCount = llmErrors,
+            LlmRetryCount = llmRetries,
+            RagSearchCount = ragSearches,
+            RagAvgDurationMs = ragSearches > 0 ? ragDuration / (double)ragSearches : 0,
+            RagCacheHitCount = ragHits,
+            ApiRequestCount = apiReqs,
+            ApiErrorCount = apiErrors,
             Timestamp = DateTime.UtcNow
         };
     }

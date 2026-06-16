@@ -1,5 +1,6 @@
 using Microsoft.SemanticKernel;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -45,8 +46,10 @@ namespace Agent1.Services
         /// <summary>是否启用了 RAG 检索</summary>
         private bool UseRag => _kbService != null;
 
-        // [P2-2] RAG 检索缓存：评测时同化学品不重复查向量库
-        private static readonly Dictionary<string, List<RetrievedChunk>> RagCache = new();
+        // [P0-2 FIX+P1-6 FIX] RAG 检索缓存：线程安全 ConcurrentDictionary + TTL 淘汰，防止内存泄漏
+        private static readonly ConcurrentDictionary<string, (List<RetrievedChunk> chunks, DateTime expiresAt)> RagCache = new();
+        private static readonly TimeSpan RagCacheTtl = TimeSpan.FromMinutes(5);
+        private const int RagCacheMaxEntries = 200;
 
         /// <summary>[P2-2] 带缓存的 RAG 检索 + Sprint 3 Reranker 精排</summary>
         private async Task<List<RetrievedChunk>> GetCachedOrRetrieveAsync(string query, string regulationType = "国标", int topK = 3)
@@ -54,8 +57,13 @@ namespace Agent1.Services
             var cacheKey = $"{query}|{regulationType}|{topK}";
             if (RagCache.TryGetValue(cacheKey, out var cached))
             {
-                Console.WriteLine($"   [缓存命中] RAG 结果复用: \"{query}\" ({cached.Count} 条)");
-                return cached;
+                if (cached.expiresAt > DateTime.UtcNow)
+                {
+                    Console.WriteLine($"   [缓存命中] RAG 结果复用: \"{query}\" ({cached.chunks.Count} 条)");
+                    return cached.chunks;
+                }
+                // TTL 过期，移除
+                RagCache.TryRemove(cacheKey, out _);
             }
 
             // Sprint 3: 粗排召回更多候选 → Reranker 精排
@@ -75,7 +83,23 @@ namespace Agent1.Services
                 chunks = chunks.Take(topK).ToList();
             }
 
-            RagCache[cacheKey] = chunks;
+            // LRU 淘汰：超出上限时随机删除一半过期条目
+            if (RagCache.Count >= RagCacheMaxEntries)
+            {
+                var now = DateTime.UtcNow;
+                var staleKeys = RagCache.Where(kvp => kvp.Value.expiresAt <= now).Select(kvp => kvp.Key).ToList();
+                foreach (var key in staleKeys)
+                    RagCache.TryRemove(key, out _);
+                // 仍然满则暴力淘汰一半
+                if (RagCache.Count >= RagCacheMaxEntries)
+                {
+                    var allKeys = RagCache.Keys.Take(RagCache.Count / 2).ToList();
+                    foreach (var key in allKeys)
+                        RagCache.TryRemove(key, out _);
+                }
+            }
+
+            RagCache[cacheKey] = (chunks, DateTime.UtcNow.Add(RagCacheTtl));
             return chunks;
         }
 
@@ -331,7 +355,7 @@ namespace Agent1.Services
         {
             var patterns = new[]
             {
-                @"(不小于|不应小于|不得小于|≥|>=s*)s*(\d+(?:\.\d+)?)\s*(米|m)",
+                @"(不小于|不应小于|不得小于|≥|>=\s*)\s*(\d+(?:\.\d+)?)\s*(米|m)",  // [FIX P0-1] 正则 s*→\s*, 原漏掉反斜杠导致匹配失效
                 @"(最小.*?(?:安全|防火)?间距.*?为)\s*(\d+(?:\.\d+)?)\s*(米|m)",
                 @"(安全距离.*?)\s*(\d+(?:\.\d+)?)\s*(米|m)",
                 @"(间距).*?(\d+(?:\.\d+)?)\s*(米|m)",

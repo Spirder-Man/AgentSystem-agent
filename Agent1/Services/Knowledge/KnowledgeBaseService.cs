@@ -147,13 +147,13 @@ namespace Agent1.Services
         /// </summary>
         /// <param name="contents">文档内容列表，包含原始文本。</param>
         /// <returns>任务对象，用于异步操作。</returns>
-        public Task AddDocumentsAsync(IEnumerable<string> contents)
+        // [P1-10 FIX] 改为 async/await 替代 .Wait(), 防止将来 AddDocumentAsync 变为真异步时死锁
+        public async Task AddDocumentsAsync(IEnumerable<string> contents)
         {
             foreach (var content in contents)
             {
-                AddDocumentAsync(content).Wait();
+                await AddDocumentAsync(content);
             }
-            return Task.CompletedTask;
         }
         /// <summary>
         /// 从知识库中检索文档，根据BM25算法计算文档相似度。
@@ -187,7 +187,9 @@ namespace Agent1.Services
                         continue;
 
                     double idf = Math.Log((_documents.Count - df + 0.5) / (df + 0.5) + 1);
-                    double tfComp = (tf * (K1 + 1)) / (tf + K1 * (1 - B + B * (doc.Length / _avgDocLength)));
+                    // [P1-5 FIX] 防止 _avgDocLength==0 时除以零导致 NaN
+                    var safeAvgLen = Math.Max(1.0, _avgDocLength);
+                    double tfComp = (tf * (K1 + 1)) / (tf + K1 * (1 - B + B * (doc.Length / safeAvgLen)));
                     score += idf * tfComp;
                 }
 

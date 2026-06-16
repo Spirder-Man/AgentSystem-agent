@@ -29,7 +29,8 @@ namespace Agent1.Services
         private readonly ConcurrentDictionary<string, IndexEntry> _index = new();
         private readonly ReaderWriterLockSlim _lock = new();
         private volatile bool _isReady;
-        private Timer? _syncTimer;
+        // [P0-3 FIX] _syncTimer 替换为 _syncCts (CancellationTokenSource), 见 StartPeriodicSync
+        private CancellationTokenSource? _syncCts;
         private DateTime _lastSyncTime = DateTime.MinValue;
         private long _totalVectors;
         private long _totalMemoryBytes;
@@ -236,20 +237,32 @@ namespace Agent1.Services
 
         // ── 后台同步 ──
 
+        // [P0-3 FIX] 使用 PeriodicTimer + Task.Run 替代 Timer(async void),
+        // 避免并发同步写入 ConcurrentDictionary 导致数据不一致
+
         private void StartPeriodicSync()
         {
+            _syncCts = new CancellationTokenSource();
             var interval = TimeSpan.FromMinutes(5);
-            _syncTimer = new Timer(async _ =>
+            _ = Task.Run(async () =>
             {
+                using var timer = new PeriodicTimer(interval);
                 try
                 {
-                    await SyncFromDatabaseAsync();
+                    while (await timer.WaitForNextTickAsync(_syncCts.Token))
+                    {
+                        try
+                        {
+                            await SyncFromDatabaseAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"   ⚠️ GPU 索引后台同步失败: {ex.Message}");
+                        }
+                    }
                 }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"   ⚠️ GPU 索引后台同步失败: {ex.Message}");
-                }
-            }, null, interval, interval);
+                catch (OperationCanceledException) { /* 正常取消 */ }
+            }, _syncCts.Token);
         }
 
         private async Task SyncFromDatabaseAsync()
@@ -321,7 +334,8 @@ namespace Agent1.Services
 
         public void Dispose()
         {
-            _syncTimer?.Dispose();
+            _syncCts?.Cancel();
+            _syncCts?.Dispose();
             _lock?.Dispose();
         }
     }

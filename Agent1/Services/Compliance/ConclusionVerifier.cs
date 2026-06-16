@@ -75,15 +75,26 @@ namespace Agent1.Services
                 await VerifyRegulationsAgainstKBAsync(result.RegulationsFound, kbService, result);
             }
 
-            // 3. 合规判断标签校验
+            // 3. [P2-12 FIX] 合规判断标签校验：同时匹配 【合规判断】 和 [判定:is_compliant=...] 两种格式
             var conclusionMatch = Regex.Match(llmResponse, @"【合规判断】\s*(是|否)");
-            if (!conclusionMatch.Success)
+            var tagMatch = Regex.Match(llmResponse, @"\[判定\s*:\s*is_compliant\s*=\s*(true|false|unknown|待核实|依据原文)\s*\]", RegexOptions.IgnoreCase);
+            if (conclusionMatch.Success)
             {
-                result.Warnings.Add("未找到【合规判断】标签");
+                result.ConclusionValue = conclusionMatch.Groups[1].Value;
+            }
+            else if (tagMatch.Success)
+            {
+                var tagValue = tagMatch.Groups[1].Value.Trim();
+                if (tagValue.Equals("true", StringComparison.OrdinalIgnoreCase))
+                    result.ConclusionValue = "是";
+                else if (tagValue.Equals("false", StringComparison.OrdinalIgnoreCase))
+                    result.ConclusionValue = "否";
+                else
+                    result.ConclusionValue = tagValue;
             }
             else
             {
-                result.ConclusionValue = conclusionMatch.Groups[1].Value;
+                result.Warnings.Add("未找到合规判断标签（【合规判断】或[判定:is_compliant=...]）");
             }
 
             // 4. 工具数据一致性检查
