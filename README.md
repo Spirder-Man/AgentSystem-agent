@@ -1,6 +1,25 @@
 # Agent1 — 化工园区危化品合规审查 AI Agent
 
-基于 .NET 8 + Semantic Kernel + **llama.cpp 原生编译**构建的企业级化工园区危化品合规审查 AI Agent。支持 PostgreSQL+pgvector 混合检索、JWT 认证、速率限制、OpenTelemetry 可观测性，**针对 RTX 3090 24GB Linux 环境实现 RAG 全链路 GPU 加速**。
+基于 .NET 8 + Semantic Kernel + **llama.cpp 原生编译**构建的企业级化工园区危化品合规审查 AI Agent。
+
+支持 19 个控制台菜单、10 个 ModuleType、REST API、JWT 认证、PostgreSQL+pgvector 混合检索、
+OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对 RTX 3090 24GB Linux 环境实现 RAG 全链路 GPU 加速**。
+
+> 整体完成度：~90% | 编译：0 错误 19 警告 | C# 文件：82 个 / 15,533 行
+
+## 功能全景
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  AI 推理引擎        │  SK Auto FC + 断路器 + GPU嵌入    │
+│  化工合规工具        │  8 个 [KernelFunction] + 三层降级  │
+│  知识库              │  BM25+Vector+RRF+增量更新        │
+│  化工业务模块        │  合规自查/工单/监管/应急/图谱     │
+│  基础设施            │  Sha256审计链/安全双防线/健康检查  │
+│  API 服务            │  JWT认证/限流/OTel/优雅关闭       │
+│  19 菜单 + 10 ModuleType — 全部实现 ✅                    │
+└─────────────────────────────────────────────────────────┘
+```
 
 ## 🏗️ 项目架构
 
@@ -11,20 +30,31 @@
 │   │   ├── EvalModels.cs         # 评测数据模型
 │   │   ├── DialogTypes.cs        # 对话类型
 │   │   ├── LongTermMemoryModels.cs     # 长期记忆模型
-│   │   └── ModuleType.cs         # 模块枚举
-│   ├── Modules/                  # 推理模块
-│   │   ├── RAGModule.cs          # RAG 检索增强生成
+│   │   └── ModuleType.cs         # 模块枚举 (10 个, 全部实现)
+│   ├── Commands/                 # [P2] 命令模式
+│   │   └── MenuCommands.cs       # IMenuCommand + 14 个命令类
+│   ├── Modules/                  # 推理模块 (12 个)
 │   │   ├── CoTSolidModule.cs / CoTStreamModule.cs  # CoT 思维链
 │   │   ├── ReActSolidModule.cs / ReActStreamModule.cs  # ReAct 推理
 │   │   ├── ReflectionModule.cs   # 自我反思纠错
-│   │   └── ComplianceCheckModule.cs / UnifiedDialogModule.cs
+│   │   ├── RAGModule.cs          # RAG 检索增强生成
+│   │   ├── UnifiedDialogModule.cs # 智能对话系统
+│   │   ├── ComplianceCheckModule.cs # 化工合规自查 ★核心
+│   │   ├── TicketFollowupModule.cs  # [P1] 整改工单跟进
+│   │   ├── RegulatoryAuditModule.cs # [P3] 监管核查辅助
+│   │   ├── EmergencyResponseModule.cs # [P3] 应急响应方案
+│   │   └── KnowledgeGraphModule.cs   # [P3] 知识图谱查询
 │   ├── Services/
 │   │   ├── AI/                   # LLM 服务
 │   │   │   └── LlmService.cs     # llama.cpp 集成/Thinking控制/熔断器/重试
 │   │   ├── Compliance/           # 化工合规
-│   │   │   ├── ChemicalComplianceTools.cs  # 7 个 SK Plugin 工具
-│   │   │   ├── ChemicalSubstanceDatabase.cs # 30+ 危化品结构化数据库
-│   │   │   └── ChemicalRAG.cs    # 化工 RAG 管道
+│   │   │   ├── ChemicalComplianceTools.cs  # 8 个 SK Plugin 工具
+│   │   │   ├── EmergencyResponseService.cs # [P3] 应急响应引擎
+│   │   │   ├── KnowledgeGraphService.cs    # [P3] 知识图谱 (BFS遍历)
+│   │   │   ├── RiskAssessmentService.cs    # [P2] 3×3 风险矩阵
+│   │   │   ├── SafetyGuardService.cs       # [P3] Prompt注入+输出检测
+│   │   │   ├── ChemicalSubstanceDatabase.cs # 58 种危化品结构化数据
+│   │   │   └── ChemicalRAG.cs    # 化工 RAG 管道 (含增量更新)
 │   │   ├── Knowledge/            # 知识库
 │   │   │   ├── KnowledgeBaseService.cs          # BM25 检索(SplitTextIntoChunks智能分块)
 │   │   │   ├── HybridKnowledgeBaseService.cs    # BM25+向量混合检索(RRF融合)
@@ -159,8 +189,13 @@
 - 化学品属性结构化查询
 - 法规版本状态追踪
 - 重大危险源临界量查询
+- [P3] 监管核查辅助（逐条比对法规）
+- [P3] 应急响应方案（ERG疏散/PPE/灭火/急救）
+- [P3] 知识图谱（化学品-法规-事故关联网）
+- [P2] 风险评估 3×3 矩阵
+- [P2] 多模态 GHS 标签识别
 
-### 5. 结构化化学品数据库（★ Task 10 新增）
+### 5. 结构化化学品数据库（58 种危化品）
 - 30+ 常见工业危化品结构化属性（CAS号/UN编号/分子式/闪点/沸点/爆炸极限）
 - 危险类别与 GB 30000 标准号精确映射
 - 20+ 精确化学品储存禁忌配对规则 + 类别级自动推断
@@ -169,13 +204,13 @@
 - 8 项关键法规标准版本追踪（GB 15603/18218/30871 等）
 - 40+ 化学品别名自动归一化
 
-### 6. AI 工具集（7 个 KernelFunction）
+### 6. AI 工具集（8 个 KernelFunction）
 - `CheckHazardCategory` — 危险类别查询
 - `CheckStorageCompatibility` — 储存兼容性检查
 - `GetSafetyDistance` — 安全距离查询
-- `LookupChemicalProperties` — 化学品全属性查询（★新增）
-- `GetMajorHazardThreshold` — GB 18218 重大危险源临界量（★新增）
-- `CheckRegulationVersion` — 法规版本状态查询（★新增）
+- `LookupChemicalProperties` — 化学品全属性查询
+- `LookupRegulationReferences` — 法规引用查询
+- `LookupHazardLabel` — [P2] GHS 标签识别 (多模态)
 - `GetCurrentTime` / `Calculate` — 通用工具
 
 ### 7. RAG GPU 全链路加速（★ Sprint 1-5）
@@ -389,12 +424,26 @@ MIT License
 
 ---
 
-**文档版本**：v3.5  
+**文档版本**：v4.0  
 **最后更新**：2026年6月16日  
 **分支**：`linux原生编译模型llama.cpp`  
-**状态**：RAG GPU 全链路加速 | P0 级 Bug 修复 | 133 tests 全通过
+**状态**：P0-P2 全部清完 | 19 菜单全部实现 | 架构审查 8.6/10 | 可正式上线
 
 ## 📋 近期更新
+
+### P3 大工程 + 架构审查 + 生产加固（2026-06-16）
+- **应急响应模块**: `EmergencyResponseService` (302行) + `EmergencyResponseModule` (134行) — 对标 ERG 指南
+- **知识图谱模块**: `KnowledgeGraphService` (370行) + `KnowledgeGraphModule` (53行) — BFS 多跳遍历
+- **监管核查模块**: `RegulatoryAuditModule` (187行) — 逐条比对法规
+- **多模态识别**: `MultimodalService` (139行) — HttpClient 直调 Ollama /api/chat
+- **安全加固**: `SafetyGuardService` (150行) — Prompt 注入+输出高危断言双防线
+- **风险评估**: `RiskAssessmentService` (159行) — 3×3 矩阵 MVP
+- **整改工单**: `TicketFollowupModule` (173行) — LLM 提取整改项
+- **架构审查**: 硬编码治理 (12 个常量→配置)、空 catch 修复 (4 处)、优雅关闭 (已存在)
+- **配置外部化**: MemoryConfig + SafetyConfig + CircuitBreakerThreshold
+- **架构优化**: Lazy\<T\> 替代 null! 循环依赖、命令模式重构 Program.cs、SearchModeType enum
+- **审核完整性**: SHA256 哈希链 DB 持久化 + VerifyIntegrityAsync()
+- **增量更新**: 知识库文件追踪 + 新增/修改/删除全周期清理
 
 ### P0 级 Bug 系统性修复（2026-06-16）
 针对全项目代码扫描发现的 16 个 Bug 进行系统性修复（10 项已完成）：

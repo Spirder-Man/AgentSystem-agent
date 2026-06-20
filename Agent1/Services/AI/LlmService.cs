@@ -22,8 +22,9 @@ namespace Agent1.Services
         private readonly Kernel _kernel;
         private readonly HttpClient _httpClient;
         private readonly ChemicalComplianceTools _complianceTools;
-        private const int MaxRetries = 2;         // 原 3→2, 减少排队雪崩
-        private const int RetryDelayMs = 2000;    // 原 5000→2000, 指数退避起点
+        // [P3 生产加固] 从配置读取重试/熔断参数，运维可通过 appsettings.json 调整
+        private int MaxRetries => AppConfig.Instance.Llm.MaxRetries;
+        private int RetryDelayMs => AppConfig.Instance.Llm.RetryDelayMs;
 
         // Phase 2a 验证: 工具调用诊断 — 记录最近一次 SK Auto Function Calling 的执行信息
         public List<FunctionCallRecord> LastFunctionCalls { get; private set; } = new();
@@ -33,7 +34,7 @@ namespace Agent1.Services
         private DateTime? _circuitOpenTime = null;
         private readonly object _circuitLock = new();
         private const int MaxConsecutiveFailures = 3;
-        private static readonly TimeSpan CircuitBreakDuration = TimeSpan.FromSeconds(30);
+        private static TimeSpan CircuitBreakDuration => TimeSpan.FromSeconds(30);
 
         /// <summary>
         /// [Thinking控制] 控制 Qwen3 思考模式开关。
@@ -43,9 +44,15 @@ namespace Agent1.Services
         /// </summary>
         internal bool EnableThinking { get; set; } = false;
 
-        public LlmService(IKnowledgeBaseService kbService)
+        // [P0 Lazy<T>] Lazy 延迟解析 IKnowledgeBaseService，打破与 HybridKnowledgeBaseService 的循环依赖
+        // .Value 仅在 ChemicalComplianceTools 首次执行 RAG 检索时触发，而非构造函数期
+        private readonly Lazy<IKnowledgeBaseService> _lazyKb;
+
+        public LlmService(Lazy<IKnowledgeBaseService> lazyKb)
         {
-            _complianceTools = new ChemicalComplianceTools(kbService);
+            _lazyKb = lazyKb;
+            // ChemicalComplianceTools 同样接受 Lazy，将解析推迟到首次工具调用
+            _complianceTools = new ChemicalComplianceTools(lazyKb);
 
             // [Thinking控制] 创建 OllamaThinkingHandler，后续通过反射注入到 SK 内部 HttpClient
             var thinkingHandler = new OllamaThinkingHandler(this);
@@ -73,13 +80,11 @@ namespace Agent1.Services
             _kernel.FunctionInvocationFilters.Add(new FunctionCallDiagnosticsFilter(this));
         }
 
-        /// <summary>
-        /// Phase 2a DI 循环修复: 延迟注入 RAG 知识库服务。
-        /// DI 容器解析完成后由 Program.cs 调用，将 null kbService 替换为真实实例。
-        /// </summary>
+        // [P0 Lazy<T>] SetKnowledgeBaseService 已废弃 — Lazy<T> 在首次 .Value 访问时自动完成依赖解析
+        [Obsolete("使用 Lazy<IKnowledgeBaseService> 构造函数，无需再调用 SetKnowledgeBaseService")]
         public void SetKnowledgeBaseService(IKnowledgeBaseService kbService)
         {
-            _complianceTools.SetKnowledgeBaseService(kbService);
+            // no-op: 已通过 Lazy<T> 自动延迟注入
         }
 
         public async Task<string> InvokeStreamAsync(string prompt, ConsoleColor color)

@@ -284,8 +284,12 @@ namespace Agent1.Services
                     module VARCHAR(100),
                     detail TEXT,
                     ip_address VARCHAR(50),
+                    chain_hash TEXT,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 );
+
+                -- [P3 哈希链] 为已有表补加链哈希列 (IF NOT EXISTS 安全)
+                ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS chain_hash TEXT;
                 
                 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
                 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
@@ -667,6 +671,25 @@ namespace Agent1.Services
             return results;
         }
 
+        /// <summary>[P3 增量更新] 删除指定源文件的全部文档分块</summary>
+        public async Task<int> DeleteChemicalDocumentsBySourceAsync(string sourceFile)
+        {
+            try
+            {
+                using var connection = CreateConnection();
+                await connection.OpenAsync();
+                var sql = "DELETE FROM chemical_documents WHERE source_file = @sourceFile;";
+                using var cmd = new NpgsqlCommand(sql, connection);
+                cmd.Parameters.AddWithValue("@sourceFile", sourceFile);
+                return await cmd.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ⚠️ 删除文档分块失败 [{sourceFile}]: {ex.Message}");
+                return 0;
+            }
+        }
+
         // 解析 pgvector 字符串格式 "[0.1,0.2,0.3]" 为 float[]
         private static float[]? ParsePgVectorString(string vectorStr)
         {
@@ -693,7 +716,7 @@ namespace Agent1.Services
         // 审计日志持久化（生产安全加固 — 替代内存 List）
         // ═══════════════════════════════════════════
 
-        public async Task AddAuditLogAsync(string userId, string operation, string details, string? ipAddress = null)
+        public async Task AddAuditLogAsync(string userId, string operation, string details, string? ipAddress = null, string? chainHash = null)
         {
             try
             {
@@ -701,8 +724,8 @@ namespace Agent1.Services
                 await connection.OpenAsync();
 
                 var sql = @"
-                    INSERT INTO audit_logs (user_id, action, detail, ip_address)
-                    VALUES (@userId, @action, @detail, @ipAddress);
+                    INSERT INTO audit_logs (user_id, action, detail, ip_address, chain_hash)
+                    VALUES (@userId, @action, @detail, @ipAddress, @chainHash);
                 ";
 
                 using var command = new NpgsqlCommand(sql, connection);
@@ -710,6 +733,7 @@ namespace Agent1.Services
                 command.Parameters.AddWithValue("@action", operation);
                 command.Parameters.AddWithValue("@detail", details ?? "");
                 command.Parameters.AddWithValue("@ipAddress", ipAddress ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@chainHash", chainHash ?? (object)DBNull.Value);
 
                 await command.ExecuteNonQueryAsync();
             }
@@ -727,7 +751,7 @@ namespace Agent1.Services
                 using var connection = CreateConnection();
                 await connection.OpenAsync();
 
-                var sql = "SELECT id, user_id, action, detail, ip_address, created_at FROM audit_logs WHERE 1=1";
+                var sql = "SELECT id, user_id, action, detail, ip_address, COALESCE(chain_hash, '') as chain_hash, created_at FROM audit_logs WHERE 1=1";
 
                 var parameters = new List<NpgsqlParameter>();
                 if (startTime.HasValue)
@@ -759,7 +783,8 @@ namespace Agent1.Services
                         UserId = reader["user_id"]?.ToString() ?? "",
                         Operation = reader["action"]?.ToString() ?? "",
                         Details = reader["detail"]?.ToString() ?? "",
-                        CreateTime = reader["created_at"] is DBNull ? DateTime.MinValue : Convert.ToDateTime(reader["created_at"])
+                        CreateTime = reader["created_at"] is DBNull ? DateTime.MinValue : Convert.ToDateTime(reader["created_at"]),
+                        ChainHash = reader["chain_hash"]?.ToString()
                     });
                 }
             }

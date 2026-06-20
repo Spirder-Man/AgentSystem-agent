@@ -33,9 +33,12 @@ namespace Agent1.Services
 
         // Sprint 2: 加载全量文档及向量嵌入（GPU 索引重建 / 内存检索用）
         Task<List<ChemicalDocumentRecord>> GetAllChemicalDocumentsWithEmbeddingsAsync();
+        // [P3 增量更新] 按源文件删除文档（文件被删除时清理 DB 分块）
+        Task<int> DeleteChemicalDocumentsBySourceAsync(string sourceFile);
 
         // ── 审计日志持久化（生产安全加固）──
-        Task AddAuditLogAsync(string userId, string operation, string details, string? ipAddress = null);
+        // [P3 哈希链] chainHash: SHA256 链式哈希，用于检测日志篡改
+        Task AddAuditLogAsync(string userId, string operation, string details, string? ipAddress = null, string? chainHash = null);
         Task<List<AuditLog>> GetAuditLogsAsync(DateTime? startTime, DateTime? endTime, string? userId = null);
 
         // ═══════════════════════════════════════════

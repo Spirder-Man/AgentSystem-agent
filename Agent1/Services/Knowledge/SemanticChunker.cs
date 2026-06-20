@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using Agent1.Config;
 
 namespace Agent1.Services
 {
@@ -39,14 +40,10 @@ namespace Agent1.Services
             public int ChunkIndex { get; set; }
         }
 
-        /// <summary>最大块大小（字符数），超过则会尝试进一步细分</summary>
-        private const int MaxChunkSize = 800;
-
-        /// <summary>最小块大小，小于此值的块会与相邻块合并</summary>
-        private const int MinChunkSize = 100;
-
-        /// <summary>相邻块重叠字符数</summary>
-        private const int OverlapSize = 80;
+        // [P3] 从配置读取分块参数
+        private static int MaxChunkSize => AppConfig.Instance.KnowledgeBase.ChunkSize;
+        private static int MinChunkSize => AppConfig.Instance.KnowledgeBase.ChunkOverlap;
+        private static int OverlapSize => AppConfig.Instance.KnowledgeBase.ChunkOverlap;
 
         /// <summary>
         /// 按文档类型执行语义分块

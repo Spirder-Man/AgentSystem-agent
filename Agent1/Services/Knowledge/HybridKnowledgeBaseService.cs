@@ -187,17 +187,17 @@ namespace Agent1.Services
 
             var sw = Stopwatch.StartNew();
             List<RetrievedChunk> results;
-            var mode = _kbConfig.SearchMode?.ToLowerInvariant() ?? "hybrid";
+            var mode = _kbConfig.SearchMode;
 
             switch (mode)
             {
-                case "bm25":
+                case SearchModeType.Bm25:
                     results = await Bm25RetrieveAsync(expandedQuery, topK);
                     break;
-                case "vector":
+                case SearchModeType.Vector:
                     results = await VectorRetrieveAsync(expandedQuery, topK);
                     break;
-                case "hybrid":
+                case SearchModeType.Hybrid:
                 default:
                     results = await HybridRetrieveAsync(expandedQuery, topK);
                     break;
@@ -270,6 +270,15 @@ namespace Agent1.Services
         {
             _bm25Service.Clear();
             _databaseService.ClearChemicalDocumentsAsync().GetAwaiter().GetResult();
+        }
+
+        /// <summary>[P3 增量更新] 按源文件删除 BM25 内存分块 + DB 分块</summary>
+        public async Task RemoveChunksBySourceFileAsync(string sourceFile)
+        {
+            var bm25Removed = _bm25Service.RemoveBySourceFile(sourceFile);
+            var dbRemoved = await _databaseService.DeleteChemicalDocumentsBySourceAsync(sourceFile);
+            if (bm25Removed > 0 || dbRemoved > 0)
+                Console.WriteLine($"   ✅ 已清理源文件分块: BM25-{bm25Removed}, DB-{dbRemoved} ({Path.GetFileName(sourceFile)})");
         }
 
         public async Task AddChemicalRegulationAsync(string content, string regulationType, string priority, string? chemicalType = null)

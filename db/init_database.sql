@@ -111,6 +111,9 @@ ON chemical_documents (chemical_type);
 CREATE INDEX IF NOT EXISTS idx_chemical_documents_created_at 
 ON chemical_documents (created_at);
 
+-- 添加哈希链列（等保三级防篡改）
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS chain_hash TEXT;
+
 -- ============================================================================
 -- 7. 验证表结构
 -- ============================================================================

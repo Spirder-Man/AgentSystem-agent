@@ -1,8 +1,25 @@
+// ============================================================================
+// 【语法维度】using 指令是 C# 的编译期命名空间导入机制，不产生运行时 IL 代码。
+//   其作用等同于给编译器一张"短名称→完整类型路径"的映射表，避免写全限定名。
+//   例如 using Serilog; 之后可以用 Log 代替 Serilog.Log。
+//
+// 【框架维度】这里引入了两套体系：
+//   - Microsoft.Extensions.* — 微软官方的 DI/配置/日志抽象层（.NET 8 标准组件）
+//   - Serilog — 第三方结构化日志库，为"配置外化 + 结构化日志"双基石之一
+//   - Semantic Kernel (通过 Agent1.Services 间接引入) — 微软 AI 编排 SDK
+//
+// 【架构维度】using 的顺序遵循 IDE 默认规则：System.* → 第三方 → 项目内部
+//   这种分层排列有助于快速识别依赖方向（从底层框架到上层业务）
+//
+// 【生产维度】所有依赖均为 NuGet 托管的确定性版本，CI/CD 中通过 nuget.config
+//   锁定国内镜像源，确保构建可重复、不受外网波动影响
+// ============================================================================
 using System;
 using System.Threading.Tasks;
 using Agent1.Services;
 using Agent1.Config;
 using Agent1.Models;
+using Agent1.Commands;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -12,25 +29,112 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
+// ============================================================================
+// 【语法维度】namespace 是 C# 的逻辑组织单元，编译后影响类型的完整限定名。
+//   此处的 Agent1 命名空间与项目名保持一致，是 .NET 的约定优于配置原则。
+//
+// 【架构维度】整个控制台应用只有一个 namespace，说明当前尚未到需要
+//   命名空间分层隔离的阶段——这对一个独立 Agent 项目是合理的。
+//   若未来拆分为多个可独立部署的服务，建议按功能划分子命名空间。
+// ============================================================================
 namespace Agent1
 {
+    // ========================================================================
+    // 【语法维度】class Program 是 C# 顶级程序入口的约定名称。
+    //   .NET 6+ 支持顶级语句（不用显式 class），但此处保留传统写法：
+    //   → 优势：可以显式控制 static 方法、字段，便于写辅助方法和内部类
+    //   → 代价：多一层缩进和样板代码
+    //
+    // 【架构维度】Program 类扮演"组合根"（Composition Root）角色：
+    //   它是整个应用程序唯一知道所有具体类型的地方，负责：
+    //   ① 加载配置  ② 初始化日志  ③ 构建 DI 容器  ④ 启动主循环
+    //   这符合 DI 容器模式的最佳实践：依赖图的组装集中在入口点。
+    // ========================================================================
     class Program
     {
+        // ====================================================================
+        // 【语法维度】static async Task Main(string[] args)
+        //   - static:    入口方法必须是静态的，CLR 不需要实例化 Program 就能调用
+        //   - async Task: C# 7.1 引入的异步入口点，让 Main 内部可以 await
+        //                 编译器会生成状态机代码，把 await 后的代码转为回调
+        //   - string[] args: 命令行参数数组，CLR 在启动时自动填充
+        //
+        // 【框架维度】async Main 在编译后被转换为：
+        //   → 生成 <Main>d__0 状态机类（实现 IAsyncStateMachine）
+        //   → 通过 AsyncTaskMethodBuilder 驱动异步执行
+        //   → 异常会被包装进 Task，不会导致进程静默崩溃
+        //
+        // 【架构维度】入口方法保持轻量是重要原则：
+        //   → 只做"组装 + 启动"，不包含业务逻辑
+        //   → 真正常驻的业务循环放在下面 while(true) 中
+        //   → 启动失败用 return 提前退出（而非 throw），避免堆栈信息干扰
+        //
+        // 【生产维度】async Main 的异常会被写入 Task 返回值。
+        //   在 .NET 8 中，未处理的 Task 异常会触发 TaskScheduler.UnobservedTaskException，
+        //   配合 Serilog 可在崩溃前记录完整现场。建议在 Program 最外层加 try-catch。
+        // ====================================================================
         static async Task Main(string[] args)
         {
-            // ═══════════════════════════════════════════════════
+            // ================================================================
             // Phase 1: 配置外部化 — appsettings.json + 环境变量
-            // ═══════════════════════════════════════════════════
+            // ================================================================
+
+            // ================================================================
+            // 【语法维度】var 是 C# 的隐式类型局部变量声明。
+            //   编译器从右侧表达式推断类型为 IConfigurationRoot（不是 dynamic）。
+            //   编译后 IL 码与显式声明完全一致，无运行时开销。
+            //
+            // 【设计模式维度】ConfigurationBuilder 是建造者（Builder）模式：
+            //   → new 创建空建造器 → 链式调用添加配置源 → Build() 合并产出
+            //   → 隐藏了"多源合并、键冲突覆盖、JSON 扁平化"等复杂构建逻辑
+            //   → 每个 .Add*() 返回 this（Fluent API），支持链式调用
+            //
+            // 【框架维度】ConfigurationBuilder 是 Microsoft.Extensions.Configuration
+            //   的核心类。.NET 的配置系统采用"配置源→配置提供者→配置根"三层抽象：
+            //   → IConfigurationSource: 描述"从哪读"（文件、环境变量、命令行等）
+            //   → IConfigurationProvider: 执行实际的读取和解析
+            //   → IConfigurationRoot: 合并后的只读配置视图
+            //   每个 .Add* 调用的背后都会创建对应的 Source+Provider 对。
+            //
+            // 【生产维度】配置外部化是 12-Factor App 的第三条（Config）：
+            //   → JSON 文件存非敏感默认值（可入 git）
+            //   → 环境变量存密码/密钥（不入 git，由部署平台注入）
+            //   → reloadOnChange: true 支持运行时热更新（无需重启进程）
+            // ================================================================
             var configuration = new ConfigurationBuilder()
+                // 【语法】命名参数语法 C# 4.0+，增强可读性
+                // 【框架】AppContext.BaseDirectory = 程序集所在目录（bin/Debug/net8.0/）
+                // 【生产】如果不设置 BasePath，默认是 Environment.CurrentDirectory（可能是任意目录）
                 .SetBasePath(AppContext.BaseDirectory)
+                // 【框架】optional: false = 文件不存在时抛出 FileNotFoundException，启动即失败
+                //   这比默默继续然后用默认值更安全（Fail-Fast 原则）
+                // 【框架】reloadOnChange: true = 内部使用 FileSystemWatcher 监听文件变更
+                //   文件保存后配置自动更新，无需重启（适用于调整日志级别、开关功能等场景）
+                // 【生产】热加载有微小性能开销（文件监听线程），生产环境可考虑设为 false
                 .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                // 【框架】AddEnvironmentVariables() 读取操作系统所有环境变量
+                //   键名中的双下划线 __ 或冒号 : 会自动转换为配置层级分隔符
+                //   例如 DB__PASSWORD=xxx → configuration["DB:Password"]
+                // 【安全】环境变量的来源优先级高于 JSON，确保密钥不会意外泄露到源码仓库
+                // 【生产】容器化部署时通过 docker-compose.yml 的 environment 段注入
                 .AddEnvironmentVariables()
+                // 【架构】Build() 是建造者模式的"终结方法"：
+                //   遍历所有配置源 → 执行读取 → 按添加顺序合并（后覆盖前）→ 产出 IConfigurationRoot
+                //   在 .NET 8 中，Build() 返回的 IConfigurationRoot 同时实现了 IConfiguration
                 .Build();
 
-            // 加载全局配置（环境变量可覆盖敏感信息如 DB_PASSWORD）
+            // 【架构】将 IConfigurationRoot 绑定到类型安全的 AppConfig 单例
+            //   Load() 内部使用 configuration.Bind() 将扁平的键值对映射到嵌套对象
+            //   例如 "Llm:ModelId":"qwen3" → AppConfig.Instance.Llm.ModelId
+            // 【生产】Bind() 依赖属性名和配置键的命名约定匹配（大小写不敏感）
+            //   如果配置键名和属性名不一致，需要用 [ConfigurationKeyName] 注解映射
             AppConfig.Load(configuration);
 
-            // 启动前校验关键配置项，防止运行时才发现配错
+            // 【架构】Fail-Fast 验证：在程序进入业务循环之前检查所有必需配置项
+            //   如果配置缺失，立即报错退出——避免运行到一半才发现配错导致数据损坏
+            //   Validate() 返回错误列表而非直接抛异常，可以一次性展示所有问题
+            //   （如果只抛第一个异常，用户修一个才发现下一个，体验很差）
+            // 【生产】建议在 CI 部署流水线中增加配置校验步骤，上线前拦截配置错误
             var configErrors = AppConfig.Instance.Validate();
             if (configErrors.Count > 0)
             {
@@ -39,19 +143,60 @@ namespace Agent1
                     Console.WriteLine($"   - {err}");
                 Console.WriteLine("\n按任意键退出...");
                 Console.ReadKey();
-                return;
+                return;  // 注意：这里用 return 而非 Environment.Exit()，让 finally 块正常执行
             }
 
-            // ═══════════════════════════════════════════════════
+            // ================================================================
             // Phase 1: 结构化日志 — Serilog + Console 输出双写文件
-            // ═══════════════════════════════════════════════════
+            // ================================================================
+            // 【设计模式维度】又是建造者模式！LoggerConfiguration 和 ConfigurationBuilder
+            //   同根同源——都是"声明式配置 → Build 产出"的范式。这体现了 .NET 生态
+            //   的 API 设计一致性：学会一种 Builder，就能举一反三。
+            //
+            // 【框架维度】Log.Logger = new LoggerConfiguration()...CreateLogger()
+            //   → Log 是 Serilog 提供的静态类，Log.Logger 是全局静态 Logger 属性
+            //   → CreateLogger() 创建的是 ILogger（Serilog.Core.Logger 实例）
+            //   → .WriteTo.Console() 内部注册 ConsoleSink（输出适配器）
+            //   → .WriteTo.File() 内部注册 FileSink（滚动文件适配器）
+            //
+            // 【语法维度】WriteTo 是 Serilog 特有的"伪属性"模式：
+            //   WriteTo 返回一个配置对象，Console() 和 File() 是其扩展方法
+            //   这种 API 设计让 IDE 的智能感知能自动列出所有可用的 Sink
+            //
+            // 【架构维度】全局静态 Logger 是"环境上下文"（Ambient Context）模式：
+            //   优点：任何代码位置都能用 Log.Information() 写日志，无需 DI 注入
+            //   缺点：全局可变状态，单元测试时需要 SaveAndRemoveAllSinks() 清理
+            //   本项目同时使用了 Serilog 全局 Logger 和 Microsoft.Extensions.Logging
+            //   抽象（通过 AddSerilog 桥接），实现了两套日志体系的无缝对接
+            //
+            // 【生产维度】RollingInterval.Day 按天滚动：
+            //   → 文件名格式：agent1-20260616.log
+            //   → 每天午夜自动创建新文件，旧文件保留
+            //   → 配合 logs/archive/ 目录的定期归档脚本，实现日志生命周期管理
+            //   → 生产环境建议改为 RollingInterval.Hour（高流量时避免单文件过大）
+            // ================================================================
             Log.Logger = new LoggerConfiguration()
                 .WriteTo.Console()
                 .WriteTo.File("logs/agent1-.log", rollingInterval: RollingInterval.Day)
                 .CreateLogger();
 
-            // Phase 2d: 所有 Console.WriteLine 同时写入 logs/full-YYYYMMDD.log
-            // 解决终端输出超出缓冲区后无法回溯查看诊断信息的问题
+            // ================================================================
+            // Phase 2d: ConsoleTeeWriter — 双写 TextWriter 解决诊断日志丢失
+            // ================================================================
+            // 【架构维度】这是装饰器（Decorator）模式的应用：
+            //   ConsoleTeeWriter 继承 TextWriter，内部持有两个 TextWriter 对象，
+            //   每次 Write/WriteLine 同时写入两个流，对被装饰者（Console.Out）完全透明。
+            //
+            // 【生产维度】Windows 终端默认缓冲区 9000 行，超出后旧内容不可回溯。
+            //   双写到文件后，所有 Console 输出都有持久化副本，运维排查问题时可
+            //   直接 grep 日志文件而非翻终端历史。
+            //
+            // 【语法维度】?? 操作符 = null 合并：ReadLine() 返回 null（EOF）时用 "0" 代替。
+            //   这是防御性编程——控制台应用没有标准输入时也能正常退出。
+            //
+            // 【业务维度】化工合规 Agent 运行一次完整的合规检查可能输出数千行推理过程，
+            //   终端缓冲区根本无法容纳，文件日志是唯一可靠的完整记录来源。
+            // ================================================================
             var logDir = "logs";
             if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
             var fullLogPath = Path.Combine(logDir, $"full-{DateTime.Now:yyyyMMdd}.log");
@@ -59,42 +204,94 @@ namespace Agent1
             Console.SetOut(new ConsoleTeeWriter(Console.Out, fileWriter));
             Console.WriteLine($"📝 诊断日志双写已启用 → {fullLogPath}");
 
+            // ================================================================
+            // 日志桥接：Serilog → Microsoft.Extensions.Logging
+            // ================================================================
+            // 【框架维度】AddSerilog(dispose: true) 将 Serilog 的全局 Logger
+            //   注册为 Microsoft.Extensions.Logging 的 Provider。之后任何通过
+            //   ILogger<T> 写的日志都会经过 Serilog 管道，最终到达 Console + File Sink。
+            //   dispose: true 表示 DI 容器释放时同步释放 Serilog Logger。
+            //
+            // 【架构维度】这个桥接让本项目同时拥有两套日志 API 的能力：
+            //   ① Serilog 全局静态（Log.Information）→ 适合工具类、静态方法
+            //   ② Microsoft ILogger<T>（DI 注入）→ 适合服务类，便于单元测试 mock
+            // ================================================================
             var loggerFactory = LoggerFactory.Create(builder =>
             {
                 builder.AddSerilog(dispose: true);
             });
             var logger = loggerFactory.CreateLogger<Program>();
 
+            // ================================================================
+            // 启动横幅 — 双写：结构化日志 + 终端输出（含版本号便于运维追溯）
+            // ================================================================
+            var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            var versionStr = version != null ? $"v{version.Major}.{version.Minor}.{version.Build}" : "v?.?.?";
             logger.LogInformation("══════════════════════════════════════════");
-            logger.LogInformation("        化工园区危化品合规审核AI Agent");
+            logger.LogInformation("        化工园区危化品合规审核AI Agent {Version}", versionStr);
             logger.LogInformation("══════════════════════════════════════════");
             Console.WriteLine("══════════════════════════════════════════");
-            Console.WriteLine("        化工园区危化品合规审核AI Agent");
+            Console.WriteLine($"        化工园区危化品合规审核AI Agent {versionStr}");
             Console.WriteLine("══════════════════════════════════════════\n");
 
-            // ═══════════════════════════════════════════════════
+            // ================================================================
             // Phase 1: 依赖注入容器 — Microsoft.Extensions.DI
-            // ═══════════════════════════════════════════════════
+            // ================================================================
+            // 【框架维度】ServiceCollection 是 .NET 内置的轻量级 DI 容器。
+            //   它支持三种生命周期：
+            //     Singleton:    全局唯一实例（控制台应用 = 全进程生命周期）
+            //     Scoped:       每次 scope.CreateScope() 一个实例（控制台应用无意义）
+            //     Transient:    每次请求创建一个新实例
+            //   本项目中所有服务都是 Singleton——因为控制台应用只有一个"请求"
+            //   （主循环），不存在 Web 请求级别的隔离需求。
+            //
+            // 【架构维度】DI 容器的核心原则"依赖倒置"（DIP）在这里完整体现：
+            //   → 所有上层代码依赖接口（ILlmService），而非具体实现（LlmService）
+            //   → 容器根据注册映射自动注入具体实现
+            //   → 替换实现只需改注册（如 KnowledgeBaseService → HybridKnowledgeBaseService）
+            //
+            // 【生产维度】DI 容器使得每个服务可以被独立单元测试：
+            //   测试中注入 Mock<ILlmService> 即可隔离外部 AI 服务依赖。
+            // ================================================================
             var services = new ServiceCollection();
 
-            // 注册配置（单例）
+            // 【架构】注册配置单例——整个程序共享同一个 AppConfig 实例
+            //   AddSingleton(obj) 注册已创建实例（而非每次 new）
             services.AddSingleton(AppConfig.Instance);
 
-            // 注册日志
+            // 【框架】注册日志基础设施
+            //   ILogger<T> 是 Microsoft.Extensions.Logging 的泛型日志接口
+            //   typeof(Logger<>) 是开放泛型（Open Generic），DI 容器会自动为每个 T 创建 Logger<T>
             services.AddSingleton(loggerFactory);
             services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
 
-            // 注册核心服务（单例，控制台应用生命周期等同于整个进程）
+            // 【架构】核心服务注册——数据库、会话、记忆三大基础设施
+            //   都是接口→实现的映射，方便未来替换底层实现
             services.AddSingleton<IDatabaseService, DatabaseService>();
             services.AddSingleton<ISessionService, SessionService>();
             services.AddSingleton<IMemoryService, MemoryService>();
 
-            // Phase 2a 修复: 打破循环依赖
-            // ILlmService ← IKnowledgeBaseService ← ILlmService 形成死锁
-            // 解决方案: ILlmService 先以无 kbService 方式注册, DI 完成后再调用 InitializeTools 注入
-            services.AddSingleton<LlmService>(sp => new LlmService(null!));
+            // ================================================================
+            // [P0 Lazy<T>] 循环依赖破解 — Lazy<T> 延迟解析
+            // ================================================================
+            // 【架构维度】LlmService ↔ HybridKnowledgeBaseService 互相依赖：
+            //   → LlmService 需要 IKnowledgeBaseService 用于 ChemicalComplianceTools 的 RAG 检索
+            //   → HybridKnowledgeBaseService 需要 ILlmService 用于生成文本向量嵌入
+            //
+            // 【Lazy<T> 方案】将 IKnowledgeBaseService 包装为 Lazy<T>：
+            //   → DI 注册时只创建 Lazy 包装器（不触发 Value 解析）
+            //   → LlmService / ChemicalComplianceTools 仅在首次 RAG 检索时访问 .Value
+            //   → 此时 ILlmService 已经构建完成，循环依赖自然解开
+            //
+            // 【对比 null! 方案】
+            //   旧: new LlmService(null!) + 后续 SetKnowledgeBaseService — 运行时风险（忘记调用=NullRef）
+            //   新: new LlmService(new Lazy<...>(() => sp.GetRequiredService<...>())) — 编译期安全
+            // ================================================================
+            services.AddSingleton<LlmService>(sp => new LlmService(
+                new Lazy<IKnowledgeBaseService>(() => sp.GetRequiredService<IKnowledgeBaseService>())));
             services.AddSingleton<ILlmService>(sp => sp.GetRequiredService<LlmService>());
 
+            // 【架构】ToolService 是"门面"（Facade）——聚合 LLM + 知识库的能力暴露给外部
             services.AddSingleton<IToolService>(sp =>
             {
                 var llm = sp.GetRequiredService<ILlmService>();
@@ -102,6 +299,12 @@ namespace Agent1
                 return new ToolService(llm, kb, AppConfig.Instance.ChemicalTool?.Tools);
             });
             services.AddSingleton<AgentDialog>();
+
+            // 【架构】这里注册 IKnowledgeBaseService → HybridKnowledgeBaseService
+            //   而非注册为具体 KnowledgeBaseService（纯内存 BM25 版）
+            //   HybridKnowledgeBaseService 是"门面 + 协调者"：
+            //   内部组合了 KnowledgeBaseService（BM25 关键词检索）
+            //   和 GpuVectorIndexService（向量语义检索），通过 RRF 算法融合结果
             services.AddSingleton<IKnowledgeBaseService>(sp =>
             {
                 var db = sp.GetRequiredService<IDatabaseService>();
@@ -114,7 +317,7 @@ namespace Agent1
             services.AddSingleton<ModuleDispatcher>();
             services.AddSingleton<ResponseCacheService>();
 
-            // Phase 2: 长期记忆服务
+            // 【架构】Phase 2: 长期记忆——短期会话记忆 + 长期持久化记忆双层体系
             services.AddSingleton<ILongTermMemoryService>(sp =>
             {
                 var db = sp.GetRequiredService<IDatabaseService>();
@@ -122,7 +325,9 @@ namespace Agent1
                 return new LongTermMemoryService(db, llm);
             });
 
-            // Phase 4.1: 记忆协调器
+            // 【架构】Phase 4.1: MemoryCoordinator 是"协调者"模式——
+            //   统一管理短期记忆（MemoryService）、长期记忆（LongTermMemoryService）、
+            //   响应缓存（ResponseCacheService）和审计日志（AuditService）
             services.AddSingleton<MemoryCoordinator>(sp =>
             {
                 var shortMem = sp.GetRequiredService<IMemoryService>();
@@ -132,9 +337,21 @@ namespace Agent1
                 return new MemoryCoordinator(shortMem, longMem, cache, audit);
             });
 
+            // 【框架】BuildServiceProvider() 是 DI 容器的"编译"步骤：
+            //   验证所有依赖关系——如果有无法解析的依赖，这里会抛异常。
+            //   这提供了编译期（启动时）的安全网，而不是运行到一半才崩溃。
             var serviceProvider = services.BuildServiceProvider();
 
-            // 从 DI 容器解析服务
+            // ================================================================
+            // Phase 1: 从 DI 容器解析服务
+            // ================================================================
+            // 【框架】GetRequiredService<T>() vs GetService<T>()：
+            //   Required 版：找不到服务时抛 InvalidOperationException（推荐，Fail-Fast）
+            //   普通版：找不到返回 null（需要判空，容易遗漏）
+            //
+            // 【架构】这里的服务解析顺序遵循"基础设施优先"原则：
+            //   数据库 → 会话 → 记忆 → LLM → 工具 → 对话框 → 知识库
+            //   这个顺序也反映了数据流的依赖方向。
             var databaseService = serviceProvider.GetRequiredService<IDatabaseService>();
             var sessionService = serviceProvider.GetRequiredService<ISessionService>();
             var memoryService = serviceProvider.GetRequiredService<IMemoryService>();
@@ -143,18 +360,25 @@ namespace Agent1
             var agentDialog = serviceProvider.GetRequiredService<AgentDialog>();
             var knowledgeBaseService = serviceProvider.GetRequiredService<IKnowledgeBaseService>();
 
-            // Phase 2a DI 循环修复: 延迟注入 RAG 服务到 ChemicalComplianceTools
-            // LlmService 构造函数传了 null, 现在用真实 kbService 替换
-            var llmSvc = serviceProvider.GetRequiredService<LlmService>();
-            llmSvc.SetKnowledgeBaseService(knowledgeBaseService);
-            Console.WriteLine("🔗 RAG 知识库已注入 ChemicalComplianceTools (延迟绑定)");
+            // [P0 Lazy<T>] SetKnowledgeBaseService 已废弃 — Lazy<T> 自动完成延迟注入
 
             var integrationService = serviceProvider.GetRequiredService<IIntegrationService>();
             var auditService = serviceProvider.GetRequiredService<IAuditService>();
             var moduleFactory = serviceProvider.GetRequiredService<IModuleFactory>();
             var dispatcher = serviceProvider.GetRequiredService<ModuleDispatcher>();
 
-            // 数据库连接初始化
+            // ================================================================
+            // 数据库连接初始化 + ChemicalRAG 知识库预加载
+            // ================================================================
+            // 【业务维度】化工合规 Agent 的"大脑"包含两个部分：
+            //   ① PostgreSQL 数据库（持久化存储：化学物质数据、合规记录、会话记忆）
+            //   ② ChemicalRAG（检索增强生成：GB 国标、园区规则、历史案例的混合检索）
+            //   两者缺一不可——数据库存结构化数据，RAG 存非结构化文档。
+            //
+            // 【生产维度】TestConnectionAsync 和 InitializeDatabaseAsync 分离：
+            //   先测连接 → 再初始化表 → 如果连接失败，跳过初始化避免异常连锁
+            //   这种分步方式让运维能快速定位问题是网络还是表结构。
+            // ================================================================
             logger.LogInformation("📦 正在测试数据库连接...");
             Console.WriteLine("📦 正在测试数据库连接...");
             if (await databaseService.TestConnectionAsync())
@@ -170,11 +394,20 @@ namespace Agent1
                 Console.WriteLine("⚠️ 数据库连接失败，请检查配置");
             }
 
+            // 【架构】ChemicalRAG 是一个"聚合根"：
+            //   组合了知识库服务（HybridKnowledgeBaseService）和数据库服务，
+            //   对外提供统一的 SearchAsync 接口，隐藏内部的 BM25+Vector 混合检索细节。
             var chemicalRAG = new ChemicalRAG(AppConfig.Instance.KnowledgeBase.BasePath, knowledgeBaseService, databaseService);
 
-            // 预加载化工知识库
+            // 【业务】预加载化工知识库：扫描 knowledgebase/ 目录下所有 .txt 文件，
+            //   分块 → 生成向量嵌入 → 存入内存索引 + PostgreSQL pgvector。
+            //   这是程序启动中最耗时的步骤（取决于文档数量和 GPU 推理速度），
+            //   但必须完成才能进入业务循环，因为后续的合规检索都依赖此索引。
             await chemicalRAG.LoadKnowledgeBaseAsync();
 
+// ============================================================================
+// 【以下为业务流程图注释——保留原始分析内容】
+// ============================================================================
 #region 完整的调用链路
 // 程序启动
 //   │
@@ -223,22 +456,43 @@ namespace Agent1
 // 因此 KnowledgeBaseService._documents 列表是空的只是因为还没运行过程序，
 //或者运行过但用的 KnowledgeBaseService（纯内存版）而非 HybridKnowledgeBaseService。
 
+            // ================================================================
+            // [P2 命令模式] 主菜单循环 — 命令字典替代 if-else 链
+            // ================================================================
+            // 【架构维度】将 14 个分支的 if-else 重构为 IMenuCommand 命令字典：
+            //   → 每个菜单项封装为独立 Command 类（单一职责）
+            //   → 新增功能只需 new 一个 Command 并加入字典（开闭原则）
+            //   → 主循环缩减为 "显示菜单 → 查字典 → 执行" 三行
+            // ================================================================
+            var commands = new Dictionary<string, IMenuCommand>
+            {
+                ["0"] = new ExitCommand(),
+                ["1"] = new ModuleCommand("1", "思维链推理（标准输出）", ModuleType.CoTSolid, dispatcher),
+                ["2"] = new ModuleCommand("2", "思维链推理（流式输出）", ModuleType.CoTStream, dispatcher),
+                ["3"] = new ModuleCommand("3", "ReAct 推理（标准输出）", ModuleType.ReActSolid, dispatcher),
+                ["4"] = new ModuleCommand("4", "ReAct 推理（流式输出）", ModuleType.ReActStream, dispatcher),
+                ["5"] = new ModuleCommand("5", "Reflection 自我反思", ModuleType.Reflection, dispatcher),
+                ["6"] = new ModuleCommand("6", "RAG 检索增强生成", ModuleType.RAG, dispatcher),
+                ["7"] = new ModuleCommand("7", "智能对话系统", ModuleType.UnifiedDialog, dispatcher),
+                ["8"] = new ComplianceCheckCommand(moduleFactory),
+                ["9"] = new ChemicalRagTestCommand(chemicalRAG),
+                ["10"] = new DatabaseValidationCommand(databaseService),
+                ["11"] = new SwitchSearchModeCommand(),
+                ["12"] = new FunctionCallingDiagnosticsCommand(agentDialog, llmService),
+                ["13"] = new ComplianceEvalCommand(agentDialog, llmService, knowledgeBaseService),
+                ["14"] = new TicketFollowupCommand(moduleFactory),
+                ["15"] = new MultimodalCommand(),
+                ["16"] = new IncrementalKnowledgeBaseCommand(chemicalRAG),
+                ["17"] = new RegulatoryAuditCommand(moduleFactory),
+                ["18"] = new EmergencyResponseCommand(llmService, knowledgeBaseService, auditService, integrationService),
+                ["19"] = new KnowledgeGraphCommand(knowledgeBaseService),
+            };
+
             while (true)
             {
                 Console.WriteLine("\n请选择功能:");
-                Console.WriteLine("  1. 思维链推理（标准输出）");
-                Console.WriteLine("  2. 思维链推理（流式输出）");
-                Console.WriteLine("  3. ReAct 推理（标准输出）");
-                Console.WriteLine("  4. ReAct 推理（流式输出）");
-                Console.WriteLine("  5. Reflection 自我反思");
-                Console.WriteLine("  6. RAG 检索增强生成");
-                Console.WriteLine("  7. 智能对话系统");
-                Console.WriteLine("  8. 化工合规自查【核心功能】");
-                Console.WriteLine("  9. 化工合规RAG测试");
-                Console.WriteLine("  10. 数据库连接验证");
-                Console.WriteLine("  11. 切换检索模式 (当前: " + (AppConfig.Instance.KnowledgeBase.SearchMode ?? "hybrid") + ")");
-                Console.WriteLine("  12. 工具调用诊断验证 [Phase 2a]");
-                Console.WriteLine("  13. 合规评测集 [50条业务指标]");
+                foreach (var cmd in commands.Values.OrderBy(c => int.TryParse(c.Key, out var k) ? k : 99))
+                    Console.WriteLine($"  {cmd.Key,2}. {cmd.Label}");
                 Console.WriteLine("  0. 退出\n");
 
                 Console.Write("请输入选项: ");
@@ -246,298 +500,55 @@ namespace Agent1
                 var input = Console.ReadLine() ?? "0";
                 Console.ResetColor();
 
-                if (input == "0" || input.Equals("exit", StringComparison.OrdinalIgnoreCase))
-                {
-                    Console.WriteLine("\n👋 再见！");
-                    break;
-                }
+                if (input.Equals("exit", StringComparison.OrdinalIgnoreCase))
+                    input = "0";
 
-                if (input == "8")
+                if (commands.TryGetValue(input, out var command))
                 {
-                    var module = moduleFactory.CreateModule(ModuleType.ComplianceCheck);
-                    await module.RunAsync();
-                }
-                else if (input == "9")
-                {
-                    await RunChemicalRAGTest(chemicalRAG);
-                }
-                else if (input == "10")
-                {
-                    await RunDatabaseValidation(databaseService);
-                }
-                else if (input == "11")
-                {
-                    await SwitchSearchMode();
-                }
-                else if (input == "12")
-                {
-                    await RunFunctionCallingDiagnostics(agentDialog, llmService);
-                }
-                else if (input == "13")
-                {
-                    await RunComplianceEval(agentDialog, llmService, knowledgeBaseService);
-                }
-                else
-                {
-                    if (!int.TryParse(input, out var choice) || choice < 1 || choice > 7)
-                    {
-                        Console.WriteLine("\n⚠️ 无效选项，请重新选择");
-                        continue;
-                    }
-
-                    var moduleType = (ModuleType)choice;
                     try
                     {
-                        await dispatcher.ExecuteModuleAsync(moduleType);
+                        await command.ExecuteAsync();
                     }
                     catch (Exception ex)
                     {
                         Console.ForegroundColor = ConsoleColor.Red;
                         Console.WriteLine($"\n❌ 执行出错: {ex.Message}");
                         Console.ResetColor();
-                        Console.WriteLine($"堆栈: {ex.StackTrace}");
                     }
-                }
-            }
-        }
-
-        static async Task RunChemicalRAGTest(ChemicalRAG chemicalRAG)
-        {
-            Console.WriteLine("\n========================================");
-            Console.WriteLine("       化工合规RAG测试");
-            Console.WriteLine("========================================");
-
-            // 测试查询
-            var testQueries = new[]
-            {
-                "危化品储罐之间的安全距离是多少？",
-                "消防通道有什么要求？"
-            };
-
-            foreach (var query in testQueries)
-            {
-                await chemicalRAG.SearchAsync(query);
-                await Task.Delay(500);
-            }
-
-            // 交互式测试
-            Console.WriteLine("\n========================================");
-            Console.WriteLine("       交互式检索测试 (输入 exit 退出)");
-            Console.WriteLine("========================================");
-
-            while (true)
-            {
-                Console.Write("\n🔍 请输入查询: ");
-                var query = Console.ReadLine();
-                
-                if (string.IsNullOrWhiteSpace(query) || query.Equals("exit", StringComparison.OrdinalIgnoreCase))
-                {
-                    break;
-                }
-
-                await chemicalRAG.SearchAsync(query);
-            }
-
-            Console.WriteLine("\n✅ 化工合规RAG测试结束！");
-        }
-
-        static async Task RunDatabaseValidation(IDatabaseService databaseService)
-        {
-            Console.WriteLine("\n========================================");
-            Console.WriteLine("       数据库连接验证");
-            Console.WriteLine("========================================");
-
-            try
-            {
-                // 1. 获取数据库信息
-                Console.WriteLine("\n🔍 正在获取数据库信息...");
-                var info = await databaseService.GetDatabaseInfoAsync();
-                Console.WriteLine(info);
-
-                // 2. 获取表列表
-                Console.WriteLine("\n📋 数据库表列表:");
-                var tables = await databaseService.GetTableNamesAsync();
-                if (tables.Count == 0)
-                {
-                    Console.WriteLine("   (空)");
                 }
                 else
                 {
-                    foreach (var table in tables)
-                    {
-                        Console.WriteLine($"   ✅ {table}");
-                    }
+                    Console.WriteLine("\n⚠️ 无效选项，请重新选择");
                 }
-
-                // 3. 验证配置
-                Console.WriteLine("\n🔧 当前配置验证:");
-                var config = AppConfig.Instance.Database;
-                Console.WriteLine($"   服务器: {config.Host}:{config.Port}");
-                Console.WriteLine($"   数据库: {config.DatabaseName}");
-                Console.WriteLine($"   用户: {config.Username}");
-
-                // 4. 测试连接
-                Console.WriteLine("\n🔗 测试连接...");
-                if (await databaseService.TestConnectionAsync())
-                {
-                    Console.WriteLine("   ✅ 数据库连接成功！");
-                }
-                else
-                {
-                    Console.WriteLine("   ❌ 数据库连接失败！");
-                }
-
-                Console.WriteLine("\n✅ 数据库验证完成！");
-            }
-            catch (Exception ex)
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"❌ 验证失败: {ex.Message}");
-                Console.ResetColor();
             }
         }
-
-        static async Task SwitchSearchMode()
-        {
-            Console.WriteLine("\n========================================");
-            Console.WriteLine("       切换检索模式");
-            Console.WriteLine("========================================");
-            Console.WriteLine("\n当前检索模式: " + (AppConfig.Instance.KnowledgeBase.SearchMode ?? "hybrid"));
-            Console.WriteLine("\n可用选项:");
-            Console.WriteLine("  1. bm25 (关键词检索)");
-            Console.WriteLine("  2. vector (向量语义检索)");
-            Console.WriteLine("  3. hybrid (混合检索，默认)");
-
-            Console.Write("\n请选择: ");
-            Console.ForegroundColor = ConsoleColor.Green;
-            var choice = Console.ReadLine() ?? "3";
-            Console.ResetColor();
-
-            switch (choice)
-            {
-                case "1":
-                    AppConfig.Instance.KnowledgeBase.SearchMode = "bm25";
-                    Console.WriteLine("✅ 已切换到 bm25 模式");
-                    break;
-                case "2":
-                    AppConfig.Instance.KnowledgeBase.SearchMode = "vector";
-                    Console.WriteLine("✅ 已切换到 vector 模式");
-                    break;
-                case "3":
-                default:
-                    AppConfig.Instance.KnowledgeBase.SearchMode = "hybrid";
-                    Console.WriteLine("✅ 已切换到 hybrid 模式");
-                    break;
-            }
-
-            Console.WriteLine("\n💡 提示: 此更改仅在当前会话有效");
-        }
-
-        /// <summary>
-        /// Phase 2a 验证: 工具调用诊断 — 运行预设测试用例，验证 SK Auto Function Calling 是否生效
-        /// </summary>
-        static async Task RunFunctionCallingDiagnostics(AgentDialog agentDialog, ILlmService llmService)
-        {
-            Console.WriteLine("\n========================================");
-            Console.WriteLine("    Phase 2a 工具调用诊断验证");
-            Console.WriteLine("========================================");
-            Console.WriteLine($"   当前模型: {ModelConfig.ModelId}");
-            Console.WriteLine("   预期: SK Auto Function Calling 应自动触发对应工具");
-            Console.WriteLine("========================================\n");
-
-            var testCases = new (string query, string expectedTools, string description)[]
-            {
-                ("苯属于什么危险类别", "CheckHazardCategory", "单一工具: 危化品类别查询"),
-                ("苯和丙酮能同库储存吗", "CheckStorageCompatibility", "单一工具: 储存兼容性检查"),
-                ("甲类仓库与明火点的安全距离是多少", "GetSafetyDistance", "单一工具: 安全距离查询"),
-                ("现在几点", "GetCurrentTime", "通用工具: 时间查询"),
-                ("甲醇和硝酸存放在同一个仓库是否合规", "CheckHazardCategory,CheckStorageCompatibility", "多工具: 类别+兼容性"),
-            };
-
-            var session = agentDialog.CreateSession(SessionType.ChemicalCompliance);
-            int passCount = 0;
-
-            for (int i = 0; i < testCases.Length; i++)
-            {
-                var tc = testCases[i];
-                Console.WriteLine($"\n━━━ 测试 {i + 1}/{testCases.Length}: {tc.description} ━━━");
-                Console.WriteLine($"   查询: \"{tc.query}\"");
-                Console.WriteLine($"   预期工具: {tc.expectedTools}");
-
-                try
-                {
-                    var result = await agentDialog.ExecuteAsync(tc.query, session);
-
-                    // 读取诊断结果
-                    var llmSvc = llmService as LlmService;
-                    if (llmSvc != null && llmSvc.LastFunctionCalls.Count > 0)
-                    {
-                        var actualTools = string.Join(", ", llmSvc.LastFunctionCalls.Select(fc => fc.FunctionName));
-                        Console.WriteLine($"   ✅ 实际调用: {actualTools}");
-                        foreach (var fc in llmSvc.LastFunctionCalls)
-                        {
-                            Console.WriteLine($"      📋 {fc.FunctionName}({fc.Arguments}) → {(fc.Success ? "成功" : "失败")}");
-                            var resultPreview = (fc.Result ?? "").Length > 100
-                                ? (fc.Result ?? "").Substring(0, 100) + "..."
-                                : fc.Result;
-                            Console.WriteLine($"         结果: {resultPreview}");
-                        }
-                        passCount++;
-                    }
-                    else
-                    {
-                        Console.WriteLine($"   ❌ 未触发任何工具调用! 预期: {tc.expectedTools}");
-                        Console.WriteLine("      → LLM 可能绕过了 Function Calling，直接凭记忆回答");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"   ❌ 测试异常: {ex.Message}");
-                }
-
-                await Task.Delay(1000); // 间隔1秒避免 Ollama 过载
-            }
-
-            Console.WriteLine($"\n========================================");
-            Console.WriteLine($"   诊断完成: {passCount}/{testCases.Length} 用例触发了工具调用");
-            Console.WriteLine($"   ⚠️ 关键发现: DeepSeek-R1:7b 在 Ollama 上不支持 Function Calling");
-            Console.WriteLine($"      → 错误信息: 'does not support tools'");
-            Console.WriteLine($"      → SK Auto Function Calling 无法与此模型配合使用");
-            Console.WriteLine($"      → 5 个'工具调用'实际是 SK 内部函数，非 ChemicalComplianceTools");
-            Console.WriteLine($"   ");
-            Console.WriteLine($"   建议: 切换到支持 Function Calling 的模型 (如 Qwen3-8B)");
-            Console.WriteLine($"   操作步骤:");
-            Console.WriteLine($"     1. ollama pull qwen3:8b");
-            Console.WriteLine($"     2. 修改 appsettings.json: \"ModelId\": \"qwen3:8b\"");
-            Console.WriteLine($"     3. 重新运行 dotnet run 并选 12 验证");
-            Console.WriteLine($"   详见: docs/architecture/ModelScope模型选型决策框架.md");
-            Console.WriteLine("========================================\n");
-        }
-
-        // ═══════════════════════════════════════════════════════
-        // 业务评测引擎 — 委托给 EvalEngine 服务
-        // ═══════════════════════════════════════════════════════
-        static async Task RunComplianceEval(AgentDialog agentDialog, ILlmService llmService, IKnowledgeBaseService knowledgeBaseService)
-        {
-            var reflectionVerifier = new ReflectionVerifier(knowledgeBaseService);
-            var engine = new EvalEngine(agentDialog, llmService, knowledgeBaseService, reflectionVerifier);
-            await engine.RunComplianceEvalAsync();
-        }
-
-        // ═══════ 评测辅助方法（委托给 EvalEngine） ═══════
-        static bool CheckParams(string? actualArgs, Dictionary<string, string>? expected)
-            => EvalEngine.CheckParams(actualArgs, expected);
-
-        static bool CheckConclusion(string? response, EvalConclusion? expected, bool toolTriggered, string? category = null, string? intent = null)
-            => EvalEngine.CheckConclusion(response, expected, toolTriggered, category, intent);
-
-        static bool CheckSafetyDistanceMatch(string response, double expectedDistance)
-            => EvalEngine.CheckSafetyDistanceMatch(response, expectedDistance);
-
-        static bool CheckRegulationMatch(string response, string expectedRegNumber)
-            => EvalEngine.CheckRegulationMatch(response, expectedRegNumber);
     }
 
+    // ========================================================================
+    // ConsoleTeeWriter — 双写 TextWriter（装饰器模式）
+    // ========================================================================
+    // 【设计模式维度】这是标准的装饰器（Decorator）模式：
+    //   ① 继承 TextWriter 抽象类（与被装饰者同类型）
+    //   ② 内部持有 _original（原始 Console 输出流）和 _file（文件输出流）
+    //   ③ 重写 Write/WriteLine，每次调用同时写入两个流
+    //   ④ 对使用者完全透明：Console.SetOut() 替换后，所有 Console.Write 自动双写
+    //
+    // 【框架维度】TextWriter 是 .NET 的文本输出抽象基类，
+    //   Console.Out 默认指向 stdout，Console.SetOut() 可以替换为任何 TextWriter。
+    //   这是 .NET 流式 I/O 设计的强大之处——所有文本输出都经过同一个抽象。
+    //
+    // 【生产维度】生产环境的关键价值：
+    //   ① 终端缓冲区溢出（Windows 默认 9000 行）后旧内容不可回溯
+    //   ② 文件日志是唯一可靠的完整输出记录
+    //   ③ 排查问题时可直接 grep 日志文件，无需翻终端
+    //   ④ AutoFlush = true 确保每条消息立即落盘（崩溃不丢数据）
+    //
+    // 【中高级建议】当前实现每次 Write 都同步刷盘（AutoFlush=true），
+    //   高频输出场景（如流式 LLM 响应）可能造成 I/O 瓶颈。
+    //   建议：
+    //   ① 改为定时批量刷盘（如每 500ms 一次）
+    //   ② 或使用 Serilog 的 File Sink 替代手写文件（已有 Serilog，此处冗余）
+    // ========================================================================
     /// <summary>
     /// 双写 TextWriter：同时写入原始 Console 输出流和文件流
     /// 解决终端缓冲区溢出后无法回溯诊断日志的问题
@@ -553,8 +564,10 @@ namespace Agent1
             _file = file;
         }
 
+        // 【语法】=> 表达式体属性：Encoding 直接委托给原始输出流
         public override Encoding Encoding => _original.Encoding;
 
+        // 重写三个核心 Write 方法——所有 Console.Write* 最终都会经过这三个方法之一
         public override void Write(char value)
         {
             _original.Write(value);
@@ -573,13 +586,15 @@ namespace Agent1
             _file.WriteLine(value);
         }
 
+        // 【架构】Dispose 模式：只释放文件流，不释放原始输出流
+        //   Console.Out 由 CLR 管理，不应手动释放——否则后续 Console.Write 会报错。
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
-                _file.Dispose();
+                _file.Dispose();  // 只释放文件流
             }
-            base.Dispose(disposing);
+            base.Dispose(disposing);  // 调用父类 Dispose（基类无特殊资源）
         }
     }
 }

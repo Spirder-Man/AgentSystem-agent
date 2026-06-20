@@ -101,7 +101,7 @@ namespace Agent1.Services
                 // 记录命中
                 foreach (var r in results.Take(topK))
                 {
-                    try { await _db.UpdateMemoryHitAsync(r.Id); } catch { }
+                    try { await _db.UpdateMemoryHitAsync(r.Id); } catch { /* 非关键：命中计数更新失败不影响检索 */ }
                 }
 
                 return results;
@@ -121,7 +121,7 @@ namespace Agent1.Services
                 var results = await _db.SearchLongTermMemoriesByKeywordAsync(userId, keyword, topK);
                 foreach (var r in results.Take(3))
                 {
-                    try { await _db.UpdateMemoryHitAsync(r.Id); } catch { }
+                    try { await _db.UpdateMemoryHitAsync(r.Id); } catch { /* 非关键：命中计数更新失败不影响检索 */ }
                 }
                 return results;
             }

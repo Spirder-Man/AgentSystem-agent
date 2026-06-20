@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 
 namespace Agent1.Services
@@ -7,16 +8,30 @@ namespace Agent1.Services
         private readonly List<AuditLog> _auditLogs = new();
         private readonly object _lock = new();
         private readonly IDatabaseService? _db;
+        // [P1] 哈希链：记录上一条日志的 SHA256 哈希，用于构建不可篡改的日志链
+        private string? _lastChainHash;
 
         public AuditService(IDatabaseService? db = null)
         {
             _db = db;
         }
 
+        // [P1] 计算哈希链值：SHA256(前一条ChainHash + "|" + 本条内容)
+        private static string ComputeChainHash(string? prevHash, string userId, string operation, string details, DateTime createTime)
+        {
+            var input = $"{prevHash ?? "GENESIS"}|{userId}|{operation}|{details}|{createTime:O}";
+            var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
+            return Convert.ToHexString(hashBytes).ToLowerInvariant();
+        }
+
         public async Task LogOperationAsync(string userId, string operation, string details, bool isSensitive = false)
         {
             // Task 3: 敏感信息脱敏 — 审计日志写入前对 details 进行脱敏
             var maskedDetails = isSensitive ? SensitiveDataMasker.Mask(details) : details;
+            var createTime = DateTime.Now;
+
+            // [P1] 计算哈希链
+            var chainHash = ComputeChainHash(_lastChainHash, userId, operation, maskedDetails, createTime);
 
             // 确定 IP（从 HttpContext 获取，此处由调用方通过 details 传递）
             string? ipAddress = null;
@@ -26,7 +41,8 @@ namespace Agent1.Services
             {
                 try
                 {
-                    await _db.AddAuditLogAsync(userId, operation, maskedDetails, ipAddress);
+                    await _db.AddAuditLogAsync(userId, operation, maskedDetails, ipAddress, chainHash);
+                    _lastChainHash = chainHash; // 仅 DB 成功才更新链
                     return; // DB 写入成功，跳过内存
                 }
                 catch (Exception ex)
@@ -45,8 +61,10 @@ namespace Agent1.Services
                     Operation = operation,
                     Details = maskedDetails,
                     IsSensitive = isSensitive,
-                    CreateTime = DateTime.Now
+                    CreateTime = createTime,
+                    ChainHash = chainHash  // [P1] 记录哈希链
                 });
+                _lastChainHash = chainHash;
             }
         }
 
@@ -116,6 +134,30 @@ namespace Agent1.Services
             }
 
             return Task.FromResult(sb.ToString());
+        }
+
+        // [P1] 验证哈希链完整性：从头逐条重算，检测任何篡改
+        public async Task<(bool intact, long? brokenAtId, string detail)> VerifyIntegrityAsync()
+        {
+            var logs = await GetAuditLogsAsync(null, null);  // [P3] 此时返回的 AuditLog 含 ChainHash（从 DB 读取）
+            logs = logs.OrderBy(l => l.Id).ToList();
+
+            if (logs.Count == 0)
+                return (true, null, "无审计日志");
+
+            string? expectedHash = null;
+            foreach (var log in logs)
+            {
+                var computed = ComputeChainHash(expectedHash, log.UserId, log.Operation, log.Details, log.CreateTime);
+                if (log.ChainHash != null && !string.Equals(computed, log.ChainHash, StringComparison.OrdinalIgnoreCase))
+                {
+                    return (false, log.Id,
+                        $"哈希链断裂于 ID={log.Id}: 期望 {computed[..16]}..., 实际 {(log.ChainHash.Length >= 16 ? log.ChainHash[..16] : log.ChainHash)}...");
+                }
+                expectedHash = log.ChainHash ?? computed;
+            }
+
+            return (true, null, $"哈希链完整，共 {logs.Count} 条记录");
         }
     }
 }

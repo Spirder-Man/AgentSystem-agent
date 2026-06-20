@@ -63,8 +63,9 @@ builder.Services.AddSingleton<IMemoryService>(sp =>
     return new MemoryService(llm);
 });
 
-// ILlmService 延迟绑定 (打破循环依赖)
-builder.Services.AddSingleton<LlmService>(sp => new LlmService(null!));
+// [P0 Lazy<T>] 循环依赖破解 — Lazy<T> 延迟解析，替代 null! + SetKnowledgeBaseService
+builder.Services.AddSingleton<LlmService>(sp => new LlmService(
+    new Lazy<IKnowledgeBaseService>(() => sp.GetRequiredService<IKnowledgeBaseService>())));
 builder.Services.AddSingleton<ILlmService>(sp => sp.GetRequiredService<LlmService>());
 
 builder.Services.AddSingleton<IToolService>(sp =>
@@ -106,6 +107,14 @@ builder.Services.AddSingleton<MemoryCoordinator>(sp =>
     var cache = sp.GetRequiredService<ResponseCacheService>();
     var audit = sp.GetRequiredService<IAuditService>();
     return new MemoryCoordinator(shortMem, longMem, cache, audit);
+});
+
+// [P3] 知识库增量更新 — 注册 ChemicalRAG 供 API 端点使用
+builder.Services.AddSingleton(sp =>
+{
+    var db = sp.GetRequiredService<IDatabaseService>();
+    var kb = sp.GetRequiredService<IKnowledgeBaseService>();
+    return new ChemicalRAG(AppConfig.Instance.KnowledgeBase.BasePath, kb, db);
 });
 
 // ═══════════════════════════════════════════════════
@@ -230,10 +239,8 @@ using (var scope = app.Services.CreateScope())
     var sp = scope.ServiceProvider;
     var databaseService = sp.GetRequiredService<IDatabaseService>();
     var knowledgeBaseService = sp.GetRequiredService<IKnowledgeBaseService>();
-    var llmSvc = sp.GetRequiredService<LlmService>();
 
-    // 延迟注入 RAG 知识库
-    llmSvc.SetKnowledgeBaseService(knowledgeBaseService);
+    // [P0 Lazy<T>] SetKnowledgeBaseService 已废弃 — Lazy<T> 自动完成延迟注入
 
     // 数据库初始化
     var logger = sp.GetRequiredService<ILogger<Program>>();
@@ -375,6 +382,15 @@ app.MapPost("/cache/clear", (ResponseCacheService cache) =>
 {
     cache.Clear();
     return Results.Ok(new { message = "缓存已清除" });
+});
+
+// ═══════════════════════════════════════════════════
+// [P3] 知识库增量更新端点 — 仅处理新增/修改/删除的文件
+// ═══════════════════════════════════════════════════
+app.MapPost("/knowledgebase/incremental-update", async (ChemicalRAG chemicalRAG, IKnowledgeBaseService kb) =>
+{
+    await chemicalRAG.LoadKnowledgeBaseIncrementalAsync();
+    return Results.Ok(new { message = "增量更新完成", documentCount = kb.GetDocumentCount() });
 });
 
 // ═══════════════════════════════════════════════════

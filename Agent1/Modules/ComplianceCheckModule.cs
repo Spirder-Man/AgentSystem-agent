@@ -41,6 +41,28 @@ namespace Agent1.Modules
                 return;
             }
 
+            // [P3 安全加固] Prompt 注入检测
+            var (safe, reason) = SafetyGuardService.ValidateInput(input);
+            if (!safe)
+            {
+                Console.WriteLine($"❌ 输入被安全拦截: {reason}");
+                await _auditService.LogOperationAsync("system", "SecurityBlock",
+                    $"输入拦截: {reason} | 输入: {input.Truncate(100)}");
+                return;
+            }
+
+            // [P3 工业集成] 步骤0: 查询 ERP/WMS 库存台账（管线就绪，当前返回空）
+            var warehouseRecords = await _integrationService.GetWarehouseRecordsAsync(null);
+            var ehsTickets = await _integrationService.GetEHSTicketsAsync(false);
+            if (warehouseRecords.Count > 0)
+            {
+                Console.WriteLine($"📦 库存查询: {warehouseRecords.Count} 条记录");
+                foreach (var r in warehouseRecords.Take(3))
+                    Console.WriteLine($"   {r.ChemicalName} ×{r.Quantity}kg @{r.StorageLocation}");
+            }
+            if (ehsTickets.Count > 0)
+                Console.WriteLine($"📋 EHS工单: {ehsTickets.Count} 条未完成");
+
             // 步骤1: RAG检索化工合规知识
             Console.WriteLine("\n🔍 正在检索相关合规法规...");
             var searchResults = await _kbService.RetrieveAsync(input, 5);
@@ -65,9 +87,22 @@ namespace Agent1.Modules
             // 步骤2: 构建Prompt给LLM
             var prompt = BuildCompliancePrompt(input, searchResults);
 
-            // 步骤3: LLM生成审核结论（InvokeStreamAsync 已流式输出，不重复打印）
+            // 步骤3: LLM生成审核结论
             Console.WriteLine("\n🤖 正在生成合规审核结论...");
-            await _llmService.InvokeStreamAsync(prompt, ConsoleColor.Cyan);
+            var llmOutput = await _llmService.InvokeStreamAsync(prompt, ConsoleColor.Cyan);
+
+            // [P3 安全加固] 输出高危断言检测
+            var (outputSafe, warnings) = SafetyGuardService.ValidateOutput(llmOutput);
+            if (!outputSafe)
+            {
+                Console.WriteLine();
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                foreach (var w in warnings)
+                    Console.WriteLine(w);
+                Console.ResetColor();
+                await _auditService.LogOperationAsync("system", "SafetyWarning",
+                    $"输出安全警告 {warnings.Count} 条: {string.Join(" | ", warnings.Select(w => w.Truncate(80)))}");
+            }
             Console.WriteLine("\n✅ 审核完成");
 
             // 步骤4: 记录审计日志

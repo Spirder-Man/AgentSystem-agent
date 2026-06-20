@@ -53,6 +53,15 @@ namespace Agent1.Services
                     _llmService,
                     _integrationService,
                     _auditService),
+                ModuleType.TicketFollowup => new TicketFollowupModule(
+                    _llmService,
+                    _knowledgeBaseService,
+                    _auditService),
+                ModuleType.RegulatoryAudit => new RegulatoryAuditModule(
+                    _llmService,
+                    _knowledgeBaseService,
+                    _auditService),
+                // [P3] 应急响应 — 无单独枚举值，直接创建
                 _ => throw new ArgumentOutOfRangeException(nameof(type))
             };
         }

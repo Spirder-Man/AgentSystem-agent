@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace Agent1.Services
@@ -113,10 +114,120 @@ namespace Agent1.Services
 
             PrintQualityReport();
         }
+        // [P1] 知识库文件追踪器：记录每个文件的上次处理时间
+        private Dictionary<string, DateTime>? _fileTracker;
+        private string FileTrackerPath => Path.Combine(_knowledgeBasePath, "file_tracker.json");
+
         /// <summary>
-        /// 异步加载并分块处理文件内容，将其添加到知识库中。
+        /// [P1] 增量加载：仅处理自上次加载以来修改过的文件。
+        /// 基于文件最后写入时间 (LastWriteTime) 判断变更，
+        /// 新文件或修改过的文件会被重新分块和索引。
         /// </summary>
-        /// <param name="filePath">文件路径，包含文件名。</param>
+        public async Task LoadKnowledgeBaseIncrementalAsync()
+        {
+            LoadFileTracker();
+
+            Console.WriteLine("\n========== 化工知识库增量更新 ==========");
+            Console.WriteLine($"已追踪文件: {_fileTracker?.Count ?? 0} 个");
+            Console.WriteLine("==========================================");
+
+            int newFiles = 0, updatedFiles = 0, skippedFiles = 0;
+            var directories = new[]
+            {
+                (Path.Combine(_knowledgeBasePath, "国标"), "国标", "高"),
+                (Path.Combine(_knowledgeBasePath, "化工专业条例", "化工专业条例"), "国标", "高"),
+                (Path.Combine(_knowledgeBasePath, "园区规则"), "园区规则", "中"),
+                (Path.Combine(_knowledgeBasePath, "历史案例"), "历史案例", "低"),
+            };
+
+            foreach (var (dir, type, priority) in directories)
+            {
+                if (!Directory.Exists(dir)) continue;
+
+                var files = Directory.GetFiles(dir, "*.txt", SearchOption.AllDirectories);
+                foreach (var file in files)
+                {
+                    var lastWrite = File.GetLastWriteTimeUtc(file);
+                    if (_fileTracker!.TryGetValue(file, out var tracked))
+                    {
+                        if (lastWrite <= tracked)
+                        {
+                            skippedFiles++;
+                            continue; // 未修改
+                        }
+                        updatedFiles++;
+                    }
+                    else
+                    {
+                        newFiles++;
+                    }
+
+                    var tag = _fileTracker.ContainsKey(file) ? "[更新]" : "[新增]";
+                    Console.WriteLine($"   {tag} {Path.GetFileName(file)}");
+                    await LoadAndSplitFile(file, type, priority);
+                    _fileTracker[file] = lastWrite;
+                }
+            }
+
+            // [P3 增量更新] 检测已删除的文件并清理对应分块
+            int deletedFiles = 0;
+            var deletedKeys = new List<string>();
+            foreach (var trackedFile in _fileTracker!.Keys)
+            {
+                if (!File.Exists(trackedFile))
+                {
+                    Console.WriteLine($"   [删除] {Path.GetFileName(trackedFile)}");
+                    await _knowledgeBase.RemoveChunksBySourceFileAsync(trackedFile);
+                    deletedKeys.Add(trackedFile);
+                    deletedFiles++;
+                }
+            }
+            foreach (var key in deletedKeys)
+                _fileTracker.Remove(key);
+
+            SaveFileTracker();
+            Console.WriteLine($"\n   增量结果: +{newFiles} 新增, ~{updatedFiles} 更新, ≡{skippedFiles} 跳过, -{deletedFiles} 删除");
+            Console.WriteLine($"   知识库文档总数: {_knowledgeBase.GetDocumentCount()}\n");
+        }
+
+        private void LoadFileTracker()
+        {
+            try
+            {
+                if (File.Exists(FileTrackerPath))
+                {
+                    var json = File.ReadAllText(FileTrackerPath);
+                    _fileTracker = JsonSerializer.Deserialize<Dictionary<string, DateTime>>(json) ?? new();
+                }
+                else
+                {
+                    _fileTracker = new();
+                }
+            }
+            catch
+            {
+                _fileTracker = new();
+            }
+        }
+
+        private void SaveFileTracker()
+        {
+            try
+            {
+                var json = JsonSerializer.Serialize(_fileTracker ?? new());
+                var dir = Path.GetDirectoryName(FileTrackerPath);
+                if (dir != null && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+                File.WriteAllText(FileTrackerPath, json);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ⚠️ 保存文件追踪器失败: {ex.Message}");
+            }
+        }
+        /// <summary>
+        /// 异步加载并分块处理文件内容
+        /// </summary>
         /// <param name="regulationType">文件类型，例如"国标"、"园区规则"或"历史案例"。</param>
         /// <param name="priority">文件优先级，例如"高"、"中"或"低"。</param>
         /// <returns>包含所有分块的列表。</returns>

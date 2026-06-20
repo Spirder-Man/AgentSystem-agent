@@ -3,6 +3,14 @@ using Microsoft.Extensions.Configuration;
 
 namespace Agent1.Config
 {
+    // [P2] 检索模式枚举 — 替代字符串 "bm25"/"vector"/"hybrid"，编译期类型安全
+    public enum SearchModeType
+    {
+        Bm25,
+        Vector,
+        Hybrid
+    }
+
     public class AppConfig
     {
         // LLM配置（已适配化工场景）
@@ -25,6 +33,12 @@ namespace Agent1.Config
 
         // 等保三级审计配置
         public AuditConfig Audit { get; set; } = new();
+
+        // [P3] 记忆系统配置
+        public MemoryConfig Memory { get; set; } = new();
+
+        // [P3] 安全检测配置
+        public SafetyConfig Safety { get; set; } = new();
 
         // 业务评测配置
         public EvaluationConfig Evaluation { get; set; } = new();
@@ -125,6 +139,8 @@ namespace Agent1.Config
         public int MaxRetries { get; set; } = 3;
         public int RetryDelayMs { get; set; } = 1000;
         public int BufferFlushThreshold { get; set; } = 50;
+        // [P3 生产加固] 熔断器连续失败阈值
+        public int CircuitBreakerThreshold { get; set; } = 3;
     }
 
     // 化工知识库配置
@@ -138,7 +154,9 @@ namespace Agent1.Config
             new() { Name = "历史案例", Path = "历史案例", Priority = 60 }
         };
         public int ChunkSize { get; set; } = 500;
-        
+        // [P3] RAG 结果截断上限 (字符), 防 LLM 输出全文导致幻觉
+        public int ChunkOutputMaxChars { get; set; } = 300;
+
         // Sprint 4: 分块重叠窗口（字符数），0 表示禁用
         public int ChunkOverlap { get; set; } = 100;
 
@@ -153,9 +171,12 @@ namespace Agent1.Config
 
         // Sprint 5: 检索缓存最大条目数
         public int QueryCacheMaxEntries { get; set; } = 500;
+
+        // [P3] RAG 结果缓存最大条目数
+        public int RagCacheMaxEntries { get; set; } = 200;
         
-        // 检索模式：BM25 / Vector / Hybrid
-        public string SearchMode { get; set; } = "Hybrid";
+        // 检索模式：Bm25 / Vector / Hybrid（默认 Hybrid）
+        public SearchModeType SearchMode { get; set; } = SearchModeType.Hybrid;
     }
 
     // 知识源配置
@@ -164,6 +185,20 @@ namespace Agent1.Config
         public string Name { get; set; } = string.Empty;
         public string Path { get; set; } = string.Empty;
         public int Priority { get; set; } = 50;
+    }
+
+    // [P3] 记忆系统配置
+    public class MemoryConfig
+    {
+        public int CompressTriggerTurns { get; set; } = 10;
+        public int KeepRecentTurns { get; set; } = 5;
+    }
+
+    // [P3] 安全检测配置
+    public class SafetyConfig
+    {
+        public int MaxInputLength { get; set; } = 4000;
+        public int MaxImagePathLength { get; set; } = 500;
     }
 
     // 工业系统集成配置

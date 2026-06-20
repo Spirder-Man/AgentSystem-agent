@@ -20,21 +20,25 @@ namespace Agent1.Services
     /// </summary>
     public class ChemicalComplianceTools
     {
-        // [P7 FIX] Faithfulness崩塌修复：RAG结果chunk内容截断上限，防止LLM输出全文导致幻觉误判
-        private const int MAX_CHUNK_CHARS = 300;
-        private IKnowledgeBaseService? _kbService;
+        // [P7 FIX] Faithfulness崩塌修复：RAG结果chunk内容截断上限
+        private static int MAX_CHUNK_CHARS => AppConfig.Instance.KnowledgeBase.ChunkOutputMaxChars;
+        // [P0 Lazy<T>] 使用 Lazy 打破 DI 循环依赖（ILlmService ↔ IKnowledgeBaseService）
+        // .Value 仅在首次实际使用时触发 DI 解析，避免构造函数期死锁
+        private readonly Lazy<IKnowledgeBaseService>? _lazyKb;
         private RerankerService? _rerankerService;
 
-        /// <summary>完整构造：启用 RAG 检索模式。kbService 为 null 时降级到硬编码字典</summary>
-        public ChemicalComplianceTools(IKnowledgeBaseService? kbService = null)
+        /// <summary>完整构造：启用 RAG 检索模式。lazyKb 为 null 时降级到硬编码字典</summary>
+        public ChemicalComplianceTools(Lazy<IKnowledgeBaseService>? lazyKb = null)
         {
-            _kbService = kbService;
+            _lazyKb = lazyKb;
         }
 
-        /// <summary>Phase 2a 修复: DI 循环依赖解决方案 — 延迟注入 kbService</summary>
+        // [P0 Lazy<T>] SetKnowledgeBaseService 已废弃 — 延迟注入由 Lazy<T> 在首次 .Value 访问时自动完成
+        // 保留空方法用于向后兼容（部分测试类传 null 而非 Lazy）
+        [Obsolete("使用 Lazy<IKnowledgeBaseService> 构造函数，无需再调用 SetKnowledgeBaseService")]
         public void SetKnowledgeBaseService(IKnowledgeBaseService kbService)
         {
-            _kbService = kbService;
+            // no-op: 已通过 Lazy<T> 自动延迟注入
         }
 
         /// <summary>Sprint 3: 注入 Reranker 服务</summary>
@@ -43,8 +47,8 @@ namespace Agent1.Services
             _rerankerService = rerankerService;
         }
 
-        /// <summary>是否启用了 RAG 检索</summary>
-        private bool UseRag => _kbService != null;
+        /// <summary>是否启用了 RAG 检索（Lazy 对象非空即表示已配置）</summary>
+        private bool UseRag => _lazyKb != null;
 
         // [P0-2 FIX+P1-6 FIX] RAG 检索缓存：线程安全 ConcurrentDictionary + TTL 淘汰，防止内存泄漏
         private static readonly ConcurrentDictionary<string, (List<RetrievedChunk> chunks, DateTime expiresAt)> RagCache = new();
@@ -71,7 +75,7 @@ namespace Agent1.Services
                 ? Math.Max(topK, AppConfig.Instance.VectorSearch.RerankerCandidateTopK)
                 : topK;
 
-            var chunks = await _kbService!.RetrieveChemicalRegulationAsync(query, regulationType: regulationType, topK: candidateTopK);
+            var chunks = await _lazyKb!.Value.RetrieveChemicalRegulationAsync(query, regulationType: regulationType, topK: candidateTopK);
 
             // Sprint 3: Reranker 精排
             if (_rerankerService != null && _rerankerService.IsEnabled && chunks.Count > topK)
@@ -615,6 +619,23 @@ namespace Agent1.Services
             catch (Exception ex)
             {
                 return $"计算失败：{ex.Message}";
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        // [P2] 多模态：[KernelFunction] GHS 标签识别
+        // ═══════════════════════════════════════════
+        [KernelFunction, Description("分析化学品包装上的 GHS 危险标签图片，识别危险象形图、信号词、H/P 声明代码。参数 imagePath: 本地图片文件路径。适用于「识别这张标签」「这张图片上的危险标识是什么」等需要图像分析的问题。")]
+        public async Task<string> LookupHazardLabel(string imagePath)
+        {
+            try
+            {
+                var multimodal = new MultimodalService();
+                return await multimodal.AnalyzeHazardLabelAsync(imagePath);
+            }
+            catch (Exception ex)
+            {
+                return $"GHS 标签识别失败: {ex.Message}。请确认图片路径正确且 Ollama 已启动 qwen-vl 模型";
             }
         }
     }

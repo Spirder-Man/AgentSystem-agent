@@ -244,6 +244,42 @@ namespace Agent1.Services
             _termDocFreq.Clear();
             _avgDocLength = 0;
         }
+
+        /// <summary>[P3 增量更新] 按源文件删除文档，返回被删除数量</summary>
+        public int RemoveBySourceFile(string sourceFile)
+        {
+            var fileName = Path.GetFileNameWithoutExtension(sourceFile);
+            var removed = _documents.RemoveAll(d =>
+                d.Metadata.TryGetValue("SourceFile", out var src) &&
+                (src?.ToString() ?? "") == fileName);
+
+            if (removed > 0)
+            {
+                RebuildIndex();
+                Console.WriteLine($"   🗑️ 已移除 {removed} 个分块 (源文件: {fileName})");
+            }
+            return removed;
+        }
+
+        private void RebuildIndex()
+        {
+            _termDocFreq.Clear();
+            if (_documents.Count == 0) { _avgDocLength = 0; return; }
+            for (int i = 0; i < _documents.Count; i++)
+            {
+                _documents[i].Id = i;
+                UpdateIndex(_documents[i]);
+            }
+            UpdateAvgLength();
+        }
+
+        // [P3] 接口兼容 — 纯 BM25 版只能清理内存分块，无法清 DB
+        public Task RemoveChunksBySourceFileAsync(string sourceFile)
+        {
+            RemoveBySourceFile(sourceFile);
+            return Task.CompletedTask;
+        }
+
         /// <summary>
         /// 对文本进行分词处理，生成基础词和ngram分词。
         /// </summary>

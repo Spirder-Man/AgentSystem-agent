@@ -8,6 +8,8 @@ namespace Agent1.Services
         Task LogOperationAsync(string userId, string operation, string details, bool isSensitive = false);
         Task<List<AuditLog>> GetAuditLogsAsync(DateTime? startTime, DateTime? endTime, string? userId = null);
         Task<string> ExportAuditReportAsync(DateTime startTime, DateTime endTime);
+        // [P1] 哈希链完整性校验：逐条验证 SHA256 链式哈希，返回 (是否完整, 第一条断裂的ID, 详情)
+        Task<(bool intact, long? brokenAtId, string detail)> VerifyIntegrityAsync();
     }
 
     // 审计日志模型
@@ -19,5 +21,7 @@ namespace Agent1.Services
         public string Details { get; set; } = string.Empty;
         public bool IsSensitive { get; set; }
         public DateTime CreateTime { get; set; }
+        // [P1] 哈希链字段：SHA256(前一条 ChainHash + 本条内容)，用于检测日志篡改
+        public string? ChainHash { get; set; }
     }
 }

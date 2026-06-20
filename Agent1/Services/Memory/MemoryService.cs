@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text;
+using Agent1.Config;
 using Agent1.Models;
 
 namespace Agent1.Services
@@ -22,8 +23,9 @@ namespace Agent1.Services
         private static readonly object _lock = new();
 
         // ── 上下文压缩阈值 ──
-        private const int CompressTriggerTurns = 10;  // 累积10轮后触发压缩
-        private const int KeepRecentTurns = 5;         // 压缩后保留最近5轮
+        // [P3] 从配置读取压缩/保留参数
+        private static int CompressTriggerTurns => AppConfig.Instance.Memory.CompressTriggerTurns;
+        private static int KeepRecentTurns => AppConfig.Instance.Memory.KeepRecentTurns;
 
         public MemoryService(ILlmService? llmService = null)
         {

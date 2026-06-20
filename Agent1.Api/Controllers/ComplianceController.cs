@@ -17,6 +17,7 @@ public class ComplianceController : ControllerBase
     private readonly ILlmService _llmService;
     private readonly IKnowledgeBaseService _knowledgeBaseService;
     private readonly IAuditService _auditService;
+    private readonly IIntegrationService _integrationService;
     private readonly ResponseCacheService _cache;
     private readonly ILogger<ComplianceController> _logger;
     private readonly SemaphoreSlim _llmGate;
@@ -26,6 +27,7 @@ public class ComplianceController : ControllerBase
         ILlmService llmService,
         IKnowledgeBaseService knowledgeBaseService,
         IAuditService auditService,
+        IIntegrationService integrationService,
         ResponseCacheService cache,
         ILogger<ComplianceController> logger,
         SemaphoreSlim llmGate)
@@ -34,6 +36,7 @@ public class ComplianceController : ControllerBase
         _llmService = llmService;
         _knowledgeBaseService = knowledgeBaseService;
         _auditService = auditService;
+        _integrationService = integrationService;
         _cache = cache;
         _logger = logger;
         _llmGate = llmGate;
@@ -47,6 +50,14 @@ public class ComplianceController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(request.Query))
             return BadRequest(new { error = "查询内容不能为空" });
+
+        // [P3 安全加固] Prompt 注入检测
+        var (inputSafe, blockReason) = SafetyGuardService.ValidateInput(request.Query);
+        if (!inputSafe)
+        {
+            _logger.LogWarning("安全拦截: {Reason}", blockReason);
+            return BadRequest(new { error = $"输入被安全拦截: {blockReason}" });
+        }
 
         // ═══ 缓存命中：直接返回 ═══
         var cached = _cache.Get(request.Query);
@@ -84,11 +95,25 @@ public class ComplianceController : ControllerBase
                 var verification = await ConclusionVerifier.VerifyAsync(
                     response ?? "", toolCalls, _knowledgeBaseService, request.Query);
 
+                // [P3 安全加固] 输出高危断言检测 — 合并到响应 Warning 列表
+                var (outputSafe, safetyWarnings) = SafetyGuardService.ValidateOutput(response);
+                var allWarnings = verification.Warnings ?? new List<string>();
+                if (!outputSafe)
+                {
+                    allWarnings.AddRange(safetyWarnings);
+                    _logger.LogWarning("合规审核输出安全警告 {Count} 条: {Warnings}",
+                        safetyWarnings.Count, string.Join(" | ", safetyWarnings));
+                }
+
                 await _auditService.LogOperationAsync(
                     GetCurrentUsername(), "合规审核",
                     $"查询: {request.Query} | 工具: [{string.Join(",", toolCalls.Select(t => t.FunctionName))}] | " +
                     $"验证法规: {verification.VerifiedRegulations.Count}条 | 幻觉法规: {verification.HallucinatedRegulations.Count}条",
                     isSensitive: true);
+
+                // [P3 工业集成] 查询库存台账 + EHS 工单（管线就绪）
+                var inventory = await _integrationService.GetWarehouseRecordsAsync(request.Query);
+                var tickets = await _integrationService.GetEHSTicketsAsync(false);
 
                 // ═══ 存入缓存 ═══
                 _cache.Set(request.Query, new CachedComplianceResponse
@@ -98,7 +123,7 @@ public class ComplianceController : ControllerBase
                     ToolsUsed = toolCalls.Select(t => t.FunctionName).ToList(),
                     VerifiedRegulations = verification.VerifiedRegulations,
                     HallucinatedRegulations = verification.HallucinatedRegulations,
-                    Warnings = verification.Warnings
+                    Warnings = allWarnings
                 });
                 _logger.LogInformation("合规审核已缓存: {Query}", SensitiveDataMasker.MaskChemicalQuery(request.Query));
 
@@ -109,7 +134,7 @@ public class ComplianceController : ControllerBase
                     ToolsUsed = toolCalls.Select(t => t.FunctionName).ToList(),
                     VerifiedRegulations = verification.VerifiedRegulations,
                     HallucinatedRegulations = verification.HallucinatedRegulations,
-                    Warnings = verification.Warnings
+                    Warnings = allWarnings
                 });
             }
             catch (Exception ex)

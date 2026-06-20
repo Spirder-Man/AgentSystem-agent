@@ -167,7 +167,10 @@ namespace Agent1.Services
                         $"会话: {sessionId[..Math.Min(8, sessionId.Length)]} | 工具: [{toolsSummary}] | 记忆token: {_shortMemory.EstimateContextTokens()}",
                         isSensitive: false);
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"   ⚠️ 记忆审计日志写入失败: {ex.Message}");
+                }
             }
         }
 
