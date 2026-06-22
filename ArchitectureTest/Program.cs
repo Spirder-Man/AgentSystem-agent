@@ -16,9 +16,10 @@ namespace ArchitectureTest
         
         public static async Task Main(string[] args)
         {
-            // P0 FIX: 从 solution 根目录运行时，切换到 ArchitectureTest 目录，确保 ../Agent1 路径正确
-            var testDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
-            if (testDir != null) Directory.SetCurrentDirectory(testDir);
+            // P0 FIX: dotnet run 将 CWD 切到 bin/Release/net8.0，回溯 4 级到 solution 根
+            var exeDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+            var slnRoot = Path.GetFullPath(Path.Combine(exeDir!, "..", "..", "..", ".."));
+            Directory.SetCurrentDirectory(slnRoot);
 
             Console.WriteLine("══════════════════════════════════════════════════════════");
             Console.WriteLine("           工业AI Agent - 架构收敛专项测试");
