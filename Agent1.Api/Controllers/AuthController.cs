@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using Agent1.Services;
+using Agent1.Services.Security;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -23,11 +24,14 @@ public class AuthController : ControllerBase
     private readonly IDatabaseService _db;
     private readonly List<AccountEntry> _accounts;
 
-    public AuthController(IConfiguration configuration, ILogger<AuthController> logger, IDatabaseService db)
+    private readonly TokenBlacklistService _tokenBlacklist;
+
+    public AuthController(IConfiguration configuration, ILogger<AuthController> logger, IDatabaseService db, TokenBlacklistService tokenBlacklist)
     {
         _configuration = configuration;
         _logger = logger;
         _db = db;
+        _tokenBlacklist = tokenBlacklist;
         _accounts = LoadAccounts();
 
         // 自动升级明文密码 → BCrypt 哈希
@@ -75,7 +79,10 @@ public class AuthController : ControllerBase
         var (accessToken, accessExpiry) = GenerateAccessToken(account.Username, account.Role);
         var (refreshToken, _) = await GenerateRefreshTokenAsync(account.Username);
 
-        _logger.LogInformation("用户登录成功: {Username}, 角色: {Role}", account.Username, account.Role);
+        // [P1 安全加固] 记录设备指纹
+        var deviceFingerprint = ComputeDeviceFingerprint();
+        _logger.LogInformation("用户登录成功: {Username}, 角色: {Role}, 设备: {DeviceFingerprint}",
+            account.Username, account.Role, deviceFingerprint);
 
         return Ok(new LoginResponse
         {
@@ -291,6 +298,39 @@ public class AuthController : ControllerBase
 
         // 返回原始 token 给客户端（仅这一次可见）
         return (rawToken, expiresAt);
+    }
+
+    /// <summary>
+    /// 登出 — 将当前 Access Token 加入黑名单，使其在过期前无法使用。
+    /// </summary>
+    [HttpPost("logout")]
+    [Authorize]
+    public IActionResult Logout()
+    {
+        var jti = User.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+        if (jti != null)
+        {
+            // 从 exp claim 读取过期时间
+            var expClaim = User.FindFirst(JwtRegisteredClaimNames.Exp)?.Value;
+            var expiresAt = DateTime.UtcNow.AddHours(1); // 默认 1 小时
+            if (expClaim != null && long.TryParse(expClaim, out var expUnix))
+                expiresAt = DateTimeOffset.FromUnixTimeSeconds(expUnix).UtcDateTime;
+
+            _tokenBlacklist.Revoke(jti, expiresAt);
+            _logger.LogInformation("用户登出: Token jti={Jti} 已加入黑名单, 过期时间={ExpiresAt:O}",
+                jti[..Math.Min(jti.Length, 8)], expiresAt);
+        }
+
+        return Ok(new { message = "已登出" });
+    }
+
+    /// <summary>从当前 HTTP 请求计算设备指纹</summary>
+    private string ComputeDeviceFingerprint()
+    {
+        var ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()
+                 ?? HttpContext.Connection.RemoteIpAddress?.ToString();
+        var ua = HttpContext.Request.Headers.UserAgent.ToString();
+        return DeviceFingerprintService.ComputeFingerprint(ip, ua);
     }
 
     /// <summary>对 Refresh Token 做 SHA256 哈希</summary>

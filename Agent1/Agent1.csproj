@@ -28,6 +28,10 @@
     <PackageReference Include="Serilog.Sinks.Console" Version="5.0.1" />
     <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
     <PackageReference Include="Serilog.Sinks.Seq" Version="8.0.0" />
+    <!-- P0-3: Serilog 配置外化 — 从 appsettings.json 读取日志配置 -->
+    <PackageReference Include="Serilog.Settings.Configuration" Version="8.0.1" />
+    <!-- P1: 告警系统 — 邮件告警通道 (MailKit + SMTP) -->
+    <PackageReference Include="MailKit" Version="4.7.1.1" />
   </ItemGroup>
 
   <ItemGroup>

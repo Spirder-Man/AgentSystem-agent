@@ -24,6 +24,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
+using Agent1.Services.Logging;
+using Agent1.Services.Logging.Enrichers;
+using Agent1.Services.Logging.Filters;
+using Agent1.Services.Monitoring;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -175,9 +179,25 @@ namespace Agent1
             //   → 配合 logs/archive/ 目录的定期归档脚本，实现日志生命周期管理
             //   → 生产环境建议改为 RollingInterval.Hour（高流量时避免单文件过大）
             // ================================================================
+            // P0-3: Serilog SelfLog — 记录框架自身异常到独立文件
+            Serilog.Debugging.SelfLog.Enable(msg =>
+            {
+                try { File.AppendAllText("logs/serilog-self.log", $"{DateTime.UtcNow:O} {msg}{Environment.NewLine}"); }
+                catch { /* 静默丢弃——避免 SelfLog 异常导致递归 */ }
+            });
+
+            // P0 整改: 配置驱动 + Enricher 流水线 + Filter 层
             Log.Logger = new LoggerConfiguration()
+                .ReadFrom.Configuration(configuration)          // 从 appsettings.json Serilog 节读取
+                .Enrich.With<EnvironmentEnricher>()              // MachineName / ProcessId / OSVersion
+                .Enrich.With<RunIdEnricher>()                    // RunId / StartTime
+                .Enrich.With<SessionEnricher>()                  // SessionId（默认 "none"）
+                .Enrich.With<ThreadEnricher>()                   // ThreadId
+                .Filter.With<KeywordLogFilter>()                 // 拦截敏感关键词日志
                 .WriteTo.Console()
-                .WriteTo.File("logs/agent1-.log", rollingInterval: RollingInterval.Day)
+                .WriteTo.File("logs/agent1-.log",
+                    rollingInterval: RollingInterval.Day,
+                    retainedFileCountLimit: 7)                   // 保留最近 7 天
                 .CreateLogger();
 
             // ================================================================
@@ -316,6 +336,22 @@ namespace Agent1
             services.AddSingleton<IModuleFactory, ModuleFactory>();
             services.AddSingleton<ModuleDispatcher>();
             services.AddSingleton<ResponseCacheService>();
+
+            // [P1] 告警系统 — 控制台测试通道
+            services.AddSingleton<AlertDispatcher>(sp =>
+            {
+                var d = new AlertDispatcher();
+                d.Register(new ConsoleAlertService());
+                var emailCfg = AppConfig.Instance.Alerting.Email;
+                if (emailCfg.Enabled && !string.IsNullOrWhiteSpace(emailCfg.SmtpHost) && emailCfg.RecipientEmails.Count > 0)
+                {
+                    d.Register(new EmailAlertService(
+                        emailCfg.SmtpHost, emailCfg.SmtpPort,
+                        emailCfg.SenderEmail, emailCfg.SenderPassword,
+                        emailCfg.RecipientEmails, enabled: emailCfg.Enabled));
+                }
+                return d;
+            });
 
             // 【架构】Phase 2: 长期记忆——短期会话记忆 + 长期持久化记忆双层体系
             services.AddSingleton<ILongTermMemoryService>(sp =>
@@ -486,6 +522,7 @@ namespace Agent1
                 ["17"] = new RegulatoryAuditCommand(moduleFactory),
                 ["18"] = new EmergencyResponseCommand(llmService, knowledgeBaseService, auditService, integrationService),
                 ["19"] = new KnowledgeGraphCommand(knowledgeBaseService),
+                ["20"] = new TestAlertCommand(serviceProvider.GetRequiredService<AlertDispatcher>()),
             };
 
             while (true)

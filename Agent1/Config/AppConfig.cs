@@ -37,6 +37,9 @@ namespace Agent1.Config
         // [P3] 记忆系统配置
         public MemoryConfig Memory { get; set; } = new();
 
+        // [P1] 告警配置（邮件 SMTP + 收件人）
+        public AlertingConfig Alerting { get; set; } = new();
+
         // [P3] 安全检测配置
         public SafetyConfig Safety { get; set; } = new();
 
@@ -79,6 +82,18 @@ namespace Agent1.Config
             var dbName = Environment.GetEnvironmentVariable("DB_NAME");
             if (!string.IsNullOrEmpty(dbName))
                 config.Database.DatabaseName = dbName;
+
+            // [P1] 告警邮件密码 — 从环境变量注入，绝不写入配置文件
+            var alertPwd = Environment.GetEnvironmentVariable("ALERT_EMAIL_PASSWORD");
+            if (!string.IsNullOrEmpty(alertPwd))
+                config.Alerting.Email.SenderPassword = alertPwd;
+
+            // 收件人列表 — 环境变量逗号分隔
+            var recipients = Environment.GetEnvironmentVariable("ALERT_RECIPIENT_EMAILS");
+            if (!string.IsNullOrEmpty(recipients))
+                config.Alerting.Email.RecipientEmails = recipients
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .ToList();
 
             _instance = config;
             ModelConfig.Initialize(config);
@@ -380,5 +395,27 @@ namespace Agent1.Config
             "输出格式：\n" +
             "【查询结果】直接给出具体信息内容（一句话概括）\n" +
             "【法规依据】引用具体标准编号+条款（如有）";
+    }
+
+    // [P1] 告警配置
+    public class AlertingConfig
+    {
+        public bool Enabled { get; set; } = true;
+        public EmailAlertConfig Email { get; set; } = new();
+    }
+
+    // [P1] 邮件告警通道配置
+    public class EmailAlertConfig
+    {
+        public bool Enabled { get; set; } = true;
+        public string SmtpHost { get; set; } = "";
+        public int SmtpPort { get; set; } = 587;
+        public string SenderEmail { get; set; } = "";
+        /// <summary>
+        /// 密码/授权码 — 通过环境变量 ALERT_EMAIL_PASSWORD 注入，
+        /// 不写入 appsettings.json（安全策略）
+        /// </summary>
+        public string SenderPassword { get; set; } = "";
+        public List<string> RecipientEmails { get; set; } = new();
     }
 }

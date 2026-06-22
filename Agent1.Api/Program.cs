@@ -1,6 +1,10 @@
 using Agent1;
 using Agent1.Config;
 using Agent1.Services;
+using Agent1.Services.Logging;
+using Agent1.Services.Logging.Sinks;
+using Agent1.Services.Monitoring;
+using Agent1.Services.Security;
 using Agent1.Api.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -9,6 +13,8 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Serilog;
+using Agent1.Services.Logging.Enrichers;
+using Agent1.Services.Logging.Filters;
 using System.Text;
 
 // ═══════════════════════════════════════════════════
@@ -39,11 +45,36 @@ if (configErrors.Count > 0)
 }
 
 // ═══════════════════════════════════════════════════
-// 结构化日志 — Serilog
+// P2: 启动崩溃日志 — 确保启动阶段异常不静默丢失
 // ═══════════════════════════════════════════════════
+try
+{
+// ═══════════════════════════════════════════════════
+// 结构化日志 — Serilog（P0 整改: 配置驱动 + Enricher 流水线 + Filter 层）
+// ═══════════════════════════════════════════════════
+// P0-3: Serilog SelfLog — 记录框架自身异常到独立文件
+Serilog.Debugging.SelfLog.Enable(msg =>
+{
+    try { File.AppendAllText("logs/serilog-self.log", $"{DateTime.UtcNow:O} {msg}{Environment.NewLine}"); }
+    catch { /* 静默丢弃 */ }
+});
+
+// [P1] 提前创建 AlertDispatcher（Serilog 配置在 DI 之前，需独立实例）
+var alertDispatcher = new AlertDispatcher();
+alertDispatcher.Register(new ConsoleAlertService());
+
 Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(configuration)          // 从 appsettings.json Serilog 节读取
+    .Enrich.With<EnvironmentEnricher>()              // MachineName / ProcessId / OSVersion
+    .Enrich.With<RunIdEnricher>()                    // RunId / StartTime
+    .Enrich.With<SessionEnricher>()                  // SessionId（默认 "none"）
+    .Enrich.With<ThreadEnricher>()                   // ThreadId
+    .Filter.With<KeywordLogFilter>()                 // 拦截敏感关键词日志
     .WriteTo.Console()
-    .WriteTo.File("logs/agent1-api-.log", rollingInterval: RollingInterval.Day)
+    .WriteTo.File("logs/agent1-api-.log",
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 7)                   // 保留最近 7 天
+    .WriteTo.Sink(new AlertSink(alertDispatcher))    // Critical 日志 → 告警分发
     .WriteTo.Seq(Environment.GetEnvironmentVariable("SEQ_URL") ?? "http://localhost:5341")
     .CreateLogger();
 
@@ -90,6 +121,30 @@ builder.Services.AddSingleton<IAuditService>(sp =>
 builder.Services.AddSingleton<IModuleFactory, ModuleFactory>();
 builder.Services.AddSingleton<ModuleDispatcher>();
 builder.Services.AddSingleton<ResponseCacheService>();
+
+// [P1 安全加固] Token 黑名单 — 登出时撤销 Access Token
+builder.Services.AddSingleton<TokenBlacklistService>();
+
+// [P1] 告警系统 — 注册提前创建的 AlertDispatcher（已含 ConsoleAlertService）
+// 补充注册邮件通道（需在 AppConfig.Load 之后，配置已就绪）
+var emailCfg = AppConfig.Instance.Alerting.Email;
+if (emailCfg.Enabled && !string.IsNullOrWhiteSpace(emailCfg.SmtpHost) && emailCfg.RecipientEmails.Count > 0)
+{
+    var emailService = new EmailAlertService(
+        emailCfg.SmtpHost,
+        emailCfg.SmtpPort,
+        emailCfg.SenderEmail,
+        emailCfg.SenderPassword,
+        emailCfg.RecipientEmails,
+        enabled: emailCfg.Enabled);
+    alertDispatcher.Register(emailService);
+    Console.WriteLine($"📧 邮件告警已启用 → {emailCfg.SmtpHost}:{emailCfg.SmtpPort} (收件人:{emailCfg.RecipientEmails.Count}人)");
+}
+else
+{
+    Console.WriteLine("⚠️ 邮件告警未启用 — 请设置 ALERT_RECIPIENT_EMAILS 环境变量");
+}
+builder.Services.AddSingleton(alertDispatcher);
 
 // Phase 2: 长期记忆服务
 builder.Services.AddSingleton<ILongTermMemoryService>(sp =>
@@ -293,6 +348,10 @@ app.UseSwaggerUI();
 app.UseCors();
 
 app.UseAuthentication();
+
+// [P1 安全加固] Token 黑名单检查 — 必须在认证之后、授权之前
+app.UseMiddleware<TokenBlacklistMiddleware>();
+
 app.UseAuthorization();
 app.MapControllers();
 
@@ -385,6 +444,37 @@ app.MapPost("/cache/clear", (ResponseCacheService cache) =>
 });
 
 // ═══════════════════════════════════════════════════
+// [P1] 告警测试端点 — 验证 SMTP 邮件通道是否打通
+// ═══════════════════════════════════════════════════
+app.MapPost("/alert/test", async (AlertDispatcher dispatcher, ILogger<Program> logger) =>
+{
+    try
+    {
+        await dispatcher.SendAlertAsync(
+            "🧪 Agent1 告警通道测试",
+            $"这是一封测试邮件，用于验证告警通道是否正常运作。\n\n" +
+            $"发送时间: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n" +
+            $"RunId: {RunIdGenerator.Current}\n" +
+            $"机器名: {Environment.MachineName}\n\n" +
+            $"如果你收到这封邮件，说明告警通道已成功打通 ✅",
+            AlertLevel.Info);
+
+        logger.LogInformation("告警测试邮件已发送");
+        return Results.Ok(new
+        {
+            message = "测试告警已发送，请检查邮箱 lcy.050801@qq.com",
+            timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+            runId = RunIdGenerator.Current
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "告警测试发送失败");
+        return Results.Json(new { error = $"发送失败: {ex.Message}" }, statusCode: 500);
+    }
+});
+
+// ═══════════════════════════════════════════════════
 // [P3] 知识库增量更新端点 — 仅处理新增/修改/删除的文件
 // ═══════════════════════════════════════════════════
 app.MapPost("/knowledgebase/incremental-update", async (ChemicalRAG chemicalRAG, IKnowledgeBaseService kb) =>
@@ -449,5 +539,33 @@ lifetime.ApplicationStopping.Register(() =>
 });
 
 Console.WriteLine("化工合规 AI Agent API 已启动");
+
+// P2: 启动配置摘要（脱敏后输出关键配置项）
+Log.Information("[配置摘要] LLM={ModelId} DB={DbHost}:{DbPort}/{DbName} Vector={IndexType} Search={SearchMode} RunId={RunId}",
+    AppConfig.Instance.Llm.ModelId,
+    AppConfig.Instance.Database.Host,
+    AppConfig.Instance.Database.Port,
+    AppConfig.Instance.Database.DatabaseName,
+    AppConfig.Instance.VectorSearch.IndexType,
+    AppConfig.Instance.KnowledgeBase.SearchMode,
+    RunIdGenerator.Current);
+
 app.Run();
 return 0;
+}
+catch (Exception ex)
+{
+    // P2: 启动崩溃日志 — 最外层 try-catch 确保启动期异常可追溯
+    var crashLog = Path.Combine(AppContext.BaseDirectory, "startup-crash.log");
+    try
+    {
+        File.AppendAllText(crashLog,
+            $"[{DateTime.UtcNow:O}] 启动崩溃{Environment.NewLine}" +
+            $"类型: {ex.GetType().FullName}{Environment.NewLine}" +
+            $"消息: {ex.Message}{Environment.NewLine}" +
+            $"堆栈: {ex.StackTrace}{Environment.NewLine}");
+    }
+    catch { /* 连崩溃日志都写不了，尽力了 */ }
+    Console.Error.WriteLine($"致命错误: {ex.Message}");
+    return 1;
+}

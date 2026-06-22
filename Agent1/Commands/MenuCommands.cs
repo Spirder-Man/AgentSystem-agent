@@ -2,6 +2,8 @@ using Agent1.Config;
 using Agent1.Models;
 using Agent1.Modules;
 using Agent1.Services;
+using Agent1.Services.Monitoring;
+using Agent1.Services.Logging;
 
 namespace Agent1.Commands
 {
@@ -367,6 +369,45 @@ namespace Agent1.Commands
         {
             var module = new EmergencyResponseModule(_llm, _kb, _audit, _integration);
             await module.RunAsync();
+        }
+    }
+
+    /// <summary>[P1] 告警通道测试 (选项 20)</summary>
+    public class TestAlertCommand : IMenuCommand
+    {
+        private readonly AlertDispatcher _dispatcher;
+        public string Key => "20";
+        public string Label => "🧪 测试告警邮件 [验证 SMTP 通道]";
+
+        public TestAlertCommand(AlertDispatcher dispatcher)
+        {
+            _dispatcher = dispatcher;
+        }
+
+        public async Task ExecuteAsync()
+        {
+            Console.WriteLine("\n📧 正在发送测试告警...");
+            try
+            {
+                await _dispatcher.SendAlertAsync(
+                    "🧪 Agent1 告警通道测试",
+                    $"这是一封测试邮件，用于验证告警通道是否正常运作。\n\n" +
+                    $"发送时间: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n" +
+                    $"RunId: {RunIdGenerator.Current}\n" +
+                    $"机器名: {Environment.MachineName}\n\n" +
+                    $"如果你收到这封邮件，说明告警通道已成功打通 ✅",
+                    AlertLevel.Info);
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("✅ 测试告警已发送！请检查收件箱 lcy.050801@qq.com");
+                Console.ResetColor();
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"❌ 发送失败: {ex.Message}");
+                Console.ResetColor();
+            }
         }
     }
 }
