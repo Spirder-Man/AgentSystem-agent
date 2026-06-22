@@ -1,4 +1,4 @@
-
+﻿
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -16,8 +16,10 @@ namespace ArchitectureTest
         
         public static async Task Main(string[] args)
         {
-            // P0 FIX: �?solution 根目录运行时�?./Agent1 路径无效。使�?solution 根相对路�?Agent1/
-            // 不再自动 CD——所有路径已改为相对�?agent-system/ 根目�?
+            // P0 FIX: 从 solution 根目录运行时，切换到 ArchitectureTest 目录，确保 ../Agent1 路径正确
+            var testDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+            if (testDir != null) Directory.SetCurrentDirectory(testDir);
+
             Console.WriteLine("══════════════════════════════════════════════════════════");
             Console.WriteLine("           工业AI Agent - 架构收敛专项测试");
             Console.WriteLine("══════════════════════════════════════════════════════════");
@@ -25,7 +27,7 @@ namespace ArchitectureTest
             
             try
             {
-                Console.WriteLine("开始执行架构收敛专项测?..");
+                Console.WriteLine("开始执行架构收敛专项测试...");
                 Console.WriteLine();
                 
                 await Test1_ArchitectureConvergence();
@@ -46,7 +48,7 @@ namespace ArchitectureTest
             
             Console.WriteLine();
             Console.WriteLine("══════════════════════════════════════════════════════════");
-            Console.WriteLine("按任意键退�?..");
+            Console.WriteLine("按任意键退出...");
             Console.ReadKey();
         }
         
@@ -55,7 +57,7 @@ namespace ArchitectureTest
         /// </summary>
         private static Task Test1_ArchitectureConvergence()
         {
-            Console.WriteLine("【测�?/7】架构收�?- 文件验证");
+            Console.WriteLine("【测试1/7】架构收敛 - 文件验证");
             Console.WriteLine("─────────────────────────────────────────────────────");
             
             var test = new TestResult
@@ -82,7 +84,7 @@ namespace ArchitectureTest
                     {
                         Console.WriteLine($"  [FAIL] 旧文件未删除: {Path.GetFileName(file)}");
                         allDeleted = false;
-                        test.FailReasons.Add($"旧文件存�? {Path.GetFileName(file)}");
+                        test.FailReasons.Add($"旧文件存在: {Path.GetFileName(file)}");
                     }
                     else
                     {
@@ -102,13 +104,13 @@ namespace ArchitectureTest
                 {
                     if (File.Exists(file))
                     {
-                        Console.WriteLine($"  [PASS] 新文件存�? {Path.GetFileName(file)}");
+                        Console.WriteLine($"  [PASS] 新文件存在: {Path.GetFileName(file)}");
                     }
                     else
                     {
-                        Console.WriteLine($"  [FAIL] 新文件缺�? {Path.GetFileName(file)}");
+                        Console.WriteLine($"  [FAIL] 新文件缺失: {Path.GetFileName(file)}");
                         allNewExist = false;
-                        test.FailReasons.Add($"新文件缺�? {Path.GetFileName(file)}");
+                        test.FailReasons.Add($"新文件缺失: {Path.GetFileName(file)}");
                     }
                 }
                 
@@ -118,13 +120,13 @@ namespace ArchitectureTest
                     var content = File.ReadAllText(moduleTypePath);
                     if (content.Contains("UnifiedDialog") || content.Contains("ComplianceCheck") || content.Contains("RegulatoryAudit"))
                     {
-                        Console.WriteLine("  [PASS] ModuleType已收敛到10个模�?);
+                        Console.WriteLine("  [PASS] ModuleType已收敛到10个模块");
                     }
                     else
                     {
-                        Console.WriteLine("  [FAIL] ModuleType未正确收�?);
+                        Console.WriteLine("  [FAIL] ModuleType未正确收敛");
                         allNewExist = false;
-                        test.FailReasons.Add("ModuleType未正确收�?);
+                        test.FailReasons.Add("ModuleType未正确收敛");
                     }
                 }
                 
@@ -143,15 +145,16 @@ namespace ArchitectureTest
         }
         
         /// <summary>
-        /// 测试2: 验证IntentRouter只做归类、不做分支跳�?        /// </summary>
+        /// 测试2: 验证IntentRouter只做归类、不做分支跳转
+        /// </summary>
         private static Task Test2_IntentRouterPureClassification()
         {
-            Console.WriteLine("【测�?/7】IntentRouter - 纯归类验�?);
+            Console.WriteLine("【测试2/7】IntentRouter - 纯归类验证");
             Console.WriteLine("─────────────────────────────────────────────────────");
             
             var test = new TestResult
             {
-                Name = "IntentRouter纯归类验�?,
+                Name = "IntentRouter纯归类验证",
                 Description = "验证IntentRouter只返回意图枚举、不执行业务分支"
             };
             
@@ -162,9 +165,9 @@ namespace ArchitectureTest
                     ("你好", IntentType.SimpleChat),
                     ("我叫张三", IntentType.SimpleChat),
                     ("谢谢", IntentType.SimpleChat),
-                    ("苯的储存间距是多�?, IntentType.ChemicalCompliance),
+                    ("苯的储存间距是多少", IntentType.ChemicalCompliance),
                     ("苯和丙酮能同库储存吗", IntentType.ChemicalCompliance),
-                    ("过氧化氢的危险类�?, IntentType.ChemicalCompliance)
+                    ("过氧化氢的危险类别", IntentType.ChemicalCompliance)
                 };
                 
                 var allPassed = true;
@@ -173,11 +176,11 @@ namespace ArchitectureTest
                     var result = IntentRouter.Route(input);
                     if (result == expected)
                     {
-                        Console.WriteLine($"  [PASS] 输入: \"{input}\" �?意图: {result}");
+                        Console.WriteLine($"  [PASS] 输入: \"{input}\" → 意图: {result}");
                     }
                     else
                     {
-                        Console.WriteLine($"  [FAIL] 输入: \"{input}\" �?期望: {expected}, 实际: {result}");
+                        Console.WriteLine($"  [FAIL] 输入: \"{input}\" → 期望: {expected}, 实际: {result}");
                         allPassed = false;
                         test.FailReasons.Add($"输入\"{input}\"归类错误");
                     }
@@ -193,7 +196,7 @@ namespace ArchitectureTest
                     }
                     else
                     {
-                        Console.WriteLine("  [INFO] IntentRouter逻辑检查完�?);
+                        Console.WriteLine("  [INFO] IntentRouter逻辑检查完成");
                     }
                 }
                 
@@ -216,13 +219,13 @@ namespace ArchitectureTest
         /// </summary>
         private static Task Test3_UnifiedDispatcher()
         {
-            Console.WriteLine("【测�?/7】统一调度 - ModuleDispatcher验证");
+            Console.WriteLine("【测试3/7】统一调度 - ModuleDispatcher验证");
             Console.WriteLine("─────────────────────────────────────────────────────");
             
             var test = new TestResult
             {
                 Name = "ModuleDispatcher统一调度验证",
-                Description = "验证所有模块通过ModuleDispatcher创建和执�?
+                Description = "验证所有模块通过ModuleDispatcher创建和执行"
             };
             
             try
@@ -239,8 +242,8 @@ namespace ArchitectureTest
                     }
                     else
                     {
-                        Console.WriteLine("  [FAIL] ModuleDispatcher实现不完�?);
-                        test.FailReasons.Add("ModuleDispatcher实现不完�?);
+                        Console.WriteLine("  [FAIL] ModuleDispatcher实现不完整");
+                        test.FailReasons.Add("ModuleDispatcher实现不完整");
                         test.Passed = false;
                         _report.Results.Add(test);
                         Console.WriteLine();
@@ -297,16 +300,17 @@ namespace ArchitectureTest
         }
         
         /// <summary>
-        /// 测试4: 验证线性流水线 - 6步流�?        /// </summary>
+        /// 测试4: 验证线性流水线 - 6步流程
+        /// </summary>
         private static Task Test4_LinearPipeline()
         {
-            Console.WriteLine("【测�?/7】线性流水线 - 6步流程验�?);
+            Console.WriteLine("【测试4/7】线性流水线 - 6步流程验证");
             Console.WriteLine("─────────────────────────────────────────────────────");
             
             var test = new TestResult
             {
                 Name = "6步线性流水线验证",
-                Description = "验证AgentDialog�?步流程完整实�?
+                Description = "验证AgentDialog的6步流程完整实现"
             };
             
             try
@@ -331,33 +335,33 @@ namespace ArchitectureTest
                     {
                         if (content.Contains(step))
                         {
-                            Console.WriteLine($"  [PASS] 流水线步�? {step}");
+                            Console.WriteLine($"  [PASS] 流水线步骤: {step}");
                         }
                         else
                         {
-                            Console.WriteLine($"  [FAIL] 流水线步骤缺�? {step}");
+                            Console.WriteLine($"  [FAIL] 流水线步骤缺失: {step}");
                             allStepsFound = false;
-                            test.FailReasons.Add($"流水线步骤缺�? {step}");
+                            test.FailReasons.Add($"流水线步骤缺失: {step}");
                         }
                     }
                     
                     if (content.Contains("统一线性流水线启动"))
                     {
-                        Console.WriteLine("  [PASS] 流水线启动标�?);
+                        Console.WriteLine("  [PASS] 流水线启动标记");
                     }
                     
                     if (content.Contains("[1/6]") && content.Contains("[6/6]"))
                     {
-                        Console.WriteLine("  [PASS] 流水线步骤标记完�?);
+                        Console.WriteLine("  [PASS] 流水线步骤标记完整");
                     }
                     
                     test.Passed = allStepsFound;
                 }
                 else
                 {
-                    Console.WriteLine("  [FAIL] AgentDialog.cs不存�?);
+                    Console.WriteLine("  [FAIL] AgentDialog.cs不存在");
                     test.Passed = false;
-                    test.FailReasons.Add("AgentDialog.cs不存�?);
+                    test.FailReasons.Add("AgentDialog.cs不存在");
                 }
             }
             catch (Exception ex)
@@ -377,13 +381,13 @@ namespace ArchitectureTest
         /// </summary>
         private static Task Test5_UnifiedInfrastructure()
         {
-            Console.WriteLine("【测�?/7】统一基础设施 - 服务共享验证");
+            Console.WriteLine("【测试5/7】统一基础设施 - 服务共享验证");
             Console.WriteLine("─────────────────────────────────────────────────────");
             
             var test = new TestResult
             {
                 Name = "统一基础设施共享验证",
-                Description = "验证所有模块共用同一套服�?
+                Description = "验证所有模块共用同一套服务"
             };
             
             try
@@ -409,7 +413,7 @@ namespace ArchitectureTest
                         }
                         else
                         {
-                            Console.WriteLine($"  [FAIL] AgentDialog未注�? {service}");
+                            Console.WriteLine($"  [FAIL] AgentDialog未注入: {service}");
                             allInjected = false;
                             test.FailReasons.Add($"AgentDialog未注入{service}");
                         }
@@ -450,7 +454,7 @@ namespace ArchitectureTest
         /// </summary>
         private static Task Test6_NoHardcoding()
         {
-            Console.WriteLine("【测�?/7】无硬编码验�?);
+            Console.WriteLine("【测试6/7】无硬编码验证");
             Console.WriteLine("─────────────────────────────────────────────────────");
             
             var test = new TestResult
@@ -463,7 +467,7 @@ namespace ArchitectureTest
             {
                 var hardcodedPatterns = new[]
                 {
-                    "你好！我是王�?,
+                    "你好！我是王工",
                     "我需要的是一个简短的回答",
                     "作为一个AI助手",
                     "我叫DeepSeek"
@@ -487,11 +491,11 @@ namespace ArchitectureTest
                         {
                             if (content.Contains(pattern))
                             {
-                                Console.WriteLine($"  [WARN] {fileName} 可能包含硬编�? {pattern}");
-                                test.FailReasons.Add($"{fileName}可能包含硬编�?);
+                                Console.WriteLine($"  [WARN] {fileName} 可能包含硬编码: {pattern}");
+                                test.FailReasons.Add($"{fileName}可能包含硬编码");
                             }
                         }
-                        Console.WriteLine($"  [PASS] {fileName} 硬编码检查完�?);
+                        Console.WriteLine($"  [PASS] {fileName} 硬编码检查完成");
                     }
                 }
                 
@@ -511,7 +515,7 @@ namespace ArchitectureTest
                     {
                         var content = File.ReadAllText(file);
                         var fileName = Path.GetFileName(file);
-                        Console.WriteLine($"  [PASS] {fileName} 范式模块检查完�?);
+                        Console.WriteLine($"  [PASS] {fileName} 范式模块检查完成");
                     }
                 }
                 
@@ -537,7 +541,7 @@ namespace ArchitectureTest
         /// </summary>
         private static Task Test7_FourParadigmsIntegration()
         {
-            Console.WriteLine("【测�?/7】四大范式模块集成验证（核心重点�?);
+            Console.WriteLine("【测试7/7】四大范式模块集成验证（核心重点）");
             Console.WriteLine("─────────────────────────────────────────────────────");
             
             var test = new TestResult
@@ -554,8 +558,8 @@ namespace ArchitectureTest
                     ("CoTStreamModule.cs", "CoT推理(流式输出)"),
                     ("ReActSolidModule.cs", "ReAct推理(标准输出)"),
                     ("ReActStreamModule.cs", "ReAct推理(流式输出)"),
-                    ("ReflectionModule.cs", "Reflection反�?),
-                    ("RAGModule.cs", "RAG检索增�?)
+                    ("ReflectionModule.cs", "Reflection反思"),
+                    ("RAGModule.cs", "RAG检索增强")
                 };
                 
                 var allIntegrated = true;
@@ -582,9 +586,9 @@ namespace ArchitectureTest
                     }
                     else
                     {
-                        Console.WriteLine($"  [FAIL] {fileName} 不存�?);
+                        Console.WriteLine($"  [FAIL] {fileName} 不存在");
                         allIntegrated = false;
-                        test.FailReasons.Add($"{fileName}不存�?);
+                        test.FailReasons.Add($"{fileName}不存在");
                     }
                 }
                 
@@ -611,7 +615,8 @@ namespace ArchitectureTest
                     {
                         if (content.Contains($"\"{i}\"") || content.Contains(i.ToString()))
                         {
-                            // 简化检�?                        }
+                            // 简化检查
+                        }
                     }
                     Console.WriteLine("  [PASS] 四大范式模块在菜单中暴露");
                 }
@@ -621,7 +626,7 @@ namespace ArchitectureTest
                 Console.WriteLine("    - 1-6模块都实现IInferenceModule接口");
                 Console.WriteLine("    - 都通过ModuleFactory统一创建");
                 Console.WriteLine("    - 都通过ModuleDispatcher统一调度");
-                Console.WriteLine("    - 都使用统一的服务注�?ILlmService、ISessionService)");
+                Console.WriteLine("    - 都使用统一的服务注入(ILlmService、ISessionService)");
                 Console.WriteLine("    - 无独立运行逻辑、完全融入统一体系");
                 
                 test.Passed = allIntegrated;
@@ -653,7 +658,7 @@ namespace ArchitectureTest
             
             Console.WriteLine($"测试总数: {total}");
             Console.WriteLine($"通过: {passed}/{total}");
-            Console.WriteLine($"通过�? {(passed * 100.0 / total):F1}%");
+            Console.WriteLine($"通过率: {(passed * 100.0 / total):F1}%");
             Console.WriteLine();
             
             Console.WriteLine("详细结果:");
@@ -683,27 +688,27 @@ namespace ArchitectureTest
             Console.WriteLine("══════════════════════════════════════════════════════════");
             Console.WriteLine();
             
-            Console.WriteLine("1. 【核心重点】四大范式模�?1-6)统一调度验证: " + 
-                (_report.Results.LastOrDefault()?.Passed == true ? "✅通过" : "❌失�?));
-            Console.WriteLine("2. IntentRouter只做归类、不做分支跳转验�? " + 
-                (_report.Results[1]?.Passed == true ? "✅通过" : "❌失�?));
+            Console.WriteLine("1. 【核心重点】四大范式模块(1-6)统一调度验证: " + 
+                (_report.Results.LastOrDefault()?.Passed == true ? "✅通过" : "❌失败"));
+            Console.WriteLine("2. IntentRouter只做归类、不做分支跳转验证: " + 
+                (_report.Results[1]?.Passed == true ? "✅通过" : "❌失败"));
             Console.WriteLine("3. 所有模块统一调度验证: " + 
-                (_report.Results[2]?.Passed == true ? "✅通过" : "❌失�?));
+                (_report.Results[2]?.Passed == true ? "✅通过" : "❌失败"));
             Console.WriteLine("4. 6步线性流水线验证: " + 
-                (_report.Results[3]?.Passed == true ? "✅通过" : "❌失�?));
+                (_report.Results[3]?.Passed == true ? "✅通过" : "❌失败"));
             Console.WriteLine("5. 统一基础设施服务共享验证: " + 
-                (_report.Results[4]?.Passed == true ? "✅通过" : "❌失�?));
+                (_report.Results[4]?.Passed == true ? "✅通过" : "❌失败"));
             Console.WriteLine("6. 无硬编码验证: " + 
-                (_report.Results[5]?.Passed == true ? "✅通过" : "❌失�?));
+                (_report.Results[5]?.Passed == true ? "✅通过" : "❌失败"));
             Console.WriteLine("7. 架构收敛文件验证: " + 
-                (_report.Results[0]?.Passed == true ? "✅通过" : "❌失�?));
+                (_report.Results[0]?.Passed == true ? "✅通过" : "❌失败"));
             
             Console.WriteLine();
             
             if (passed == total)
             {
-                Console.WriteLine("🎉 所有架构收敛要点验证通过�?);
-                Console.WriteLine("   架构已完全线性收敛，可以安全研读代码�?);
+                Console.WriteLine("🎉 所有架构收敛要点验证通过！");
+                Console.WriteLine("   架构已完全线性收敛，可以安全研读代码！");
             }
             else
             {
@@ -726,7 +731,7 @@ namespace ArchitectureTest
                     writer.WriteLine();
                     writer.WriteLine($"测试总数: {total}");
                     writer.WriteLine($"通过: {passed}/{total}");
-                    writer.WriteLine($"通过�? {(passed * 100.0 / total):F1}%");
+                    writer.WriteLine($"通过率: {(passed * 100.0 / total):F1}%");
                     writer.WriteLine();
                     
                     foreach (var result in _report.Results)
@@ -768,5 +773,4 @@ namespace ArchitectureTest
         public List<string> FailReasons { get; set; } = new List<string>();
     }
 }
-
 
