@@ -6,180 +6,161 @@
 <title>Agent1 RTX 3090 测试状态看板</title>
 <style>
 :root {
-  --c-bg: #f8fafc;
-  --c-canvas: #ffffff;
-  --c-border: #cbd5e1;
-  --c-text-main: #0f172a;
-  --c-text-sub: #64748b;
-  --c-green: #16a34a;
-  --c-red: #dc2626;
-  --c-amber: #d97706;
-  --c-blue: #2563eb;
+  --c-bg: #f8fafc; --c-canvas: #ffffff; --c-border: #cbd5e1;
+  --c-text-main: #0f172a; --c-text-sub: #64748b;
+  --c-green: #16a34a; --c-red: #dc2626; --c-amber: #d97706; --c-blue: #2563eb;
   --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'SF Mono', Monaco, Consolas, monospace;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:var(--c-bg); font-family:var(--font-ui); color:var(--c-text-main); padding:32px; }
-.diagram-canvas { background:var(--c-canvas); border:2px solid var(--c-border); padding:28px 32px; max-width:1100px; margin:0 auto; }
-.diagram-header { border-bottom:1px solid var(--c-border); padding-bottom:12px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:flex-end; }
-.diagram-title { font-size:22px; font-weight:600; }
-.diagram-subtitle { font-size:11px; font-weight:500; color:var(--c-text-sub); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px; }
-.meta-row { display:flex; gap:24px; font-size:12px; color:var(--c-text-sub); }
-.meta-item { display:flex; align-items:center; gap:4px; }
-.meta-label { font-weight:600; text-transform:uppercase; letter-spacing:0.3px; }
+.canvas { background:var(--c-canvas); border:2px solid var(--c-border); padding:28px 32px; max-width:1100px; margin:0 auto; }
+.hd { border-bottom:1px solid var(--c-border); padding-bottom:12px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:flex-end; }
+.hd-title { font-size:22px; font-weight:600; }
+.hd-sub { font-size:11px; font-weight:500; color:var(--c-text-sub); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px; }
+.meta { display:flex; gap:24px; font-size:12px; color:var(--c-text-sub); }
+.meta-i { display:flex; align-items:center; gap:4px; }
+.meta-l { font-weight:600; text-transform:uppercase; letter-spacing:0.3px; }
 .mono { font-family:var(--font-mono); }
-.grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:20px; }
-.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
-.grid-1 { margin-bottom:20px; }
-.panel { border:1px solid var(--c-border); }
-.panel-hd { padding:10px 14px; border-bottom:1px solid var(--c-border); font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; display:flex; justify-content:space-between; align-items:center; }
-.panel-bd { padding:12px 14px; }
-.row { display:flex; align-items:center; padding:6px 0; border-bottom:1px solid #f1f5f9; font-size:13px; }
-.row:last-child { border-bottom:none; }
-.row-label { flex:1; }
-.row-val { font-family:var(--font-mono); font-size:12px; text-align:right; min-width:60px; }
-.badge { display:inline-block; font-size:10px; font-family:var(--font-mono); padding:2px 8px; border:1px solid; letter-spacing:0.3px; }
-.badge--pass { background:#f0fdf4; color:var(--c-green); border-color:#bbf7d0; }
-.badge--fail { background:#fef2f2; color:var(--c-red); border-color:#fecaca; }
-.badge--pending { background:#fffbeb; color:var(--c-amber); border-color:#fde68a; }
-.badge--info { background:#eff6ff; color:var(--c-blue); border-color:#bfdbfe; }
-.badge--done { background:var(--c-text-main); color:#fff; border-color:var(--c-text-main); }
-.progress-bar { height:6px; background:#f1f5f9; margin-top:8px; overflow:hidden; }
-.progress-fill { height:100%; background:var(--c-text-main); }
-.flow-steps { display:flex; align-items:center; gap:0; font-size:12px; }
-.flow-step { padding:8px 16px; border:1px solid var(--c-border); text-align:center; flex:1; font-family:var(--font-mono); }
-.flow-arrow { padding:0 4px; color:var(--c-text-sub); font-size:16px; }
-.footer-note { font-size:11px; color:var(--c-text-sub); border-top:1px solid var(--c-border); padding-top:12px; margin-top:20px; display:flex; justify-content:space-between; }
+.g3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:20px; }
+.g2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
+.g1 { margin-bottom:20px; }
+.pn { border:1px solid var(--c-border); }
+.pn-h { padding:10px 14px; border-bottom:1px solid var(--c-border); font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; display:flex; justify-content:space-between; align-items:center; }
+.pn-b { padding:12px 14px; }
+.rw { display:flex; align-items:center; padding:6px 0; border-bottom:1px solid #f1f5f9; font-size:13px; }
+.rw:last-child { border-bottom:none; }
+.rw-l { flex:1; }
+.rw-v { font-family:var(--font-mono); font-size:12px; text-align:right; min-width:60px; }
+.bg { display:inline-block; font-size:10px; font-family:var(--font-mono); padding:2px 8px; border:1px solid; letter-spacing:0.3px; }
+.bg-p { background:#f0fdf4; color:var(--c-green); border-color:#bbf7d0; }
+.bg-f { background:#fef2f2; color:var(--c-red); border-color:#fecaca; }
+.bg-w { background:#fffbeb; color:var(--c-amber); border-color:#fde68a; }
+.bg-i { background:#eff6ff; color:var(--c-blue); border-color:#bfdbfe; }
+.bg-d { background:var(--c-text-main); color:#fff; border-color:var(--c-text-main); }
+.pb { height:6px; background:#f1f5f9; margin-top:8px; overflow:hidden; }
+.pb-f { height:100%; background:var(--c-text-main); }
+.fl { display:flex; align-items:center; gap:0; font-size:12px; }
+.fl-st { padding:8px 16px; border:1px solid var(--c-border); text-align:center; flex:1; font-family:var(--font-mono); }
+.fl-ar { padding:0 4px; color:var(--c-text-sub); font-size:16px; }
+.ft { font-size:11px; color:var(--c-text-sub); border-top:1px solid var(--c-border); padding-top:12px; margin-top:20px; display:flex; justify-content:space-between; }
 </style>
 </head>
 <body>
-<div class="diagram-canvas">
+<div class="canvas">
 
-  <div class="diagram-header">
+  <div class="hd">
     <div>
-      <h1 class="diagram-title">Agent1 RTX 3090 测试状态看板</h1>
-      <p class="diagram-subtitle">System Test Dashboard — 2026-06-22 15:20</p>
+      <h1 class="hd-title">Agent1 RTX 3090 测试状态看板</h1>
+      <p class="hd-sub">System Test Dashboard — 2026-06-22 15:15</p>
     </div>
-    <div class="meta-row">
-      <span class="meta-item"><span class="meta-label">BRANCH</span> <span class="mono">linux原生编译模型llama.cpp</span></span>
-      <span class="meta-item"><span class="meta-label">COMMIT</span> <span class="mono">78101ca</span></span>
-      <span class="meta-item"><span class="meta-label">GPU</span> <span class="mono">RTX 3090 24GB</span></span>
-    </div>
-  </div>
-
-  <!-- Row 1 -->
-  <div class="grid-3">
-    <div class="panel">
-      <div class="panel-hd">架构收敛 <span class="badge badge--pass">7/7 PASS</span></div>
-      <div class="panel-bd">
-        <div class="row"><span class="row-label">文件验证</span><span class="row-val badge badge--pass">PASS</span></div>
-        <div class="row"><span class="row-label">IntentRouter</span><span class="row-val badge badge--pass">PASS</span></div>
-        <div class="row"><span class="row-label">ModuleDispatcher</span><span class="row-val badge badge--pass">PASS</span></div>
-        <div class="row"><span class="row-label">6步流水线</span><span class="row-val badge badge--pass">PASS</span></div>
-        <div class="row"><span class="row-label">服务共享</span><span class="row-val badge badge--pass">PASS</span></div>
-        <div class="row"><span class="row-label">无硬编码</span><span class="row-val badge badge--pass">PASS</span></div>
-        <div class="row"><span class="row-label">范式集成</span><span class="row-val badge badge--pass">PASS</span></div>
-      </div>
-    </div>
-    <div class="panel">
-      <div class="panel-hd">基础设施 <span class="badge badge--pass">全部通过</span></div>
-      <div class="panel-bd">
-        <div class="row"><span class="row-label">PostgreSQL 在线</span><span class="row-val badge badge--pass">PASS</span></div>
-        <div class="row"><span class="row-label">LLM llama-server :8080</span><span class="row-val badge badge--pass">PASS</span></div>
-        <div class="row"><span class="row-label">Embedding :8081</span><span class="row-val badge badge--pass">PASS</span></div>
-        <div class="row"><span class="row-label">菜单 10 — DB验证</span><span class="row-val badge badge--pass">6表OK</span></div>
-        <div class="row"><span class="row-label">菜单 11 — 模式切换</span><span class="row-val badge badge--pending">TODO</span></div>
-        <div class="row"><span class="row-label">菜单 20 — 告警邮件</span><span class="row-val badge badge--pass">已收到</span></div>
-      </div>
-    </div>
-    <div class="panel">
-      <div class="panel-hd">质量修复 <span class="badge badge--done">全部完成</span></div>
-      <div class="panel-bd">
-        <div class="row"><span class="row-label">pgvector CAST修复</span><span class="row-val badge badge--pass">✅ GPU 768维</span></div>
-        <div class="row"><span class="row-label">LLM死循环 v2</span><span class="row-val badge badge--pass">✅ 7行截断</span></div>
-        <div class="row"><span class="row-label">日志三重去重</span><span class="row-val badge badge--pass">✅ f2a0e97</span></div>
-        <div class="row"><span class="row-label">Serilog Enricher</span><span class="row-val badge badge--pass">✅ 4077810</span></div>
-        <div class="row"><span class="row-label">Token黑名单</span><span class="row-val badge badge--pass">✅ 4077810</span></div>
-        <div class="row"><span class="row-label">ArchTest路径修复</span><span class="row-val badge badge--pass">✅ 2927b50</span></div>
-      </div>
+    <div class="meta">
+      <span class="meta-i"><span class="meta-l">BRANCH</span> <span class="mono">linux原生编译模型llama.cpp</span></span>
+      <span class="meta-i"><span class="meta-l">COMMIT</span> <span class="mono">0e38e1f</span></span>
+      <span class="meta-i"><span class="meta-l">GPU</span> <span class="mono">RTX 3090 24GB</span></span>
     </div>
   </div>
 
-  <!-- Row 2: Test Flow -->
-  <div class="grid-1">
-    <div class="panel">
-      <div class="panel-hd">测试步骤 <span class="badge badge--info">STEP 1-3 DONE → 4 NEXT</span></div>
-      <div class="panel-bd">
-        <div class="flow-steps">
-          <div class="flow-step" style="background:#f0fdf4;">
-            20 · 告警<br/><span class="badge badge--pass" style="margin-top:4px;">PASS</span>
-          </div>
-          <div class="flow-arrow">→</div>
-          <div class="flow-step" style="background:#f0fdf4;">
-            10 · DB验证<br/><span class="badge badge--pass" style="margin-top:4px;">PASS</span>
-          </div>
-          <div class="flow-arrow">→</div>
-          <div class="flow-step" style="background:#f0fdf4;">
-            8 · 合规自查<br/><span class="badge badge--pass" style="margin-top:4px;">PASS</span>
-          </div>
-          <div class="flow-arrow">→</div>
-          <div class="flow-step">
-            9 · RAG测试<br/><span class="badge badge--pending" style="margin-top:4px;">NOW</span>
-          </div>
-          <div class="flow-arrow">→</div>
-          <div class="flow-step">
-            12 · FC诊断<br/><span class="badge badge--info" style="margin-top:4px;">THEN</span>
-          </div>
-          <div class="flow-arrow">→</div>
-          <div class="flow-step">
-            13 · 评测<br/><span class="badge badge--info" style="margin-top:4px;">LAST</span>
-          </div>
+  <div class="g3">
+    <div class="pn">
+      <div class="pn-h">架构收敛 <span class="bg bg-p">7/7 PASS</span></div>
+      <div class="pn-b">
+        <div class="rw"><span class="rw-l">文件验证</span><span class="rw-v bg bg-p">PASS</span></div>
+        <div class="rw"><span class="rw-l">IntentRouter</span><span class="rw-v bg bg-p">PASS</span></div>
+        <div class="rw"><span class="rw-l">ModuleDispatcher</span><span class="rw-v bg bg-p">PASS</span></div>
+        <div class="rw"><span class="rw-l">6步流水线</span><span class="rw-v bg bg-p">PASS</span></div>
+        <div class="rw"><span class="rw-l">服务共享</span><span class="rw-v bg bg-p">PASS</span></div>
+        <div class="rw"><span class="rw-l">无硬编码</span><span class="rw-v bg bg-p">PASS</span></div>
+        <div class="rw"><span class="rw-l">范式集成</span><span class="rw-v bg bg-p">PASS</span></div>
+      </div>
+    </div>
+    <div class="pn">
+      <div class="pn-h">基础设施 <span class="bg bg-p">全部通过</span></div>
+      <div class="pn-b">
+        <div class="rw"><span class="rw-l">PostgreSQL</span><span class="rw-v bg bg-p">PASS</span></div>
+        <div class="rw"><span class="rw-l">LLM :8080</span><span class="rw-v bg bg-p">PASS</span></div>
+        <div class="rw"><span class="rw-l">Embedding :8081</span><span class="rw-v bg bg-p">PASS</span></div>
+        <div class="rw"><span class="rw-l">菜单 10 DB验证</span><span class="rw-v bg bg-p">6表OK</span></div>
+        <div class="rw"><span class="rw-l">菜单 11 模式切换</span><span class="rw-v bg bg-p">三种OK</span></div>
+        <div class="rw"><span class="rw-l">菜单 20 告警邮件</span><span class="rw-v bg bg-p">已收到</span></div>
+      </div>
+    </div>
+    <div class="pn">
+      <div class="pn-h">质量修复 <span class="bg bg-d">全部完成</span></div>
+      <div class="pn-b">
+        <div class="rw"><span class="rw-l">pgvector CAST</span><span class="rw-v bg bg-p">✅ GPU 768维</span></div>
+        <div class="rw"><span class="rw-l">LLM死循环 v2</span><span class="rw-v bg bg-p">✅ 7行截断</span></div>
+        <div class="rw"><span class="rw-l">日志三重去重</span><span class="rw-v bg bg-p">✅ 已修复</span></div>
+        <div class="rw"><span class="rw-l">Serilog Enricher</span><span class="rw-v bg bg-p">✅ 4个Enricher</span></div>
+        <div class="rw"><span class="rw-l">Token黑名单</span><span class="rw-v bg bg-p">✅ 已实现</span></div>
+        <div class="rw"><span class="rw-l">ArchTest路径</span><span class="rw-v bg bg-p">✅ 已修复</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="g1">
+    <div class="pn">
+      <div class="pn-h">测试步骤 <span class="bg bg-i">1-5 DONE → 13 NOW</span></div>
+      <div class="pn-b">
+        <div class="fl">
+          <div class="fl-st" style="background:#f0fdf4;">20·告警<br/><span class="bg bg-p" style="margin-top:4px;">PASS</span></div>
+          <div class="fl-ar">→</div>
+          <div class="fl-st" style="background:#f0fdf4;">10·DB<br/><span class="bg bg-p" style="margin-top:4px;">PASS</span></div>
+          <div class="fl-ar">→</div>
+          <div class="fl-st" style="background:#f0fdf4;">8·合规<br/><span class="bg bg-p" style="margin-top:4px;">PASS</span></div>
+          <div class="fl-ar">→</div>
+          <div class="fl-st" style="background:#f0fdf4;">9·RAG<br/><span class="bg bg-p" style="margin-top:4px;">PASS</span></div>
+          <div class="fl-ar">→</div>
+          <div class="fl-st" style="background:#f0fdf4;">11·模式<br/><span class="bg bg-p" style="margin-top:4px;">PASS</span></div>
+          <div class="fl-ar">→</div>
+          <div class="fl-st" style="background:#f0fdf4;">12·FC<br/><span class="bg bg-p" style="margin-top:4px;">5/5</span></div>
+          <div class="fl-ar">→</div>
+          <div class="fl-st">13·评测<br/><span class="bg bg-w" style="margin-top:4px;">NOW</span></div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Row 3 -->
-  <div class="grid-2">
-    <div class="panel">
-      <div class="panel-hd">菜单 8 实测结果</div>
-      <div class="panel-bd">
-        <div class="row"><span class="row-label">输入</span><span class="row-val mono" style="font-size:12px;">苯和丙酮能同库储存吗</span></div>
-        <div class="row"><span class="row-label">① 日志重复</span><span class="row-val badge badge--pass">双重(可接受)</span></div>
-        <div class="row"><span class="row-label">② GPU向量检索</span><span class="row-val badge badge--pass">20条 768维</span></div>
-        <div class="row"><span class="row-label">③ LLM死循环 v2</span><span class="row-val badge badge--pass">7行截断 ✅</span></div>
-        <div class="row"><span class="row-label">结论</span><span class="row-val mono" style="font-size:11px;">合规:否 GB15603 4.2.2</span></div>
+  <div class="g2">
+    <div class="pn">
+      <div class="pn-h">实测结果汇总</div>
+      <div class="pn-b">
+        <div class="rw"><span class="rw-l">菜单 8 合规自查</span><span class="rw-v bg bg-p">✅ 全链路通过</span></div>
+        <div class="rw"><span class="rw-l">菜单 9 RAG检索</span><span class="rw-v bg bg-p">✅ 3/3查询正常</span></div>
+        <div class="rw"><span class="rw-l">菜单 11 模式切换</span><span class="rw-v bg bg-p">✅ 三种模式</span></div>
+        <div class="rw"><span class="rw-l">菜单 12 FC诊断</span><span class="rw-v bg bg-p">✅ 5/5触发</span></div>
+        <div class="rw"><span class="rw-l">GPU向量检索</span><span class="rw-v bg bg-p">✅ 768维正常</span></div>
+        <div class="rw"><span class="rw-l">RRF混合融合</span><span class="rw-v bg bg-p">✅ 正常工作</span></div>
       </div>
     </div>
-    <div class="panel">
-      <div class="panel-hd">质量验收状态</div>
-      <div class="panel-bd">
-        <div class="row"><span class="row-label">pgvector 报错</span><span class="row-val badge badge--pass">已修复</span></div>
-        <div class="row"><span class="row-label">LLM 死循环</span><span class="row-val badge badge--pass">v2 语义截断</span></div>
-        <div class="row"><span class="row-label">日志去重</span><span class="row-val badge badge--pass">Serilog接管</span></div>
-        <div class="row"><span class="row-label">告警邮件</span><span class="row-val badge badge--pass">lcy.050801@qq.com</span></div>
-        <div class="row"><span class="row-label">DB 6表验证</span><span class="row-val badge badge--pass">全部在线</span></div>
-        <div class="row"><span class="row-label">RAG检索质量</span><span class="row-val badge badge--info">待评测验证</span></div>
+    <div class="pn">
+      <div class="pn-h">质量验收状态</div>
+      <div class="pn-b">
+        <div class="rw"><span class="rw-l">pgvector 报错</span><span class="rw-v bg bg-p">已修复</span></div>
+        <div class="rw"><span class="rw-l">LLM 死循环</span><span class="rw-v bg bg-p">v2 语义截断</span></div>
+        <div class="rw"><span class="rw-l">日志去重</span><span class="rw-v bg bg-p">Serilog接管</span></div>
+        <div class="rw"><span class="rw-l">告警邮件</span><span class="rw-v bg bg-p">lcy.050801@qq.com</span></div>
+        <div class="rw"><span class="rw-l">FC工具链</span><span class="rw-v bg bg-p">5/5全部触发</span></div>
+        <div class="rw"><span class="rw-l">评测集</span><span class="rw-v bg bg-w">待13执行</span></div>
       </div>
     </div>
   </div>
 
-  <!-- Progress -->
-  <div class="grid-1">
-    <div class="panel">
-      <div class="panel-hd">全量测试进度 <span class="mono" style="font-size:11px;">12/35 完成</span></div>
-      <div class="panel-bd">
+  <div class="g1">
+    <div class="pn">
+      <div class="pn-h">全量测试进度 <span class="mono" style="font-size:11px;">15/35 完成 · 43%</span></div>
+      <div class="pn-b">
         <div style="display:flex; gap:12px; margin-bottom:8px; font-size:12px;">
-          <span><span class="badge badge--pass">PASS</span> 12</span>
-          <span><span class="badge badge--pending">TODO</span> 20</span>
-          <span><span class="badge badge--fail">FAIL</span> 0</span>
-          <span><span class="badge badge--info">BLOCKED</span> 3</span>
+          <span><span class="bg bg-p">PASS</span> 15</span>
+          <span><span class="bg bg-w">TODO</span> 17</span>
+          <span><span class="bg bg-f">FAIL</span> 0</span>
+          <span><span class="bg bg-i">BLOCKED</span> 3</span>
         </div>
-        <div class="progress-bar"><div class="progress-fill" style="width:34%;"></div></div>
+        <div class="pb"><div class="pb-f" style="width:43%;"></div></div>
         <div style="margin-top:8px; display:flex; gap:16px; font-size:11px; color:var(--c-text-sub);">
           <span>架构: ████████ 100%</span>
-          <span>基础: ████████ 80%</span>
-          <span>业务: ██░░░░░░ 17%</span>
+          <span>基础: ████████ 100%</span>
+          <span>业务: ██████░░ 67%</span>
           <span>编排: ░░░░░░░░ 0%</span>
           <span>API:   ░░░░░░░░ 0%</span>
         </div>
@@ -187,9 +168,9 @@ body { background:var(--c-bg); font-family:var(--font-ui); color:var(--c-text-ma
     </div>
   </div>
 
-  <div class="footer-note">
-    <span>DOC VER 1.1 · 2026-06-22 15:20 · linux原生编译模型llama.cpp @ 78101ca</span>
-    <span class="mono">ARCHITECTURE CONVERGENCE: 7/7 | ALERT EMAIL: VERIFIED | LLM LOOP: FIXED v2</span>
+  <div class="ft">
+    <span>DOC VER 1.2 · 2026-06-22 15:15 · linux原生编译模型llama.cpp @ 0e38e1f</span>
+    <span class="mono">ARCH: 7/7 | INFRA: 6/6 | CORE: 4/6 | FC: 5/5 | QUALITY: ALL FIXED</span>
   </div>
 
 </div>
