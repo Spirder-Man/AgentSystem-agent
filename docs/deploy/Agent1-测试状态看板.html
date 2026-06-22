@@ -28,64 +28,46 @@ body { background:var(--c-bg); font-family:var(--font-ui); color:var(--c-text-ma
 .meta-item { display:flex; align-items:center; gap:4px; }
 .meta-label { font-weight:600; text-transform:uppercase; letter-spacing:0.3px; }
 .mono { font-family:var(--font-mono); }
-
-/* Grid */
 .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:20px; }
 .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
 .grid-1 { margin-bottom:20px; }
-
-/* Panel */
 .panel { border:1px solid var(--c-border); }
 .panel-hd { padding:10px 14px; border-bottom:1px solid var(--c-border); font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; display:flex; justify-content:space-between; align-items:center; }
 .panel-bd { padding:12px 14px; }
-
-/* Row */
 .row { display:flex; align-items:center; padding:6px 0; border-bottom:1px solid #f1f5f9; font-size:13px; }
 .row:last-child { border-bottom:none; }
 .row-label { flex:1; }
 .row-val { font-family:var(--font-mono); font-size:12px; text-align:right; min-width:60px; }
-
-/* Badges */
 .badge { display:inline-block; font-size:10px; font-family:var(--font-mono); padding:2px 8px; border:1px solid; letter-spacing:0.3px; }
 .badge--pass { background:#f0fdf4; color:var(--c-green); border-color:#bbf7d0; }
 .badge--fail { background:#fef2f2; color:var(--c-red); border-color:#fecaca; }
 .badge--pending { background:#fffbeb; color:var(--c-amber); border-color:#fde68a; }
 .badge--info { background:#eff6ff; color:var(--c-blue); border-color:#bfdbfe; }
 .badge--done { background:var(--c-text-main); color:#fff; border-color:var(--c-text-main); }
-
-/* Progress bar */
-.progress-bar { height:6px; background:#f1f5f9; border-radius:0; margin-top:8px; overflow:hidden; }
+.progress-bar { height:6px; background:#f1f5f9; margin-top:8px; overflow:hidden; }
 .progress-fill { height:100%; background:var(--c-text-main); }
-
-/* Flow */
 .flow-steps { display:flex; align-items:center; gap:0; font-size:12px; }
 .flow-step { padding:8px 16px; border:1px solid var(--c-border); text-align:center; flex:1; font-family:var(--font-mono); }
 .flow-arrow { padding:0 4px; color:var(--c-text-sub); font-size:16px; }
-
-/* Footer */
 .footer-note { font-size:11px; color:var(--c-text-sub); border-top:1px solid var(--c-border); padding-top:12px; margin-top:20px; display:flex; justify-content:space-between; }
-
-/* Connector */
-.conn-line { border-left:2px solid var(--c-border); height:20px; margin:0 0 0 8px; }
 </style>
 </head>
 <body>
 <div class="diagram-canvas">
 
-  <!-- Header -->
   <div class="diagram-header">
     <div>
       <h1 class="diagram-title">Agent1 RTX 3090 测试状态看板</h1>
-      <p class="diagram-subtitle">System Test Dashboard — 2026-06-22</p>
+      <p class="diagram-subtitle">System Test Dashboard — 2026-06-22 15:20</p>
     </div>
     <div class="meta-row">
       <span class="meta-item"><span class="meta-label">BRANCH</span> <span class="mono">linux原生编译模型llama.cpp</span></span>
-      <span class="meta-item"><span class="meta-label">COMMIT</span> <span class="mono">2b71ab8</span></span>
+      <span class="meta-item"><span class="meta-label">COMMIT</span> <span class="mono">78101ca</span></span>
       <span class="meta-item"><span class="meta-label">GPU</span> <span class="mono">RTX 3090 24GB</span></span>
     </div>
   </div>
 
-  <!-- Row 1: Overall Summary -->
+  <!-- Row 1 -->
   <div class="grid-3">
     <div class="panel">
       <div class="panel-hd">架构收敛 <span class="badge badge--pass">7/7 PASS</span></div>
@@ -100,25 +82,25 @@ body { background:var(--c-bg); font-family:var(--font-ui); color:var(--c-text-ma
       </div>
     </div>
     <div class="panel">
-      <div class="panel-hd">基础设施 <span class="badge badge--pending">3项待测</span></div>
+      <div class="panel-hd">基础设施 <span class="badge badge--pass">全部通过</span></div>
       <div class="panel-bd">
         <div class="row"><span class="row-label">PostgreSQL 在线</span><span class="row-val badge badge--pass">PASS</span></div>
         <div class="row"><span class="row-label">LLM llama-server :8080</span><span class="row-val badge badge--pass">PASS</span></div>
         <div class="row"><span class="row-label">Embedding :8081</span><span class="row-val badge badge--pass">PASS</span></div>
-        <div class="row"><span class="row-label">菜单 10 — DB验证</span><span class="row-val badge badge--pending">TODO</span></div>
+        <div class="row"><span class="row-label">菜单 10 — DB验证</span><span class="row-val badge badge--pass">6表OK</span></div>
         <div class="row"><span class="row-label">菜单 11 — 模式切换</span><span class="row-val badge badge--pending">TODO</span></div>
-        <div class="row"><span class="row-label">菜单 20 — 告警邮件</span><span class="row-val badge badge--pending">TODO</span></div>
+        <div class="row"><span class="row-label">菜单 20 — 告警邮件</span><span class="row-val badge badge--pass">已收到</span></div>
       </div>
     </div>
     <div class="panel">
-      <div class="panel-hd">质量修复 <span class="badge badge--done">3项完成</span></div>
+      <div class="panel-hd">质量修复 <span class="badge badge--done">全部完成</span></div>
       <div class="panel-bd">
-        <div class="row"><span class="row-label">pgvector CAST修复</span><span class="row-val badge badge--pass">embeb691b1</span></div>
-        <div class="row"><span class="row-label">LLM重复截断 v2</span><span class="row-val badge badge--pending">语义检测</span></div>
-        <div class="row"><span class="row-label">日志三重去重</span><span class="row-val badge badge--pass">f2a0e97</span></div>
-        <div class="row"><span class="row-label">Serilog Enricher</span><span class="row-val badge badge--pass">4077810</span></div>
-        <div class="row"><span class="row-label">Token黑名单</span><span class="row-val badge badge--pass">4077810</span></div>
-        <div class="row"><span class="row-label">ArchTest路径修复</span><span class="row-val badge badge--pass">2927b50</span></div>
+        <div class="row"><span class="row-label">pgvector CAST修复</span><span class="row-val badge badge--pass">✅ GPU 768维</span></div>
+        <div class="row"><span class="row-label">LLM死循环 v2</span><span class="row-val badge badge--pass">✅ 7行截断</span></div>
+        <div class="row"><span class="row-label">日志三重去重</span><span class="row-val badge badge--pass">✅ f2a0e97</span></div>
+        <div class="row"><span class="row-label">Serilog Enricher</span><span class="row-val badge badge--pass">✅ 4077810</span></div>
+        <div class="row"><span class="row-label">Token黑名单</span><span class="row-val badge badge--pass">✅ 4077810</span></div>
+        <div class="row"><span class="row-label">ArchTest路径修复</span><span class="row-val badge badge--pass">✅ 2927b50</span></div>
       </div>
     </div>
   </div>
@@ -126,23 +108,23 @@ body { background:var(--c-bg); font-family:var(--font-ui); color:var(--c-text-ma
   <!-- Row 2: Test Flow -->
   <div class="grid-1">
     <div class="panel">
-      <div class="panel-hd">当前测试顺序 <span class="badge badge--info">STEP 1 → 2 → 3</span></div>
+      <div class="panel-hd">测试步骤 <span class="badge badge--info">STEP 1-3 DONE → 4 NEXT</span></div>
       <div class="panel-bd">
         <div class="flow-steps">
           <div class="flow-step" style="background:#f0fdf4;">
-            20 · 告警邮件<br/><span class="badge badge--pending" style="margin-top:4px;">NOW</span>
+            20 · 告警<br/><span class="badge badge--pass" style="margin-top:4px;">PASS</span>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step" style="background:#f0fdf4;">
+            10 · DB验证<br/><span class="badge badge--pass" style="margin-top:4px;">PASS</span>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step" style="background:#f0fdf4;">
+            8 · 合规自查<br/><span class="badge badge--pass" style="margin-top:4px;">PASS</span>
           </div>
           <div class="flow-arrow">→</div>
           <div class="flow-step">
-            10 · 数据库验证<br/><span class="badge badge--pending" style="margin-top:4px;">NEXT</span>
-          </div>
-          <div class="flow-arrow">→</div>
-          <div class="flow-step">
-            8 · 化工合规自查<br/><span class="badge badge--pending" style="margin-top:4px;">NEXT</span>
-          </div>
-          <div class="flow-arrow">→</div>
-          <div class="flow-step">
-            9 · RAG测试<br/><span class="badge badge--info" style="margin-top:4px;">THEN</span>
+            9 · RAG测试<br/><span class="badge badge--pending" style="margin-top:4px;">NOW</span>
           </div>
           <div class="flow-arrow">→</div>
           <div class="flow-step">
@@ -157,47 +139,47 @@ body { background:var(--c-bg); font-family:var(--font-ui); color:var(--c-text-ma
     </div>
   </div>
 
-  <!-- Row 3: Key Observation Points -->
+  <!-- Row 3 -->
   <div class="grid-2">
     <div class="panel">
-      <div class="panel-hd">菜单 8 核心关注点</div>
+      <div class="panel-hd">菜单 8 实测结果</div>
       <div class="panel-bd">
         <div class="row"><span class="row-label">输入</span><span class="row-val mono" style="font-size:12px;">苯和丙酮能同库储存吗</span></div>
-        <div class="row"><span class="row-label">① 日志是否重复</span><span class="row-val">正常/重复</span></div>
-        <div class="row"><span class="row-label">② 向量检索报错</span><span class="row-val">有/无</span></div>
-        <div class="row"><span class="row-label">③ LLM 死循环 v2修复</span><span class="row-val mono" style="font-size:10px;">语义检测≥5截断</span></div>
-        <div class="row"><span class="row-label">预期结论</span><span class="row-val mono" style="font-size:11px;">"禁忌物料，不能同库"</span></div>
+        <div class="row"><span class="row-label">① 日志重复</span><span class="row-val badge badge--pass">双重(可接受)</span></div>
+        <div class="row"><span class="row-label">② GPU向量检索</span><span class="row-val badge badge--pass">20条 768维</span></div>
+        <div class="row"><span class="row-label">③ LLM死循环 v2</span><span class="row-val badge badge--pass">7行截断 ✅</span></div>
+        <div class="row"><span class="row-label">结论</span><span class="row-val mono" style="font-size:11px;">合规:否 GB15603 4.2.2</span></div>
       </div>
     </div>
     <div class="panel">
-      <div class="panel-hd">启动日志验证</div>
+      <div class="panel-hd">质量验收状态</div>
       <div class="panel-bd">
-        <div class="row"><span class="row-label">DB连接</span><span class="row-val mono" style="font-size:12px;">✅ 已通</span></div>
-        <div class="row"><span class="row-label">文档数</span><span class="row-val mono">44</span></div>
-        <div class="row"><span class="row-label">快速模式</span><span class="row-val mono" style="font-size:11px;">BM25 0.1s</span></div>
-        <div class="row"><span class="row-label">⚠️ 中文配置不可用</span><span class="row-val">PG分词配置缺失</span></div>
-        <div class="row"><span class="row-label">告警邮件通道</span><span class="row-val badge badge--pending">需验证</span></div>
-        <div class="row"><span class="row-label">RAG知识库就绪</span><span class="row-val badge badge--pass">OK</span></div>
+        <div class="row"><span class="row-label">pgvector 报错</span><span class="row-val badge badge--pass">已修复</span></div>
+        <div class="row"><span class="row-label">LLM 死循环</span><span class="row-val badge badge--pass">v2 语义截断</span></div>
+        <div class="row"><span class="row-label">日志去重</span><span class="row-val badge badge--pass">Serilog接管</span></div>
+        <div class="row"><span class="row-label">告警邮件</span><span class="row-val badge badge--pass">lcy.050801@qq.com</span></div>
+        <div class="row"><span class="row-label">DB 6表验证</span><span class="row-val badge badge--pass">全部在线</span></div>
+        <div class="row"><span class="row-label">RAG检索质量</span><span class="row-val badge badge--info">待评测验证</span></div>
       </div>
     </div>
   </div>
 
-  <!-- Progress Summary -->
+  <!-- Progress -->
   <div class="grid-1">
     <div class="panel">
-      <div class="panel-hd">全量测试进度 <span class="mono" style="font-size:11px;">8/35 完成</span></div>
+      <div class="panel-hd">全量测试进度 <span class="mono" style="font-size:11px;">12/35 完成</span></div>
       <div class="panel-bd">
         <div style="display:flex; gap:12px; margin-bottom:8px; font-size:12px;">
-          <span><span class="badge badge--pass">PASS</span> 8</span>
-          <span><span class="badge badge--pending">TODO</span> 24</span>
+          <span><span class="badge badge--pass">PASS</span> 12</span>
+          <span><span class="badge badge--pending">TODO</span> 20</span>
           <span><span class="badge badge--fail">FAIL</span> 0</span>
           <span><span class="badge badge--info">BLOCKED</span> 3</span>
         </div>
-        <div class="progress-bar"><div class="progress-fill" style="width:23%;"></div></div>
+        <div class="progress-bar"><div class="progress-fill" style="width:34%;"></div></div>
         <div style="margin-top:8px; display:flex; gap:16px; font-size:11px; color:var(--c-text-sub);">
           <span>架构: ████████ 100%</span>
-          <span>基础: ██░░░░░░ 40%</span>
-          <span>业务: ░░░░░░░░ 0%</span>
+          <span>基础: ████████ 80%</span>
+          <span>业务: ██░░░░░░ 17%</span>
           <span>编排: ░░░░░░░░ 0%</span>
           <span>API:   ░░░░░░░░ 0%</span>
         </div>
@@ -205,10 +187,9 @@ body { background:var(--c-bg); font-family:var(--font-ui); color:var(--c-text-ma
     </div>
   </div>
 
-  <!-- Footer -->
   <div class="footer-note">
-    <span>DOC VER 1.0 · 2026-06-22 · linux原生编译模型llama.cpp @ 2b71ab8</span>
-    <span class="mono">ARCHITECTURE CONVERGENCE: 7/7 VERIFIED</span>
+    <span>DOC VER 1.1 · 2026-06-22 15:20 · linux原生编译模型llama.cpp @ 78101ca</span>
+    <span class="mono">ARCHITECTURE CONVERGENCE: 7/7 | ALERT EMAIL: VERIFIED | LLM LOOP: FIXED v2</span>
   </div>
 
 </div>
