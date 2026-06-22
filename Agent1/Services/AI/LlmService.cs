@@ -96,9 +96,9 @@ namespace Agent1.Services
             bool isInThinkBlock = false;
             string buffer = "";
             int bufferFlushThreshold = 50;
-            string lastFlushedLine = "";      // P0 FIX: 重复检测
-            int repeatCount = 0;               // P0 FIX: 重复计数器
-            const int MaxRepeatAllowed = 3;    // P0 FIX: 同一行重复超过3次则截断
+            int semanticRepeatCount = 0;         // P0 FIX v2: 语义标记重复计数
+            const int MaxSemanticRepeat = 5;      // P0 FIX v2: "是否合规"出现超过5次则截断
+            int totalOutputLines = 0;             // P0 FIX v2: 输出行数（辅助判断）
 
             // Phase 2a: 模型感知的 think 标签过滤 — 仅 DeepSeek-R1 需要
             bool filterThinkTags = ShouldFilterThinkTags();
@@ -175,21 +175,19 @@ namespace Agent1.Services
                         string cleaned = CleanChunk(buffer);
                         if (!string.IsNullOrWhiteSpace(cleaned))
                         {
-                            // P0 FIX: 检测 LLM 死循环重复输出
-                            if (cleaned == lastFlushedLine)
+                            // P0 FIX v2: 语义标记匹配检测 LLM 死循环
+                            // Qwen3-8B 流式输出易陷入"是否合规:否 法规依据:..."的无限循环
+                            // 每行句式略有差异但语义相同，用标记词计数替代严格行匹配
+                            if (cleaned.Contains("是否合规"))
+                                semanticRepeatCount++;
+                            totalOutputLines++;
+
+                            if (semanticRepeatCount > MaxSemanticRepeat && totalOutputLines > MaxSemanticRepeat * 2)
                             {
-                                repeatCount++;
-                                if (repeatCount >= MaxRepeatAllowed)
-                                {
-                                    Console.WriteLine($"\n   ⚠️ [截断] 检测到重复输出，已停止流式接收");
-                                    break; // 跳出 foreach 流循环
-                                }
+                                Console.WriteLine($"\n   ⚠️ [截断] 检测到语义重复({semanticRepeatCount}次合规语句)，停止流式接收");
+                                break;
                             }
-                            else
-                            {
-                                repeatCount = 0;
-                                lastFlushedLine = cleaned;
-                            }
+
                             result.Append(cleaned);
                             Console.Write(cleaned);
                         }
