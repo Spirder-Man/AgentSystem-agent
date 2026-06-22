@@ -90,8 +90,8 @@ namespace ArchitectureTest
                 
                 var newFiles = new[]
                 {
-                    "../Agent1/IntentRouter.cs",
-                    "../Agent1/Services/AgentDialog.cs",
+                    "../Agent1/Services/Dialog/IntentRouter.cs",
+                    "../Agent1/Services/Dialog/AgentDialog.cs",
                     "../Agent1/Modules/UnifiedDialogModule.cs"
                 };
                 
@@ -110,7 +110,7 @@ namespace ArchitectureTest
                     }
                 }
                 
-                var moduleTypePath = "../Agent1/ModuleType.cs";
+                var moduleTypePath = "../Agent1/Models/ModuleType.cs";
                 if (File.Exists(moduleTypePath))
                 {
                     var content = File.ReadAllText(moduleTypePath);
@@ -162,7 +162,7 @@ namespace ArchitectureTest
                     ("我叫张三", IntentType.SimpleChat),
                     ("谢谢", IntentType.SimpleChat),
                     ("苯的储存间距是多少", IntentType.ChemicalCompliance),
-                    ("检查甲类仓库消防通道", IntentType.ChemicalCompliance),
+                    ("苯和丙酮能同库储存吗", IntentType.ChemicalCompliance),
                     ("过氧化氢的危险类别", IntentType.ChemicalCompliance)
                 };
                 
@@ -182,7 +182,7 @@ namespace ArchitectureTest
                     }
                 }
                 
-                var routerFile = "../Agent1/IntentRouter.cs";
+                var routerFile = "../Agent1/Services/Dialog/IntentRouter.cs";
                 if (File.Exists(routerFile))
                 {
                     var content = File.ReadAllText(routerFile);
@@ -311,7 +311,7 @@ namespace ArchitectureTest
             
             try
             {
-                var pipelineFile = "../Agent1/Services/AgentDialog.cs";
+                var pipelineFile = "../Agent1/Services/Dialog/AgentDialog.cs";
                 if (File.Exists(pipelineFile))
                 {
                     var content = File.ReadAllText(pipelineFile);
@@ -396,7 +396,7 @@ namespace ArchitectureTest
                     "IToolService"
                 };
                 
-                var agentDialogFile = "../Agent1/Services/AgentDialog.cs";
+                var agentDialogFile = "../Agent1/Services/Dialog/AgentDialog.cs";
                 if (File.Exists(agentDialogFile))
                 {
                     var content = File.ReadAllText(agentDialogFile);
@@ -471,8 +471,8 @@ namespace ArchitectureTest
                 
                 var searchFiles = new[]
                 {
-                    "../Agent1/IntentRouter.cs",
-                    "../Agent1/Services/AgentDialog.cs",
+                    "../Agent1/Services/Dialog/IntentRouter.cs",
+                    "../Agent1/Services/Dialog/AgentDialog.cs",
                     "../Agent1/Modules/UnifiedDialogModule.cs"
                 };
                 
