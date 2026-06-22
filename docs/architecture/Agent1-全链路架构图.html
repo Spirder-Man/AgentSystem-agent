@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Agent1 一条请求的全链路架构图</title>
+<style>
+:root {
+  --c-bg: #f8fafc; --c-canvas: #ffffff; --c-border: #cbd5e1;
+  --c-text: #0f172a; --c-sub: #64748b; --c-accent: #0f172a;
+  --c-r: #dc2626; --c-g: #16a34a; --c-a: #d97706; --c-b: #2563eb;
+  --font: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'SF Mono', Monaco, Consolas, monospace;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--c-bg); font-family:var(--font); color:var(--c-text); padding:24px; }
+.canvas { background:var(--c-canvas); border:2px solid var(--c-border); padding:24px 28px; max-width:1200px; margin:0 auto; }
+.hd { border-bottom:1px solid var(--c-border); padding-bottom:10px; margin-bottom:18px; display:flex; justify-content:space-between; }
+.hd h1 { font-size:20px; font-weight:600; }
+.hd p { font-size:11px; color:var(--c-sub); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px; }
+
+.flow { display:flex; align-items:stretch; gap:0; margin-bottom:20px; }
+.flow-box { flex:1; border:1px solid var(--c-border); padding:12px 14px; position:relative; }
+.flow-box h3 { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; color:var(--c-sub); }
+.flow-box .file { font-family:var(--mono); font-size:10px; color:var(--c-text); background:#f1f5f9; padding:2px 6px; display:inline-block; margin-bottom:8px; }
+.flow-box .step { font-size:11px; padding:3px 0; border-bottom:1px solid #f1f5f9; }
+.flow-box .step:last-child { border-bottom:none; }
+.flow-box .step .tag { font-family:var(--mono); font-size:9px; border:1px solid var(--c-text); padding:1px 5px; display:inline-block; margin-right:4px; }
+.arrow { display:flex; align-items:center; padding:0 2px; font-size:18px; color:var(--c-sub); }
+.arrow-v { text-align:center; color:var(--c-sub); font-size:14px; padding:4px 0; }
+
+.detail { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
+.box { border:1px solid var(--c-border); }
+.box-hd { padding:8px 14px; border-bottom:1px solid var(--c-border); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; display:flex; justify-content:space-between; }
+.box-bd { padding:10px 14px; font-size:12px; line-height:1.6; }
+.box-bd .em { color:var(--c-r); font-weight:600; }
+.box-bd .ok { color:var(--c-g); font-weight:600; }
+.mono { font-family:var(--mono); font-size:11px; }
+
+.bug { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:20px; }
+.bug-box { border:1px solid var(--c-border); padding:12px 14px; }
+.bug-box h4 { font-size:12px; margin-bottom:4px; display:flex; align-items:center; gap:6px; }
+.bug-box h4 .bg { font-size:10px; padding:1px 6px; border:1px solid; }
+.bug-box p { font-size:11px; color:var(--c-sub); line-height:1.5; }
+.bg-r { color:var(--c-r); border-color:var(--c-r); }
+.bg-a { color:var(--c-a); border-color:var(--c-a); }
+.bg-b { color:var(--c-b); border-color:var(--c-b); }
+
+.ft { font-size:10px; color:var(--c-sub); border-top:1px solid var(--c-border); padding-top:10px; margin-top:16px; display:flex; justify-content:space-between; }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+<div class="hd">
+  <div>
+    <h1>Agent1 一条请求的全链路架构</h1>
+    <p>TRACE: 菜单 8 → "苯和丙酮能同库储存吗" → 合规结论</p>
+  </div>
+  <div style="text-align:right;font-size:11px;color:var(--c-sub);">
+    <span class="mono">Linux RTX 3090 · .NET 8 · Qwen3-8B Q4_K_M</span>
+  </div>
+</div>
+
+<!-- FLOW -->
+<div class="flow">
+  <div class="flow-box">
+    <h3>① 入口调度</h3>
+    <div class="file">Program.cs · MenuCommands.cs</div>
+    <div class="step"><span class="tag">DI</span> 30+ 单例注册 (Lazy&lt;T&gt; 破循环依赖)</div>
+    <div class="step"><span class="tag">CMD</span> 字典 commands["8"] → ComplianceCheckCommand</div>
+    <div class="step"><span class="tag">FAC</span> ModuleFactory.CreateModule(ComplianceCheck)</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="flow-box">
+    <h3>② 6步流水线</h3>
+    <div class="file">AgentDialog.cs</div>
+    <div class="step"><span class="tag">P1</span> PreprocessAsync: 输入 trim</div>
+    <div class="step"><span class="tag">P2</span> RouteIntent: 关键词→ChemicalCompliance</div>
+    <div class="step"><span class="tag">P3</span> LoadContext: 短期记忆+会话历史+领域事实</div>
+    <div class="step"><span class="tag">P4</span> ExecuteBusiness: SK Auto FC</div>
+    <div class="step"><span class="tag">P5</span> SaveSession: 持久化对话</div>
+    <div class="step"><span class="tag">P6</span> FormatOutput: 最终输出</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="flow-box">
+    <h3>③ LLM 推理</h3>
+    <div class="file">LlmService.cs (.NET SK)</div>
+    <div class="step"><span class="tag">SK</span> InvokePromptStreamingAsync</div>
+    <div class="step"><span class="tag">FC</span> FunctionChoiceBehavior.Required()</div>
+    <div class="step"><span class="tag">HTTP</span> → llama-server :8080 (Qwen3-8B)</div>
+    <div class="step"><span class="tag">BUF</span> 流式缓冲+语义重复检测 v2</div>
+    <div class="step"><span class="tag">DIAG</span> FunctionCallDiagnosticsFilter</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="flow-box">
+    <h3>④ 工具执行</h3>
+    <div class="file">ChemicalComplianceTools.cs</div>
+    <div class="step"><span class="tag">KFN</span> [KernelFunction] CheckStorageCompatibility</div>
+    <div class="step"><span class="tag">CTX</span> Lazy&lt;T&gt;.Value 首次触发</div>
+    <div class="step"><span class="tag">RAG</span> → HybridKnowledgeBaseService</div>
+    <div class="step"><span class="tag">FALL</span> 硬编码字典兜底</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="flow-box">
+    <h3>⑤ RAG 检索</h3>
+    <div class="file">HybridKnowledgeBaseService.cs</div>
+    <div class="step"><span class="tag">BM25</span> 本地倒排索引 → 20条</div>
+    <div class="step"><span class="tag">VEC</span> GPU向量 HTTP :8081 → 768维</div>
+    <div class="step"><span class="tag">RRF</span> 1/(60+b25Rank)+1/(60+vecRank)</div>
+    <div class="step"><span class="tag">PRI</span> 法规类型优先级重排序</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="flow-box">
+    <h3>⑥ 输出+记忆</h3>
+    <div class="file">MemoryCoordinator.cs · AuditService.cs</div>
+    <div class="step"><span class="tag">MEM</span> PostInference: 短期+长期记忆</div>
+    <div class="step"><span class="tag">AUDIT</span> SHA256 哈希链审计日志</div>
+    <div class="step"><span class="tag">CACHE</span> ResponseCache.Set(5min TTL)</div>
+  </div>
+</div>
+
+<!-- DATA FLOW -->
+<div class="detail">
+  <div class="box">
+    <div class="box-hd">数据流向 <span class="mono" style="font-size:10px;">一条请求经过的存储层</span></div>
+    <div class="box-bd">
+      <span class="mono">Console.ReadLine()</span><br/>
+      → <span class="mono">MemoryService (ConcurrentDictionary&lt;sessionId&gt;)</span><br/>
+      → <span class="mono">SessionService (历史对话)</span><br/>
+      → <span class="mono">LlmService → HTTP llama-server :8080 (GPU)</span><br/>
+      → <span class="mono">ChemicalComplianceTools → RAG</span><br/>
+      → <span class="mono">HybridKB: BM25(内存) + Vector(HTTP :8081→PG→内存)</span><br/>
+      → <span class="mono">MemoryCoordinator → PostgreSQL pgvector (长期记忆)</span><br/>
+      → <span class="mono">AuditService → PostgreSQL audit_logs (SHA256链)</span><br/>
+      → <span class="mono">ResponseCacheService (ConcurrentDictionary, 5min TTL)</span>
+    </div>
+  </div>
+  <div class="box">
+    <div class="box-hd">关键设计决策 <span class="mono" style="font-size:10px;">为什么这么写</span></div>
+    <div class="box-bd">
+      <span class="mono">Lazy&lt;T&gt;</span> — LlmService ↔ HybridKBService 互锁，延迟解析破循环<br/>
+      <span class="mono">FunctionChoiceBehavior.Required()</span> — 强制 LLM 调工具，但有框架Bug<br/>
+      <span class="mono">BM25+Vector RRF 融合</span> — 关键词精度 + 语义召回的工程折中<br/>
+      <span class="mono">GPU向量=全量加载+暴力余弦</span> — 简单可靠，牺牲延迟换可维护性<br/>
+      <span class="mono">硬编码字典兜底</span> — RAG 失败时的最后防线（评测中多次触发）<br/>
+      <span class="mono">语义重复检测 v2</span> — "是否合规"计数≥5截断，替代严格行匹配
+    </div>
+  </div>
+</div>
+
+<!-- BUGS -->
+<div class="bug">
+  <div class="bug-box">
+    <h4><span class="bg bg-r">BUG 1</span> 结论验证器格式匹配 Bug</h4>
+    <p>LLM 输出"是否合规: 否"但验证器期望"【合规判断】否"，正则匹配失败 → 危险类别 <span class="em">0/15</span>、安全距离 <span class="em">0/8</span> 全部误判为错误</p>
+    <p class="mono" style="margin-top:4px;">文件: ConclusionVerifier.cs</p>
+  </div>
+  <div class="bug-box">
+    <h4><span class="bg bg-a">BUG 2</span> SK Function Calling JSON 解析失败</h4>
+    <p>Qwen3-8B Q4_K_M 量化损失 + llama.cpp OpenAI 兼容层不完整 → <span class="em">13%</span> 的 tool_calls JSON 格式异常 → SK 解析失败 → 评测"未触发工具"</p>
+    <p class="mono" style="margin-top:4px;">文件: LlmService.cs · ChemicalComplianceTools.cs</p>
+  </div>
+  <div class="bug-box">
+    <h4><span class="bg bg-b">BUG 3</span> GPU 向量检索逐条全量加载</h4>
+    <p>每条查询从 PG 加载全部文档到内存做余弦计算 → <span class="em">579ms</span>/条。不是 GPU 未工作，是架构设计为"先正确后性能"，未做批量/缓存优化</p>
+    <p class="mono" style="margin-top:4px;">文件: HybridKnowledgeBaseService.cs L454 · DatabaseService.cs L631</p>
+  </div>
+</div>
+
+<div class="ft">
+  <span>AGENT1 ARCHITECTURE TRACE · 2026-06-22 · linux原生编译模型llama.cpp</span>
+  <span class="mono">7 LAYERS · 30+ SERVICES · 3 KNOWN BUGS</span>
+</div>
+
+</div>
+</body>
+</html>
