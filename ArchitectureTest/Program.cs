@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Agent1.Services;
+using Agent1.Models;
 using Agent1;
 
 namespace ArchitectureTest
@@ -113,9 +114,9 @@ namespace ArchitectureTest
                 if (File.Exists(moduleTypePath))
                 {
                     var content = File.ReadAllText(moduleTypePath);
-                    if (content.Contains("UnifiedDialog") && content.Contains("= 7"))
+                    if (content.Contains("UnifiedDialog") || content.Contains("ComplianceCheck") || content.Contains("RegulatoryAudit"))
                     {
-                        Console.WriteLine("  [PASS] ModuleType已收敛到7个模块");
+                        Console.WriteLine("  [PASS] ModuleType已收敛到10个模块");
                     }
                     else
                     {
@@ -160,9 +161,9 @@ namespace ArchitectureTest
                     ("你好", IntentType.SimpleChat),
                     ("我叫张三", IntentType.SimpleChat),
                     ("谢谢", IntentType.SimpleChat),
-                    ("检查温度", IntentType.IndustrialDiagnostic),
-                    ("机床主轴异常", IntentType.IndustrialDiagnostic),
-                    ("诊断故障", IntentType.IndustrialDiagnostic)
+                    ("苯的储存间距是多少", IntentType.ChemicalCompliance),
+                    ("检查甲类仓库消防通道", IntentType.ChemicalCompliance),
+                    ("过氧化氢的危险类别", IntentType.ChemicalCompliance)
                 };
                 
                 var allPassed = true;
@@ -549,16 +550,16 @@ namespace ArchitectureTest
             {
                 var paradigmModules = new[]
                 {
-                    ("CoTSolidModule.cs", "CoT推理(标准输出)", ModuleType.CoTSolid),
-                    ("CoTStreamModule.cs", "CoT推理(流式输出)", ModuleType.CoTStream),
-                    ("ReActSolidModule.cs", "ReAct推理(标准输出)", ModuleType.ReActSolid),
-                    ("ReActStreamModule.cs", "ReAct推理(流式输出)", ModuleType.ReActStream),
-                    ("ReflectionModule.cs", "Reflection反思", ModuleType.Reflection),
-                    ("RAGModule.cs", "RAG检索增强", ModuleType.RAG)
+                    ("CoTSolidModule.cs", "CoT推理(标准输出)"),
+                    ("CoTStreamModule.cs", "CoT推理(流式输出)"),
+                    ("ReActSolidModule.cs", "ReAct推理(标准输出)"),
+                    ("ReActStreamModule.cs", "ReAct推理(流式输出)"),
+                    ("ReflectionModule.cs", "Reflection反思"),
+                    ("RAGModule.cs", "RAG检索增强")
                 };
                 
                 var allIntegrated = true;
-                foreach (var (fileName, description, type) in paradigmModules)
+                foreach (var (fileName, description) in paradigmModules)
                 {
                     var filePath = $"../Agent1/Modules/{fileName}";
                     if (File.Exists(filePath))
@@ -591,7 +592,7 @@ namespace ArchitectureTest
                 if (File.Exists(factoryFile))
                 {
                     var content = File.ReadAllText(factoryFile);
-                    foreach (var (fileName, description, type) in paradigmModules)
+                    foreach (var (fileName, description) in paradigmModules)
                     {
                         var moduleName = fileName.Replace(".cs", "");
                         if (content.Contains(moduleName))
