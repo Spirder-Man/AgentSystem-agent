@@ -217,12 +217,14 @@ namespace Agent1
             // 【业务维度】化工合规 Agent 运行一次完整的合规检查可能输出数千行推理过程，
             //   终端缓冲区根本无法容纳，文件日志是唯一可靠的完整记录来源。
             // ================================================================
-            var logDir = "logs";
-            if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
-            var fullLogPath = Path.Combine(logDir, $"full-{DateTime.Now:yyyyMMdd}.log");
-            var fileWriter = new StreamWriter(fullLogPath, append: true) { AutoFlush = true };
-            Console.SetOut(new ConsoleTeeWriter(Console.Out, fileWriter));
-            Console.WriteLine($"📝 诊断日志双写已启用 → {fullLogPath}");
+            // P2 FIX: 诊断日志双写已冗余 — Serilog FileSink (Enricher + retainedFileCountLimit) 替代手写 ConsoleTeeWriter
+            // ConsoleTeeWriter 保留代码但注释使用，避免与 Serilog ConsoleSink + FileSink 三重输出
+            // var logDir = "logs";
+            // if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
+            // var fullLogPath = Path.Combine(logDir, $"full-{DateTime.Now:yyyyMMdd}.log");
+            // var fileWriter = new StreamWriter(fullLogPath, append: true) { AutoFlush = true };
+            // Console.SetOut(new ConsoleTeeWriter(Console.Out, fileWriter));
+            // Console.WriteLine($"📝 诊断日志双写已启用 → {fullLogPath}");
 
             // ================================================================
             // 日志桥接：Serilog → Microsoft.Extensions.Logging

@@ -96,6 +96,9 @@ namespace Agent1.Services
             bool isInThinkBlock = false;
             string buffer = "";
             int bufferFlushThreshold = 50;
+            string lastFlushedLine = "";      // P0 FIX: 重复检测
+            int repeatCount = 0;               // P0 FIX: 重复计数器
+            const int MaxRepeatAllowed = 3;    // P0 FIX: 同一行重复超过3次则截断
 
             // Phase 2a: 模型感知的 think 标签过滤 — 仅 DeepSeek-R1 需要
             bool filterThinkTags = ShouldFilterThinkTags();
@@ -172,6 +175,21 @@ namespace Agent1.Services
                         string cleaned = CleanChunk(buffer);
                         if (!string.IsNullOrWhiteSpace(cleaned))
                         {
+                            // P0 FIX: 检测 LLM 死循环重复输出
+                            if (cleaned == lastFlushedLine)
+                            {
+                                repeatCount++;
+                                if (repeatCount >= MaxRepeatAllowed)
+                                {
+                                    Console.WriteLine($"\n   ⚠️ [截断] 检测到重复输出，已停止流式接收");
+                                    break; // 跳出 foreach 流循环
+                                }
+                            }
+                            else
+                            {
+                                repeatCount = 0;
+                                lastFlushedLine = cleaned;
+                            }
                             result.Append(cleaned);
                             Console.Write(cleaned);
                         }

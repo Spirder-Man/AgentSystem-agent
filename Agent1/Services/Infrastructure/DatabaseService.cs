@@ -635,8 +635,9 @@ namespace Agent1.Services
             {
                 using var connection = CreateConnection();
                 await connection.OpenAsync();
+                // P0 FIX: pgvector 类型需显式 CAST 为 TEXT，避免 "public.vector not supported" 错误
                 using var command = new NpgsqlCommand(
-                    @"SELECT id, content, embedding, regulation_type, priority, source_file, chemical_type
+                    @"SELECT id, content, embedding::TEXT, regulation_type, priority, source_file, chemical_type
                       FROM chemical_documents
                       WHERE embedding IS NOT NULL
                       ORDER BY id;",
