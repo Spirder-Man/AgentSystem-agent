@@ -2,10 +2,10 @@
 
 基于 .NET 8 + Semantic Kernel + **llama.cpp 原生编译**构建的企业级化工园区危化品合规审查 AI Agent。
 
-支持 19 个控制台菜单、10 个 ModuleType、REST API、JWT 认证、PostgreSQL+pgvector 混合检索、
+支持 19 个控制台菜单、12 个 ModuleType、REST API、JWT 认证、PostgreSQL+pgvector 混合检索、
 OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对 RTX 3090 24GB Linux 环境实现 RAG 全链路 GPU 加速**。
 
-> 整体完成度：~90% | 编译：0 错误 19 警告 | C# 文件：82 个 / 15,533 行
+> 整体完成度：~92% | 编译：0 错误 30 警告 | C# 文件：89 个 / ~17,000 行 | 测试：148 通过
 
 ## 功能全景
 
@@ -16,8 +16,9 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 │  知识库              │  BM25+Vector+RRF+增量更新        │
 │  化工业务模块        │  合规自查/工单/监管/应急/图谱     │
 │  基础设施            │  Sha256审计链/安全双防线/健康检查  │
+│  可观测性            │  PipelineMetrics/TraceId/事件溯源 │
 │  API 服务            │  JWT认证/限流/OTel/优雅关闭       │
-│  19 菜单 + 10 ModuleType — 全部实现 ✅                    │
+│  19 菜单 + 12 ModuleType — 全部实现 ✅                    │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -26,14 +27,17 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 ```
 ├── Agent1/                       # 核心类库
 │   ├── Models/                   # 数据模型
+│   │   ├── CliExecutionResult.cs      # 统一输出契约 (Success/Warnings/ToolCalls/Events)
+│   │   ├── PipelineMetrics.cs         # 6步流水线性能指标 (7步耗时+TraceId+业务指标)
+│   │   ├── PipelineEvent.cs           # 事件溯源单元 (EventId/TraceId/EventType)
 │   │   ├── ChemicalSubstanceModels.cs  # 化学品属性/法规版本/安全距离
 │   │   ├── EvalModels.cs         # 评测数据模型
 │   │   ├── DialogTypes.cs        # 对话类型
 │   │   ├── LongTermMemoryModels.cs     # 长期记忆模型
-│   │   └── ModuleType.cs         # 模块枚举 (10 个, 全部实现)
+│   │   └── ModuleType.cs         # 模块枚举 (12 个, 全部实现)
 │   ├── Commands/                 # [P2] 命令模式
 │   │   └── MenuCommands.cs       # IMenuCommand + 14 个命令类
-│   ├── Modules/                  # 推理模块 (12 个)
+│   ├── Modules/                  # 推理模块 (12 个, 全部继承 PipelineModuleBase)
 │   │   ├── CoTSolidModule.cs / CoTStreamModule.cs  # CoT 思维链
 │   │   ├── ReActSolidModule.cs / ReActStreamModule.cs  # ReAct 推理
 │   │   ├── ReflectionModule.cs   # 自我反思纠错
@@ -75,6 +79,11 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 │   │   ├── Infrastructure/       # 基础设施
 │   │   │   ├── DatabaseService.cs # PostgreSQL + pgvector
 │   │   │   ├── AuditService.cs    # 等保三级审计
+│   │   │   ├── IEventStore.cs     # 事件存储接口 (事件溯源)
+│   │   │   ├── InMemoryEventStore.cs    # 内存事件存储实现
+│   │   │   ├── PipelineModuleBase.cs    # 模块抽象基类 (6步流水线)
+│   │   │   ├── ModuleDispatcher.cs / ModuleFactory.cs
+│   │   │   ├── IInferenceModule.cs      # 推理模块接口
 │   │   │   ├── MetricsCollector.cs # Prometheus 指标
 │   │   │   └── SensitiveDataMasker.cs # 数据脱敏
 │   │   └── Eval/                 # 评测引擎
@@ -95,7 +104,7 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 │   │   ├── RequestIdMiddleware.cs          # 请求ID透传
 │   │   └── RequestMetricsMiddleware.cs     # 请求指标
 │   └── Program.cs                # API 启动（DI/Serilog/JWT/OTel/健康检查）
-├── Agent1.Tests/                 # xUnit 测试（133 tests）
+├── Agent1.Tests/                 # xUnit 测试（148 tests, 含架构收敛+熔断器验证）
 ├── Benchmark/                    # C# HTTP 压测工具
 ├── prometheus/                   # Prometheus 录制规则
 ├── grafana/                      # Grafana 仪表盘 JSON
@@ -370,7 +379,7 @@ Prometheus 录制规则位于 `prometheus/` 目录，Grafana 仪表盘 JSON 位�
 
 GitHub Actions 工作流（`.github/workflows/ci.yml`）：
 ```
-Push → Build (.NET 8) → Test (133 tests)
+Push → Restore → Build (.NET 8) → Test (148 tests) → Docker (仅main分支)
 ```
 
 ## 📁 文档结构
@@ -424,12 +433,22 @@ MIT License
 
 ---
 
-**文档版本**：v4.0  
-**最后更新**：2026年6月16日  
+**文档版本**：v4.1  
+**最后更新**：2026年6月23日  
 **分支**：`linux原生编译模型llama.cpp`  
-**状态**：P0-P2 全部清完 | 19 菜单全部实现 | 架构审查 8.6/10 | 可正式上线
+**状态**：P0-P2 全部清完 | 19 菜单全部实现 | 148测试全通过 | 结构化可观测性就绪
 
 ## 📋 近期更新
+
+### CLI 安全管道统一整改 + 结构化可观测性升级（2026-06-23）
+- **P0 安全加固**: AgentDialog 合规路径注入 SafetyGuardService 输入/输出双防线
+- **P0 审计追踪**: IntentRouter 添加 LastMatchedKeyword + Serilog 审计日志
+- **P1 架构收敛**: CliExecutionResult 统一输出契约 + PipelineModuleBase 抽象基类
+- **P1 枚举补全**: ModuleType 新增 EmergencyResponse(11) + KnowledgeGraph(12)
+- **P2 可观测性**: PipelineMetrics (7步耗时+TraceId+业务指标) + Serilog 结构化日志
+- **P2 事件溯源**: PipelineEvent record + IEventStore + ExecuteAsync 中 9 类事件记录
+- **测试**: 架构收敛测试(8项) + 熔断器验证测试(6项) — 新增 15 个测试
+- **改动**: 27 files, +1079/-152 lines | 编译 0 errors | 测试 148/148 通过
 
 ### P3 大工程 + 架构审查 + 生产加固（2026-06-16）
 - **应急响应模块**: `EmergencyResponseService` (302行) + `EmergencyResponseModule` (134行) — 对标 ERG 指南
@@ -481,5 +500,6 @@ MIT License
 - 50 条业务评测 + 三维度量化
 
 ### 编译状态
-✅ `dotnet build`：0 错误，19 警告（全部为既有的 nullable 引用类型警告）
-✅ `dotnet test`：133 通过，0 失败
+✅ `dotnet build`：0 错误，30 警告（全部为既有的 nullable 引用类型警告）
+✅ `dotnet test`：148 通过，0 失败
+✅ `dotnet run`：本地启动正常，安全拦截生效，PipelineMetrics 完整采集
