@@ -1,26 +1,28 @@
+using System.Threading.Tasks;
+using Agent1.Models;
+
 namespace Agent1.Services
 {
     /// <summary>
-    /// 推理模块接口
+    /// 推理模块接口 — 所有 CLI 功能模块的统一契约。
+    /// 
+    /// RunAsync:        原有入口，不返回结构化结果（向后兼容）
+    /// RunWithResultAsync: 新入口，返回 CliExecutionResult（含安全警告/审计记录/工具调用）
+    /// 
+    /// 化工安全系统要求每个模块的输出必须可审计、可追溯、可被下游消费。
     /// </summary>
     public interface IInferenceModule
     {
-        /// <summary>
-        /// 模块名称
-        /// </summary>
         string Name { get; }
-        /// <summary>
-        /// 模块描述
-        /// </summary>
         string Description { get; }
+
+        /// <summary>运行推理模块（向后兼容入口）</summary>
+        Task RunAsync();
+
         /// <summary>
-        /// 运行推理模块
+        /// 运行推理模块并返回结构化结果。
+        /// 子类可覆写以返回包含安全警告/审计记录/工具调用的完整结果。
         /// </summary>
-        /// <returns>异步任务</returns>
-        Task RunAsync();//异步运行推理模块
-        //这里的异步任务调用的是CoT类的RunCoT方法，Run方法中实现了思维链推理的逻辑；
-        //在RunCoT方法中，调用了LLM服务的GenerateAsync方法，生成了推理结果，就输出什么
-        //调用了ModuleDispatcher.cs中的ExecuteModuleAsync方法吗？是的
-        //在ExecuteModuleAsync方法中，调用了IInferenceModule接口的RunAsync方法，实现了模块的运行
+        Task<CliExecutionResult> RunWithResultAsync(string userInput);
     }
 }

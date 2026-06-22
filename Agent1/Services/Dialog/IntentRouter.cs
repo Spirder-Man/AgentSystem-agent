@@ -13,6 +13,9 @@ namespace Agent1.Services
 
     public static class IntentRouter
     {
+        /// <summary>最近一次路由决策匹配到的具体关键词（供审计追溯）</summary>
+        public static string? LastMatchedKeyword { get; private set; }
+
         // 合规关键词 — 覆盖化学品名称、危险属性、法规术语等典型查询特征
         private static readonly string[] ComplianceKeywords = new[]
         {
@@ -37,17 +40,36 @@ namespace Agent1.Services
             "刚才", "之前"
         };
 
+        /// <summary>
+        /// 路由用户输入到相应的意图处理逻辑。
+        /// 化工安全系统要求：每个路由决策必须可审计——记录匹配到的具体关键词。
+        /// </summary>
+        /// <param name="userInput">用户输入</param>
+        /// <returns>意图类型</returns>
         public static IntentType Route(string userInput)
         {
+            LastMatchedKeyword = null;
+
             if (string.IsNullOrWhiteSpace(userInput))
+            {
+                Serilog.Log.Information("[IntentRouter] 空输入 → SimpleChat");
                 return IntentType.SimpleChat;
+            }
 
             var lower = userInput.ToLower();
 
             // 合规优先匹配：只要命中任一合规关键词就判定为合规查询
-            if (ComplianceKeywords.Any(k => lower.Contains(k)))
+            var matchedKeyword = ComplianceKeywords.FirstOrDefault(k => lower.Contains(k));
+            if (matchedKeyword != null)
+            {
+                LastMatchedKeyword = matchedKeyword;
+                Serilog.Log.Information("[IntentRouter] 关键词 \"{Keyword}\" 命中 → ChemicalCompliance | 输入: {Input}",
+                    matchedKeyword, userInput.Truncate(80));
                 return IntentType.ChemicalCompliance;
+            }
 
+            Serilog.Log.Information("[IntentRouter] 无合规关键词命中 → SimpleChat | 输入: {Input}",
+                userInput.Truncate(80));
             return IntentType.SimpleChat;
         }
     }

@@ -11,9 +11,11 @@ namespace Agent1.Models
         RAG = 6,
         UnifiedDialog = 7,
         
-        // 新增化工园区专用类型
+        // 化工园区专用类型
         ComplianceCheck = 8,       // 日常合规自查
         TicketFollowup = 9,        // 整改工单跟进
-        RegulatoryAudit = 10       // 监管核查辅助
+        RegulatoryAudit = 10,      // 监管核查辅助
+        EmergencyResponse = 11,    // 应急响应方案
+        KnowledgeGraph = 12        // 知识图谱查询
     }
 }

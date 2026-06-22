@@ -516,14 +516,14 @@ namespace Agent1
                 ["9"] = new ChemicalRagTestCommand(chemicalRAG),
                 ["10"] = new DatabaseValidationCommand(databaseService),
                 ["11"] = new SwitchSearchModeCommand(),
-                ["12"] = new FunctionCallingDiagnosticsCommand(agentDialog, llmService),
+                ["12"] = new FunctionCallingDiagnosticsCommand(agentDialog),
                 ["13"] = new ComplianceEvalCommand(agentDialog, llmService, knowledgeBaseService),
                 ["14"] = new TicketFollowupCommand(moduleFactory),
                 ["15"] = new MultimodalCommand(),
                 ["16"] = new IncrementalKnowledgeBaseCommand(chemicalRAG),
                 ["17"] = new RegulatoryAuditCommand(moduleFactory),
-                ["18"] = new EmergencyResponseCommand(llmService, knowledgeBaseService, auditService, integrationService),
-                ["19"] = new KnowledgeGraphCommand(knowledgeBaseService),
+                ["18"] = new EmergencyResponseCommand(dispatcher),
+                ["19"] = new KnowledgeGraphCommand(dispatcher),
                 ["20"] = new TestAlertCommand(serviceProvider.GetRequiredService<AlertDispatcher>()),
             };
 

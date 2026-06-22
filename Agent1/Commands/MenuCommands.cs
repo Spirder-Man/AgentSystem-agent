@@ -173,14 +173,12 @@ namespace Agent1.Commands
     public class FunctionCallingDiagnosticsCommand : IMenuCommand
     {
         private readonly AgentDialog _agentDialog;
-        private readonly ILlmService _llmService;
         public string Key => "12";
         public string Label => "工具调用诊断验证 [Phase 2a]";
 
-        public FunctionCallingDiagnosticsCommand(AgentDialog agentDialog, ILlmService llmService)
+        public FunctionCallingDiagnosticsCommand(AgentDialog agentDialog)
         {
             _agentDialog = agentDialog;
-            _llmService = llmService;
         }
 
         public async Task ExecuteAsync()
@@ -205,11 +203,10 @@ namespace Agent1.Commands
                 Console.WriteLine($"\n━━━ {i + 1}/{tests.Length}: {t.desc} ━━━");
                 try
                 {
-                    await _agentDialog.ExecuteAsync(t.q, session);
-                    var llmSvc = _llmService as LlmService;
-                    if (llmSvc != null && llmSvc.LastFunctionCalls.Count > 0)
+                    var result = await _agentDialog.ExecuteAsync(t.q, session);
+                    if (result.ToolCalls.Count > 0)
                     {
-                        Console.WriteLine($"   ✅ {string.Join(", ", llmSvc.LastFunctionCalls.Select(fc => fc.FunctionName))}");
+                        Console.WriteLine($"   ✅ {string.Join(", ", result.ToolCalls.Select(fc => fc.FunctionName))}");
                         pass++;
                     }
                     else Console.WriteLine("   ❌ 未触发工具调用");
@@ -322,16 +319,15 @@ namespace Agent1.Commands
     /// <summary>[P3] 知识图谱查询 (选项 19)</summary>
     public class KnowledgeGraphCommand : IMenuCommand
     {
-        private readonly IKnowledgeBaseService _kb;
+        private readonly ModuleDispatcher _dispatcher;
         public string Key => "19";
         public string Label => "知识图谱 [化学品-法规-事故关联网]";
 
-        public KnowledgeGraphCommand(IKnowledgeBaseService kb) => _kb = kb;
+        public KnowledgeGraphCommand(ModuleDispatcher dispatcher) => _dispatcher = dispatcher;
 
         public async Task ExecuteAsync()
         {
-            var module = new KnowledgeGraphModule(_kb);
-            await module.RunAsync();
+            await _dispatcher.ExecuteModuleAsync(ModuleType.KnowledgeGraph);
         }
     }
 
@@ -353,22 +349,15 @@ namespace Agent1.Commands
     /// <summary>[P3] 应急响应方案 (选项 18)</summary>
     public class EmergencyResponseCommand : IMenuCommand
     {
-        private readonly ILlmService _llm;
-        private readonly IKnowledgeBaseService _kb;
-        private readonly IAuditService _audit;
-        private readonly IIntegrationService _integration;
+        private readonly ModuleDispatcher _dispatcher;
         public string Key => "18";
         public string Label => "应急响应方案 [泄漏/火灾/爆炸/中毒]";
 
-        public EmergencyResponseCommand(ILlmService llm, IKnowledgeBaseService kb, IAuditService audit, IIntegrationService integration)
-        {
-            _llm = llm; _kb = kb; _audit = audit; _integration = integration;
-        }
+        public EmergencyResponseCommand(ModuleDispatcher dispatcher) => _dispatcher = dispatcher;
 
         public async Task ExecuteAsync()
         {
-            var module = new EmergencyResponseModule(_llm, _kb, _audit, _integration);
-            await module.RunAsync();
+            await _dispatcher.ExecuteModuleAsync(ModuleType.EmergencyResponse);
         }
     }
 

@@ -1,5 +1,6 @@
 using System.Text;
 using Agent1.Services;
+using Agent1.Models;
 
 namespace Agent1.Modules
 {
@@ -10,6 +11,14 @@ namespace Agent1.Modules
     {
         public string Name => "化工合规自查";
         public string Description => "上传巡检内容，自动审核危化品合规性";
+
+        public Task<CliExecutionResult> RunWithResultAsync(string userInput)
+            => Task.FromResult(new CliExecutionResult
+            {
+                Success = true,
+                DisplayOutput = "化工合规自查模块仅支持交互式运行，请使用 RunAsync()",
+                AuditRecord = "交互模式"
+            });
 
         private readonly IKnowledgeBaseService _kbService;
         private readonly ILlmService _llmService;

@@ -1,5 +1,6 @@
 
 using Agent1.Services;
+using Agent1.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -193,7 +194,8 @@ namespace Agent1.Services
 
                 // Step 1-3: AgentDialog 处理工具调用 + 生成初步结论
                 Console.WriteLine("\n📦 AgentDialog 统一工具链处理中...");
-                var initialConclusion = await _agentDialog!.ExecuteAsync(userInput, _session);
+                var execResult = await _agentDialog!.ExecuteAsync(userInput, _session);
+                var initialConclusion = execResult.DisplayOutput;
 
                 // Step 4: 代码级事实核查（ReflectionVerifier — 非 LLM！）
                 if (_verifier != null)
@@ -205,11 +207,14 @@ namespace Agent1.Services
                     var bizReport = await _verifier.VerifyBusinessFactsAsync(initialConclusion);
                     Console.WriteLine($"完成 ({bizReport.Claims.Count}条声明)");
 
-                    // 4b. 系统健康：工具链完整性
+                    // 4b. 系统健康：工具链完整性（从 CliExecutionResult 读取，避免可变状态竞态）
                     Console.Write("🔧 检查系统健康... ");
+                    var toolResults = new Dictionary<string, string>();
+                    foreach (var tc in execResult.ToolCalls)
+                        toolResults[tc.FunctionName] = tc.Result ?? "(无返回)";
                     var sysReport = _verifier.VerifySystemHealth(
-                        _agentDialog.LastToolResults,
-                        _agentDialog.LastToolPlan);
+                        toolResults,
+                        new ToolPlan { NeedsTools = execResult.ToolCalls.Count > 0, ToolNames = execResult.ToolCalls.Select(tc => tc.FunctionName).ToList() });
                     Console.WriteLine($"完成 (执行:{sysReport.ToolsExecuted} 取消:{sysReport.ToolsCancelled})");
 
                     // 4c. 输出核查报告

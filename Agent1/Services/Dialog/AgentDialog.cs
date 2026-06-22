@@ -4,6 +4,7 @@ using Agent1.Models;
 using Agent1.Modules;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -16,10 +17,14 @@ namespace Agent1.Services
         private readonly ILlmService _llmService;
         private readonly IToolService _toolService;
         private readonly MemoryCoordinator? _memoryCoordinator;
+        private readonly IAuditService _auditService;
+        private readonly IEventStore? _eventStore;
 
         /// <summary>最近一次化工合规执行的工具结果（供 Reflection 验证层使用）</summary>
+        [Obsolete("请使用 ExecuteAsync 返回的 CliExecutionResult.ToolCalls。LastToolResults 仅保留向后兼容。")]
         public Dictionary<string, string> LastToolResults { get; private set; } = new();
         /// <summary>最近一次工具规划结果</summary>
+        [Obsolete("请使用 ExecuteAsync 返回的 CliExecutionResult。LastToolPlan 仅保留向后兼容。")]
         public ToolPlan? LastToolPlan { get; private set; }
 
         public AgentDialog(
@@ -27,12 +32,16 @@ namespace Agent1.Services
             IMemoryService memoryService,
             ILlmService llmService,
             IToolService toolService,
+            IAuditService auditService,
+            IEventStore? eventStore = null,
             MemoryCoordinator? memoryCoordinator = null)
         {
             _sessionService = sessionService;
             _memoryService = memoryService;
             _llmService = llmService;
             _toolService = toolService;
+            _auditService = auditService;
+            _eventStore = eventStore;
             _memoryCoordinator = memoryCoordinator;
         }
 
@@ -51,33 +60,151 @@ namespace Agent1.Services
             _memoryService.ClearMemory();
         }
 
-        public async Task<string> ExecuteAsync(string userInput, SessionContext session)
+        public async Task<CliExecutionResult> ExecuteAsync(string userInput, SessionContext session)
         {
+            var sw = Stopwatch.StartNew();
+            var traceId = Guid.NewGuid().ToString("N")[..8];
+            _eventSeq = 0;
+            _currentEvents = new List<PipelineEvent>();
+            var metrics = new PipelineMetrics
+            {
+                TraceId = traceId,
+                InputLength = userInput.Length
+            };
+
+            RecordEvent(traceId, "PipelineStart", $"流水线启动: {userInput.Truncate(60)}",
+                new Dictionary<string, object> { ["InputLength"] = userInput.Length });
+
+            Serilog.Log.Information("[Pipeline] 开始 | TraceId={TraceId} | 输入长度={Len} | 输入={Input}",
+                traceId, userInput.Length, userInput.Truncate(80));
+
             Console.WriteLine("\n═══════ 统一线性流水线启动 ═══════");
             
+            // [1/6] 预处理
+            var t0 = sw.ElapsedMilliseconds;
             var processedInput = await PreprocessAsync(userInput);
+            metrics.PreprocessMs = sw.ElapsedMilliseconds - t0;
             Console.WriteLine($"[1/6] 预处理完成");
-            
-            var intent = RouteIntent(processedInput);
-            Console.WriteLine($"[2/6] 意图归类完成: {intent}");
-            
-            var context = await LoadContextAsync(session, intent);
-            Console.WriteLine($"[3/6] 上下文加载完成");
-            
-            var result = await ExecuteBusinessAsync(processedInput, context, intent);
-            Console.WriteLine($"[4/6] 业务执行完成");
-            
-            await SaveSessionAsync(session, userInput, result);
-            Console.WriteLine($"[5/6] 会话保存完成");
-            
-            var finalOutput = FormatOutput(result);
-            Console.WriteLine($"[6/6] 结果输出完成");
-            
-            Console.WriteLine("═══════ 流水线结束 ═══════\n");
-            
-            return finalOutput;
-        }
+            RecordEvent(traceId, "Preprocess", "预处理完成",
+                new Dictionary<string, object> { ["ElapsedMs"] = metrics.PreprocessMs });
 
+            // [安全检测] Prompt 注入检测
+            var t0s = sw.ElapsedMilliseconds;
+            var (safe, reason) = SafetyGuardService.ValidateInput(processedInput);
+            metrics.SafetyCheckInputMs = sw.ElapsedMilliseconds - t0s;
+            if (!safe)
+            {
+                Console.WriteLine($"❌ 输入被安全拦截: {reason}");
+                Serilog.Log.Warning("[Pipeline] 安全拦截 | TraceId={TraceId} | 原因={Reason}",
+                    traceId, reason);
+                _ = _auditService.LogOperationAsync("system", "SecurityBlock",
+                    $"输入拦截: {reason} | 输入: {processedInput.Truncate(100)}");
+                return CliExecutionResult.Blocked(reason);
+            }
+            
+            // [2/6] 意图路由
+            var t1 = sw.ElapsedMilliseconds;
+            var intent = RouteIntent(processedInput);
+            metrics.RouteMs = sw.ElapsedMilliseconds - t1;
+            metrics.Intent = intent.ToString();
+            metrics.MatchedKeyword = IntentRouter.LastMatchedKeyword;
+            Console.WriteLine($"[2/6] 意图归类完成: {intent}");
+            RecordEvent(traceId, "IntentRouted", $"意图归类: {intent}",
+                new Dictionary<string, object> { ["Intent"] = intent.ToString(), ["MatchedKeyword"] = IntentRouter.LastMatchedKeyword ?? "" });
+            
+            // [3/6] 上下文加载
+            var t2 = sw.ElapsedMilliseconds;
+            var context = await LoadContextAsync(session, intent);
+            metrics.LoadContextMs = sw.ElapsedMilliseconds - t2;
+            Console.WriteLine($"[3/6] 上下文加载完成");
+            RecordEvent(traceId, "ContextLoaded", "上下文加载完成",
+                new Dictionary<string, object> { ["ElapsedMs"] = metrics.LoadContextMs });
+            
+            // [4/6] 业务执行
+            var t3 = sw.ElapsedMilliseconds;
+            var (result, toolCalls, warnings) = await ExecuteBusinessWithResultAsync(processedInput, context, intent);
+            metrics.ExecuteBusinessMs = sw.ElapsedMilliseconds - t3;
+            metrics.ToolCallCount = toolCalls.Count;
+            metrics.OutputLength = result.Length;
+            Console.WriteLine($"[4/6] 业务执行完成 ({metrics.ExecuteBusinessMs}ms)");
+            RecordEvent(traceId, "BusinessExecuted", $"业务执行完成: {metrics.ExecuteBusinessMs}ms",
+                new Dictionary<string, object> { ["ElapsedMs"] = metrics.ExecuteBusinessMs, ["ToolCallCount"] = toolCalls.Count, ["OutputLength"] = result.Length });
+            foreach (var tc in toolCalls)
+                RecordEvent(traceId, "ToolCalled", $"工具调用: {tc.FunctionName}",
+                    new Dictionary<string, object> { ["Function"] = tc.FunctionName, ["Success"] = tc.Success });
+
+            // [安全检测] 输出高危断言检测
+            var t4s = sw.ElapsedMilliseconds;
+            var (outputSafe, outputWarnings) = SafetyGuardService.ValidateOutput(result);
+            metrics.SafetyCheckOutputMs = sw.ElapsedMilliseconds - t4s;
+            metrics.WarningCount = outputWarnings.Count;
+            var allWarnings = new List<string>(warnings);
+            allWarnings.AddRange(outputWarnings);
+            var displayOutput = result;
+            if (!outputSafe && intent == IntentType.ChemicalCompliance)
+            {
+                displayOutput = result + "\n\n⚠️ 安全复核提醒:\n" + string.Join("\n", outputWarnings);
+            }
+            RecordEvent(traceId, "SafetyCheckOutput", $"输出安全检测: {(outputSafe ? "通过" : $"{outputWarnings.Count}条警告")}",
+                new Dictionary<string, object> { ["Passed"] = outputSafe, ["Warnings"] = outputWarnings.Count });
+            
+            // [5/6] 会话保存
+            var t4 = sw.ElapsedMilliseconds;
+            await SaveSessionAsync(session, userInput, result);
+            metrics.SaveSessionMs = sw.ElapsedMilliseconds - t4;
+            Console.WriteLine($"[5/6] 会话保存完成");
+            RecordEvent(traceId, "SessionSaved", "会话保存完成",
+                new Dictionary<string, object> { ["ElapsedMs"] = metrics.SaveSessionMs });
+            
+            // [6/6] 输出格式化
+            var t5 = sw.ElapsedMilliseconds;
+            var finalOutput = FormatOutput(displayOutput);
+            metrics.FormatOutputMs = sw.ElapsedMilliseconds - t5;
+            Console.WriteLine($"[6/6] 结果输出完成");
+            RecordEvent(traceId, "OutputFormatted", "输出格式化完成",
+                new Dictionary<string, object> { ["ElapsedMs"] = metrics.FormatOutputMs });
+
+            metrics.TotalMs = sw.ElapsedMilliseconds;
+            Console.WriteLine("═══════ 流水线结束 ═══════\n");
+
+            Serilog.Log.Information(
+                "[Pipeline] 完成 | TraceId={TraceId} | 总耗时={TotalMs}ms | " +
+                "意图={Intent} | 工具调用={ToolCount} | 安全警告={WarnCount} | " +
+                "路由={RouteMs}ms | 上下文={ContextMs}ms | 执行={ExecMs}ms | 输入安全={SafetyInMs}ms | 输出安全={SafetyOutMs}ms",
+                traceId, metrics.TotalMs, metrics.Intent,
+                metrics.ToolCallCount, metrics.WarningCount,
+                metrics.RouteMs, metrics.LoadContextMs, metrics.ExecuteBusinessMs,
+                metrics.SafetyCheckInputMs, metrics.SafetyCheckOutputMs);
+
+            // [P0 安全加固] 审计日志
+            if (intent == IntentType.ChemicalCompliance)
+            {
+                _ = _auditService.LogOperationAsync("system", "ChemicalCompliance",
+                    $"合规查询: {userInput.Truncate(80)} | TraceId={traceId} | 工具调用: {toolCalls.Count}个 | 安全警告: {allWarnings.Count}条 | 总耗时={metrics.TotalMs}ms",
+                    isSensitive: true);
+            }
+
+            RecordEvent(traceId, "PipelineComplete", $"流水线完成: 总耗时={metrics.TotalMs}ms",
+                new Dictionary<string, object> { ["TotalMs"] = metrics.TotalMs, ["EventCount"] = _eventSeq });
+
+            return new CliExecutionResult
+            {
+                Success = true,
+                DisplayOutput = finalOutput,
+                StructuredResult = metrics,
+                Warnings = allWarnings,
+                Intent = intent,
+                MatchedRouteKeyword = IntentRouter.LastMatchedKeyword,
+                ToolCalls = toolCalls,
+                Events = new List<PipelineEvent>(_currentEvents),
+                AuditRecord = intent == IntentType.ChemicalCompliance
+                    ? $"合规查询完成, TraceId={traceId}, 工具调用 {toolCalls.Count} 个, 总耗时={metrics.TotalMs}ms, 事件={_eventSeq}条"
+                    : "简单对话完成"
+            };
+        }
+        /// <summary>
+        /// Phase 1: 预处理输入
+        /// </summary>
         private Task<string> PreprocessAsync(string input)
         {
             return Task.FromResult(input.Trim());
@@ -107,7 +234,7 @@ namespace Agent1.Services
             });
         }
 
-        private async Task<string> ExecuteBusinessAsync(string input, PipelineContext context, IntentType intent)
+        private async Task<(string result, List<FunctionCallRecord> toolCalls, List<string> warnings)> ExecuteBusinessWithResultAsync(string input, PipelineContext context, IntentType intent)
         {
             // Phase 4.1: 记忆协调器预推理
             if (_memoryCoordinator != null)
@@ -118,7 +245,7 @@ namespace Agent1.Services
                 if (preResult.HasDirectAnswer)
                 {
                     Console.WriteLine($"   → 记忆直接回答（跳过推理）");
-                    return preResult.DirectAnswer;
+                    return (preResult.DirectAnswer, new List<FunctionCallRecord>(), new List<string>());
                 }
 
                 // 将长期记忆上下文注入 context
@@ -140,7 +267,7 @@ namespace Agent1.Services
                 Console.WriteLine(memoryAnswer);
                 Console.ResetColor();
                 _memoryService.ExtractAndStoreKeyFacts(input, memoryAnswer);
-                return memoryAnswer;
+                return (memoryAnswer, new List<FunctionCallRecord>(), new List<string>());
             }
 
             if (intent == IntentType.ChemicalCompliance)
@@ -151,17 +278,21 @@ namespace Agent1.Services
             else
             {
                 Console.WriteLine("   → 执行通用对话业务");
-                return await ExecuteGeneralChatAsync(input, context);
+                var answer = await ExecuteGeneralChatAsync(input, context);
+                return (answer, new List<FunctionCallRecord>(), new List<string>());
             }
         }
+
+        // [保留向后兼容] ExecuteBusinessAsync 委托给 ExecuteBusinessWithResultAsync
+        private async Task<string> ExecuteBusinessAsync(string input, PipelineContext context, IntentType intent)
+            => (await ExecuteBusinessWithResultAsync(input, context, intent)).result;
 
         /// <summary>
         /// Phase 2a: SK Auto Function Calling — LLM 自主决定调用哪些工具
         /// 工具选择和执行由 Semantic Kernel 自动处理，不再需要手动 ReAct 循环
-        /// Phase 2a 验证: 调用完成后从 LlmService.LastFunctionCalls 回填 LastToolResults
-        ///   以保持与 ReflectionVerifier / RunReflectionStreamTools 的向后兼容
+        /// 返回值: (回答文本, 工具调用记录, 安全警告)
         /// </summary>
-        private async Task<string> ExecuteChemicalComplianceAsync(string input, PipelineContext context)
+        private async Task<(string answer, List<FunctionCallRecord> toolCalls, List<string> warnings)> ExecuteChemicalComplianceAsync(string input, PipelineContext context)
         {
             var t = AppConfig.Instance.PromptTemplates;
             var history = t.HistoryTemplate.Replace("{History}", context.History ?? "");
@@ -174,11 +305,12 @@ namespace Agent1.Services
             Console.ResetColor();
             Console.WriteLine();
 
-            // Phase 2a 验证: 从 LlmService 诊断记录同步 LastToolResults
-            // ReflectionVerifier.VerifySystemHealth 依赖此属性检查工具链完整性
+            // Phase 2a 验证: 从 LlmService 诊断记录同步工具调用
             var llmService = _llmService as LlmService;
+            var toolCalls = new List<FunctionCallRecord>();
             if (llmService != null && llmService.LastFunctionCalls.Count > 0)
             {
+                toolCalls = new List<FunctionCallRecord>(llmService.LastFunctionCalls);
                 LastToolResults = new Dictionary<string, string>();
                 foreach (var fc in llmService.LastFunctionCalls)
                 {
@@ -205,7 +337,7 @@ namespace Agent1.Services
                 _ = _memoryCoordinator.PostInferenceAsync(context.Session.SessionId, userId, input, answer, LastToolResults);
             }
 
-            return answer;
+            return (answer, toolCalls, new List<string>());
         }
 
         private async Task<string> ExecuteGeneralChatAsync(string input, PipelineContext context)
@@ -326,6 +458,21 @@ namespace Agent1.Services
         private string FormatOutput(string result)
         {
             return result;
+        }
+
+        // ── 事件溯源辅助方法 ──
+
+        private int _eventSeq;
+        private List<PipelineEvent> _currentEvents = new();
+
+        /// <summary>记录一条流水线事件到内存列表和持久化存储</summary>
+        private void RecordEvent(string traceId, string eventType, string description,
+            Dictionary<string, object>? data = null)
+        {
+            _eventSeq++;
+            var evt = PipelineEvent.Create(_eventSeq, traceId, eventType, description, data);
+            _currentEvents.Add(evt);
+            _eventStore?.Append(evt);
         }
     }
 }

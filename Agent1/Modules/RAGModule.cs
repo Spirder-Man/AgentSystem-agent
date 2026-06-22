@@ -6,34 +6,20 @@ namespace Agent1.Modules
     /// <summary>
     /// RAG模块
     /// </summary>
-    public class RAGModule : IInferenceModule
+    public class RAGModule : PipelineModuleBase
     {
-        /// <summary>
-        /// 模块名称
-        /// </summary>
-        public string Name => "RAG (Retrieval-Augmented)";
-        /// <summary>
-        /// 模块描述
-        /// </summary>
-        public string Description => "检索增强生成，结合本地知识库";
-        /// <summary>
-        /// RAG推理器
-        /// </summary>
+        public override string Name => "RAG (Retrieval-Augmented)";
+        public override string Description => "检索增强生成，结合本地知识库";
+
         private readonly RAG _rag;
-        /// <summary>
-        /// 构造函数
-        /// </summary>
-        /// <param name="llmService">LLM服务</param>
-        /// <param name="sessionService">会话服务</param>
-        public RAGModule(ILlmService llmService, ISessionService sessionService)
+
+        public RAGModule(ILlmService llmService, ISessionService sessionService, AgentDialog? agentDialog = null)
+            : base(agentDialog!, sessionService)
         {
             _rag = new RAG(llmService, sessionService);
         }
-        /// <summary>
-        /// 运行RAG推理器（多轮对话）
-        /// </summary>
-        /// <returns>异步任务</returns>
-        public async Task RunAsync()
+
+        public override async Task RunAsync()
         {
             await _rag.RunRAGReflectionStreamTools();
         }

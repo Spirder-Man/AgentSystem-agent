@@ -1,4 +1,5 @@
 using Agent1.Services;
+using Agent1.Models;
 
 namespace Agent1.Modules
 {
@@ -11,6 +12,14 @@ namespace Agent1.Modules
     {
         public string Name => "应急响应方案";
         public string Description => "输入事故场景（化学品泄漏/火灾/爆炸），生成完整应急响应方案";
+
+        public Task<CliExecutionResult> RunWithResultAsync(string userInput)
+            => Task.FromResult(new CliExecutionResult
+            {
+                Success = true,
+                DisplayOutput = "应急响应方案模块仅支持交互式运行，请使用 RunAsync()",
+                AuditRecord = "交互模式"
+            });
 
         private readonly ILlmService _llmService;
         private readonly IKnowledgeBaseService _kbService;

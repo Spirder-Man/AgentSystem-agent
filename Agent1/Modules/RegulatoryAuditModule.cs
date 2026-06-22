@@ -1,5 +1,6 @@
 using System.Text;
 using Agent1.Services;
+using Agent1.Models;
 
 namespace Agent1.Modules
 {
@@ -12,6 +13,14 @@ namespace Agent1.Modules
     {
         public string Name => "监管核查辅助";
         public string Description => "输入监管核查清单，AI 逐条比对法规给出合规评估报告";
+
+        public Task<CliExecutionResult> RunWithResultAsync(string userInput)
+            => Task.FromResult(new CliExecutionResult
+            {
+                Success = true,
+                DisplayOutput = "监管核查辅助模块仅支持交互式运行，请使用 RunAsync() 或 API 调用 GenerateAuditReportAsync()",
+                AuditRecord = "交互模式"
+            });
 
         private readonly ILlmService _llmService;
         private readonly IKnowledgeBaseService _kbService;

@@ -46,7 +46,7 @@ namespace Agent1.Services
                 ModuleType.ReActSolid => new ReActSolidModule(_llmService, _sessionService, _agentDialog),
                 ModuleType.ReActStream => new ReActStreamModule(_llmService, _sessionService, _agentDialog),
                 ModuleType.Reflection => new ReflectionModule(_llmService, _sessionService, _agentDialog, _knowledgeBaseService),
-                ModuleType.RAG => new RAGModule(_llmService, _sessionService),
+                ModuleType.RAG => new RAGModule(_llmService, _sessionService, _agentDialog),
                 ModuleType.UnifiedDialog => new UnifiedDialogModule(_agentDialog),
                 ModuleType.ComplianceCheck => new ComplianceCheckModule(
                     _knowledgeBaseService,
@@ -61,7 +61,12 @@ namespace Agent1.Services
                     _llmService,
                     _knowledgeBaseService,
                     _auditService),
-                // [P3] 应急响应 — 无单独枚举值，直接创建
+                ModuleType.EmergencyResponse => new EmergencyResponseModule(
+                    _llmService,
+                    _knowledgeBaseService,
+                    _auditService,
+                    _integrationService),
+                ModuleType.KnowledgeGraph => new KnowledgeGraphModule(_knowledgeBaseService),
                 _ => throw new ArgumentOutOfRangeException(nameof(type))
             };
         }

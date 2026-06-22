@@ -1,5 +1,6 @@
 using System.Text;
 using Agent1.Services;
+using Agent1.Models;
 
 namespace Agent1.Modules
 {
@@ -11,6 +12,14 @@ namespace Agent1.Modules
     {
         public string Name => "整改工单跟进";
         public string Description => "输入合规检查结果或巡检记录，自动提取整改项并生成工单";
+
+        public Task<CliExecutionResult> RunWithResultAsync(string userInput)
+            => Task.FromResult(new CliExecutionResult
+            {
+                Success = true,
+                DisplayOutput = "整改工单跟进模块仅支持交互式运行，请使用 RunAsync() 或 API 调用 ProcessFollowupAsync()",
+                AuditRecord = "交互模式"
+            });
 
         private readonly ILlmService _llmService;
         private readonly IKnowledgeBaseService _kbService;

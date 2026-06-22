@@ -1,5 +1,6 @@
 
 using Agent1.Services;
+using Agent1.Models;
 using System;
 using System.Threading.Tasks;
 
@@ -66,7 +67,15 @@ namespace Agent1.Modules
 
                 try
                 {
-                    await _dialog.ExecuteAsync(input, session);
+                    var result = await _dialog.ExecuteAsync(input, session);
+                    // ExecuteAsync 已在内部完成所有终端输出和审计日志
+                    // result.Warnings 包含安全警告（如有高危断言会追加强制复核文本）
+                    if (result.Warnings.Count > 0)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"⚠️ 安全警告: {result.Warnings.Count} 条");
+                        Console.ResetColor();
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -77,6 +86,16 @@ namespace Agent1.Modules
 
                 Console.WriteLine();
             }
+        }
+
+        /// <summary>
+        /// 带结构化结果的执行入口 — 委托给 AgentDialog.ExecuteAsync。
+        /// 用于 API 层或评测器调用，返回可审计的完整结果。
+        /// </summary>
+        public async Task<CliExecutionResult> RunWithResultAsync(string userInput)
+        {
+            var session = _dialog.CreateSession(SessionType.General);
+            return await _dialog.ExecuteAsync(userInput, session);
         }
 
         private bool IsExitCommand(string input)

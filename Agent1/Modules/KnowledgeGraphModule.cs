@@ -1,4 +1,5 @@
 using Agent1.Services;
+using Agent1.Models;
 
 namespace Agent1.Modules
 {
@@ -10,6 +11,14 @@ namespace Agent1.Modules
     {
         public string Name => "知识图谱查询";
         public string Description => "查询化学品-法规-事故的知识关联网络，支持图表导出";
+
+        public Task<CliExecutionResult> RunWithResultAsync(string userInput)
+            => Task.FromResult(new CliExecutionResult
+            {
+                Success = true,
+                DisplayOutput = "知识图谱模块仅支持交互式运行，请使用 RunAsync()",
+                AuditRecord = "交互模式"
+            });
 
         private readonly IKnowledgeBaseService _kbService;
 
