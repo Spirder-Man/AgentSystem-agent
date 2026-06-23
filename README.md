@@ -2,10 +2,10 @@
 
 基于 .NET 8 + Semantic Kernel + **llama.cpp 原生编译**构建的企业级化工园区危化品合规审查 AI Agent。
 
-支持 19 个控制台菜单、12 个 ModuleType、REST API、JWT 认证、PostgreSQL+pgvector 混合检索、
-OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对 RTX 3090 24GB Linux 环境实现 RAG 全链路 GPU 加速**。
+支持 20 个控制台菜单、12 个 ModuleType、REST API、JWT 认证、PostgreSQL+pgvector 混合检索、
+OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对 NVIDIA GPU (RTX 3090/3080 Ti) Linux 环境实现 RAG 全链路 GPU 加速**。
 
-> 整体完成度：~92% | 编译：0 错误 30 警告 | C# 文件：89 个 / ~17,000 行 | 测试：148 通过
+> 整体完成度：~95% | 编译：0 错误 33 警告 | C# 文件：112 个 / ~17,000 行 | 测试：148 通过 | 自动化测试：25 条 CLI 全功能
 
 ## 功能全景
 
@@ -120,7 +120,9 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 │   ├── testing/                  # 测试文档
 │   ├── troubleshooting/          # 故障排查文档
 │   └── project/                  # 项目文档
-├── scripts/                      # Python 测试脚本
+├── scripts/                      # 测试脚本
+│   ├── auto_test.sh              # CLI 全功能自动化测试 (25条, bash)
+│   └── *.py                      # Python 测试脚本 (历史)
 ├── docker-compose.yml            # Docker 部署（Windows 开发环境）
 ├── Dockerfile                    # 多阶段构建
 └── Agent1.sln                    # 解决方案文件
@@ -395,7 +397,10 @@ docs/
 │   └── Linux服务器一键启动与测试命令.md
 ├── articles/                  # 技术文章与参数注入方案 (4个文件)
 ├── technical-principles/      # 技术原理文档 (9个文件)
-├── testing/                   # 测试文档 (4个文件)
+├── testing/                  # 测试文档 (7个文件)
+│   ├── Agent1-Linux完整测试方案.html    # 变量级测试方案 (120+ 条)
+│   ├── Agent1-手动测试执行手册.html     # 逐菜单操作指南
+│   └── Agent1无GPU全链路测试方案.html   # 无GPU 测试方案
 ├── troubleshooting/           # 故障排查文档 (5个文件)
 ├── learning-notes/            # 学习笔记 (4个文件)
 ├── project/                   # 项目文档 (5个文件)
@@ -433,12 +438,19 @@ MIT License
 
 ---
 
-**文档版本**：v4.1  
-**最后更新**：2026年6月23日  
+**文档版本**：v4.2  
+**最后更新**：2026年6月24日  
 **分支**：`linux原生编译模型llama.cpp`  
-**状态**：P0-P2 全部清完 | 19 菜单全部实现 | 148测试全通过 | 结构化可观测性就绪
+**状态**：P0-P2 全部清完 | 20 菜单全部实现 | 148测试全通过 | CLI自动化测试就绪 | 双仓库同步
 
 ## 📋 近期更新
+
+### Linux 3080 Ti 全功能自动化测试通过（2026-06-24）
+- **自动化测试脚本**: `scripts/auto_test.sh` — 25 条 CLI 全功能一键测试, 独立日志 + 汇总报告
+- **测试结果**: 22/25 Pass (88%), 0 Fail, 3 Timeout — RTX 3080 Ti 12GB
+- **LLM 端点修复**: appsettings.json Endpoint 从 Ollama 11434 改为 llama-server 8080/v1
+- **新增测试文档**: 3 份 HTML 测试方案 (变量级方案 + 执行手册 + 无GPU方案)
+- **双仓库同步**: Gitee + GitHub 全部 4 分支实时同步
 
 ### CLI 安全管道统一整改 + 结构化可观测性升级（2026-06-23）
 - **P0 安全加固**: AgentDialog 合规路径注入 SafetyGuardService 输入/输出双防线
