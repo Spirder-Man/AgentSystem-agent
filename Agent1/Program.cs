@@ -20,6 +20,7 @@ using Agent1.Services;
 using Agent1.Config;
 using Agent1.Models;
 using Agent1.Commands;
+using Agent1.Services.Orchestration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -339,6 +340,24 @@ namespace Agent1
             services.AddSingleton<ModuleDispatcher>();
             services.AddSingleton<ResponseCacheService>();
 
+            // [Phase 1 编排层] 巡检编排器 — 将原子能力编排为业务工作流
+            services.AddSingleton<InspectionOrchestrator>();
+
+            // [Phase 1 编排层] 合规规则引擎 — 对标 Dependency-Track 的漏洞匹配引擎
+            services.AddSingleton<ComplianceRuleEngine>();
+
+            // [P0 持久化] 巡检数据仓储
+            services.AddSingleton<InspectionRepository>();
+
+            // [P1 定时扫描] 自动合规监控
+            services.AddSingleton<ScheduledScanService>();
+
+            // [Phase 1 编排层] 能力注册表 — 范式 4 动态路由
+            services.AddSingleton<CapabilityRegistry>();
+
+            // [Phase 1 编排层] 事件动作订阅器 — 范式 3 事件驱动
+            services.AddSingleton<EventActionDispatcher>();
+
             // [P1] 告警系统 — 控制台测试通道
             services.AddSingleton<AlertDispatcher>(sp =>
             {
@@ -495,36 +514,26 @@ namespace Agent1
 //或者运行过但用的 KnowledgeBaseService（纯内存版）而非 HybridKnowledgeBaseService。
 
             // ================================================================
-            // [P2 命令模式] 主菜单循环 — 命令字典替代 if-else 链
-            // ================================================================
-            // 【架构维度】将 14 个分支的 if-else 重构为 IMenuCommand 命令字典：
-            //   → 每个菜单项封装为独立 Command 类（单一职责）
-            //   → 新增功能只需 new 一个 Command 并加入字典（开闭原则）
-            //   → 主循环缩减为 "显示菜单 → 查字典 → 执行" 三行
+            // [P1 菜单收敛] 22项 → 5项业务入口
+            // 原有原子菜单保留在"系统运维→经典菜单"子选项中
             // ================================================================
             var commands = new Dictionary<string, IMenuCommand>
             {
                 ["0"] = new ExitCommand(),
-                ["1"] = new ModuleCommand("1", "思维链推理（标准输出）", ModuleType.CoTSolid, dispatcher),
-                ["2"] = new ModuleCommand("2", "思维链推理（流式输出）", ModuleType.CoTStream, dispatcher),
-                ["3"] = new ModuleCommand("3", "ReAct 推理（标准输出）", ModuleType.ReActSolid, dispatcher),
-                ["4"] = new ModuleCommand("4", "ReAct 推理（流式输出）", ModuleType.ReActStream, dispatcher),
-                ["5"] = new ModuleCommand("5", "Reflection 自我反思", ModuleType.Reflection, dispatcher),
-                ["6"] = new ModuleCommand("6", "RAG 检索增强生成", ModuleType.RAG, dispatcher),
-                ["7"] = new ModuleCommand("7", "智能对话系统", ModuleType.UnifiedDialog, dispatcher),
-                ["8"] = new ComplianceCheckCommand(moduleFactory),
-                ["9"] = new ChemicalRagTestCommand(chemicalRAG),
-                ["10"] = new DatabaseValidationCommand(databaseService),
-                ["11"] = new SwitchSearchModeCommand(),
-                ["12"] = new FunctionCallingDiagnosticsCommand(agentDialog),
-                ["13"] = new ComplianceEvalCommand(agentDialog, llmService, knowledgeBaseService),
-                ["14"] = new TicketFollowupCommand(moduleFactory),
-                ["15"] = new MultimodalCommand(),
-                ["16"] = new IncrementalKnowledgeBaseCommand(chemicalRAG),
-                ["17"] = new RegulatoryAuditCommand(moduleFactory),
-                ["18"] = new EmergencyResponseCommand(dispatcher),
-                ["19"] = new KnowledgeGraphCommand(dispatcher),
-                ["20"] = new TestAlertCommand(serviceProvider.GetRequiredService<AlertDispatcher>()),
+
+                // ── 业务入口 ──
+                ["1"] = new ModuleCommand("1", "💬 对话工作台 [CoT·ReAct·Reflection·RAG]", ModuleType.UnifiedDialog, dispatcher),
+                ["2"] = new InspectionWorkbenchCommand(
+                    serviceProvider.GetRequiredService<InspectionOrchestrator>(),
+                    serviceProvider.GetRequiredService<CapabilityRegistry>(), dispatcher),
+                ["3"] = new ModuleCommand("3", "🚨 应急响应台 [泄漏·火灾·爆炸·中毒]", ModuleType.EmergencyResponse, dispatcher),
+                ["4"] = new DashboardCommand(
+                    serviceProvider.GetRequiredService<InspectionOrchestrator>(),
+                    serviceProvider.GetRequiredService<ComplianceRuleEngine>(),
+                    serviceProvider.GetRequiredService<InspectionRepository>(), dispatcher),
+                ["5"] = new AdminMenuCommand(moduleFactory, databaseService, chemicalRAG,
+                    agentDialog, llmService, knowledgeBaseService,
+                    serviceProvider.GetRequiredService<AlertDispatcher>(), dispatcher),
             };
 
             while (true)

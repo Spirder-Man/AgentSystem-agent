@@ -166,7 +166,11 @@ namespace Agent1.Modules
     }
 
     /// <summary>
-    /// 整改工单项模型
+    /// 整改工单项模型 — 范式 2 状态机版本。
+    /// 
+    /// 对标 Dependency-Track 的 Finding 状态机:
+    ///   DT: NEW → IN_REVIEW → REMEDIATED → FALSE_POSITIVE
+    ///   化工: New → Accepted → InProgress → Completed → Verified → Closed | Rejected
     /// </summary>
     public class TicketItem
     {
@@ -177,5 +181,83 @@ namespace Agent1.Modules
         public DateTime SuggestedDeadline { get; set; } = DateTime.Now.AddDays(7);
         public string? Assignee { get; set; }
         public string? RegulationRef { get; set; }
+
+        /// <summary>工单状态（范式 2 状态机）</summary>
+        public TicketStatus Status { get; set; } = TicketStatus.New;
+
+        /// <summary>状态变更日志</summary>
+        public List<TicketStatusLog> StatusLog { get; set; } = new();
+
+        /// <summary>是否未关闭（仍需要关注）</summary>
+        public bool IsOpen => Status != TicketStatus.Closed &&
+                              Status != TicketStatus.Verified &&
+                              Status != TicketStatus.Rejected;
+
+        // ── 状态流转方法 ──
+
+        public void Accept(string assignee)
+        {
+            TransitionTo(TicketStatus.Accepted, assignee);
+            Assignee = assignee;
+        }
+
+        public void StartWork(string operator_)
+        {
+            TransitionTo(TicketStatus.InProgress, operator_);
+        }
+
+        public void Complete(string operator_)
+        {
+            TransitionTo(TicketStatus.Completed, operator_);
+        }
+
+        public void Verify(string verifier)
+        {
+            TransitionTo(TicketStatus.Verified, verifier);
+        }
+
+        public void Close()
+        {
+            TransitionTo(TicketStatus.Closed, "system");
+        }
+
+        public void Reject(string reason, string operator_)
+        {
+            TransitionTo(TicketStatus.Rejected, operator_);
+            Action += $" [驳回: {reason}]";
+        }
+
+        private void TransitionTo(TicketStatus newStatus, string operator_)
+        {
+            StatusLog.Add(new TicketStatusLog
+            {
+                FromStatus = Status,
+                ToStatus = newStatus,
+                ChangedAt = DateTime.Now,
+                ChangedBy = operator_
+            });
+            Status = newStatus;
+        }
+    }
+
+    /// <summary>工单状态</summary>
+    public enum TicketStatus
+    {
+        New,         // 新建
+        Accepted,    // 已受理（指派了责任人）
+        InProgress,  // 整改中
+        Completed,   // 已整改（待验收）
+        Verified,    // 已验证通过
+        Closed,      // 已归档
+        Rejected     // 驳回
+    }
+
+    /// <summary>工单状态变更日志</summary>
+    public class TicketStatusLog
+    {
+        public TicketStatus FromStatus { get; set; }
+        public TicketStatus ToStatus { get; set; }
+        public DateTime ChangedAt { get; set; }
+        public string ChangedBy { get; set; } = "";
     }
 }
