@@ -343,6 +343,9 @@ namespace Agent1
             // [Phase 1 编排层] 巡检编排器 — 将原子能力编排为业务工作流
             services.AddSingleton<InspectionOrchestrator>();
 
+            // [铁律核心] 确定性规则引擎 — 传统化工安全系统核心范式
+            services.AddSingleton<DeterministicRuleEngine>();
+
             // [Phase 1 编排层] 合规规则引擎 — 对标 Dependency-Track 的漏洞匹配引擎
             services.AddSingleton<ComplianceRuleEngine>();
 
@@ -356,7 +359,19 @@ namespace Agent1
             services.AddSingleton<CapabilityRegistry>();
 
             // [Phase 1 编排层] 事件动作订阅器 — 范式 3 事件驱动
-            services.AddSingleton<EventActionDispatcher>();
+            // [P2] 事件订阅生效 — FindingCreated/ScheduledScanCompleted → 审计日志
+            var eventDispatcher = new EventActionDispatcher();
+            services.AddSingleton(eventDispatcher);
+            eventDispatcher.Subscribe("FindingCreated", async evt =>
+            {
+                Serilog.Log.Information("[EventAction] 新合规发现: {Desc}", evt.Description);
+                await Task.CompletedTask;
+            });
+            eventDispatcher.Subscribe("ScheduledScanCompleted", async evt =>
+            {
+                Serilog.Log.Information("[EventAction] 定时扫描完成: {Desc}", evt.Description);
+                await Task.CompletedTask;
+            });
 
             // [P1] 告警系统 — 控制台测试通道
             services.AddSingleton<AlertDispatcher>(sp =>

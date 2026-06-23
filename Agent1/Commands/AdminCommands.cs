@@ -43,6 +43,7 @@ namespace Agent1.Commands
             _subCommands["c5"] = new ModuleCommand("c5", "Reflection反思", ModuleType.Reflection, dispatcher);
             _subCommands["c6"] = new ModuleCommand("c6", "RAG检索增强", ModuleType.RAG, dispatcher);
             _subCommands["c7"] = new ChemicalRagTestCommand(chemicalRAG);
+            _subCommands["m"] = new MultimodalCommand();  // A5 多模态独立入口
         }
 
         public async Task ExecuteAsync()
@@ -58,6 +59,7 @@ namespace Agent1.Commands
                 Console.WriteLine("── 推理模式 ──");
                 Console.WriteLine(" c1.CoT标准  c2.CoT流式  c3.ReAct标准  c4.ReAct流式");
                 Console.WriteLine(" c5.Reflection  c6.RAG  c7.RAG测试");
+                Console.WriteLine("  m.多模态GHS标签识别");
                 Console.WriteLine("  0. 返回主菜单");
                 Console.Write("\n请选择: ");
 

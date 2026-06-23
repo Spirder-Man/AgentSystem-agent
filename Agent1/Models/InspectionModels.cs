@@ -136,6 +136,18 @@ namespace Agent1.Models
         public string? ExpectedRegulation { get; set; }
         public InspectionItemResult? Result { get; set; }
 
+        /// <summary>
+        /// [传统系统铁律1] 标准值 — 如"温度≤30℃"。
+        /// 执行时自动比对实际值，由规则引擎直接判定合规/不合规，不依赖LLM。
+        /// </summary>
+        public string? StandardValue { get; set; }
+
+        /// <summary>
+        /// [传统系统铁律1] 检查类型 — 决定是数值比对还是AI推理。
+        /// NumericCheck → 规则引擎直接比对标准值；AIInference → 走LLM推理
+        /// </summary>
+        public InspectionCheckType CheckType { get; set; } = InspectionCheckType.AIInference;
+
         /// <summary>[向后兼容] 从 ItemCategory 自动推断 CapabilityName</summary>
         public static string CategoryToCapability(ItemCategory category) => category switch
         {
@@ -146,6 +158,112 @@ namespace Agent1.Models
             ItemCategory.GhsLabel => "ghs-label-check",
             _ => "storage-compliance"
         };
+    }
+
+    /// <summary>
+    /// [传统系统铁律1] 检查类型 — 数值比对走规则引擎（100%准确），AI推理走LLM。
+    /// </summary>
+    public enum InspectionCheckType
+    {
+        NumericCheck,  // 数值比对：温度≤30℃ → 实测28℃ → 规则引擎直接判定合规
+        BooleanCheck,  // 是/否检查：通风装置是否正常运行？
+        AIInference    // AI推理：苯和丙酮能否同库储存？需要LLM推理
+    }
+
+    // ── 传统系统核心：可复用的检查计划模板 ──
+
+    /// <summary>
+    /// [传统系统铁律1] 检查计划模板 — 配置一次，反复使用。
+    /// 
+    /// 对标传统系统的"年度检查计划→月度分解→周度任务→每日巡检单"。
+    /// 
+    /// 使用场景：
+    ///   安全主管创建"甲类仓库日检模板" → 包含10项检查+标准值
+    ///   每天系统自动从模板生成 InspectionPlan → 安全员执行
+    /// </summary>
+    public class InspectionTemplate
+    {
+        public string TemplateId { get; set; } = Guid.NewGuid().ToString("N")[..8];
+        public string Name { get; set; } = "";               // "甲类仓库每日巡检模板"
+        public string Area { get; set; } = "";                // "甲类仓库"
+        public InspectionType Type { get; set; } = InspectionType.DailyWeekly;
+        public string Frequency { get; set; } = "每日";       // "每日" / "每周" / "每月" / "每季度"
+        public List<InspectionItem> Items { get; set; } = new();
+        public string CreatedBy { get; set; } = "";
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public bool IsActive { get; set; } = true;
+
+        /// <summary>从模板生成一个具体的巡检计划</summary>
+        public InspectionPlan GeneratePlan(string inspector)
+        {
+            return new InspectionPlan
+            {
+                Name = $"{Name} - {DateTime.Now:yyyy-MM-dd}",
+                Type = Type,
+                Area = Area,
+                Inspector = inspector,
+                Items = Items.Select((item, i) => new InspectionItem
+                {
+                    ItemId = i + 1,
+                    Query = item.Query,
+                    CapabilityName = item.CapabilityName,
+                    ExpectedRegulation = item.ExpectedRegulation,
+                    StandardValue = item.StandardValue,
+                    CheckType = item.CheckType
+                }).ToList(),
+                Notes = $"由模板 [{TemplateId}] {Name} 自动生成"
+            };
+        }
+
+        // ── 工厂方法：常见化工园区巡检模板 ──
+
+        public static List<InspectionTemplate> CreateDefaultTemplates()
+        {
+            return new List<InspectionTemplate>
+            {
+                new InspectionTemplate
+                {
+                    Name = "甲类仓库每日巡检", Area = "甲类仓库", Frequency = "每日",
+                    Items = new List<InspectionItem>
+                    {
+                        new() { ItemId=1, Query="仓库温度是否≤30℃", CapabilityName="storage-compliance",
+                            ExpectedRegulation="GB 15603-2022 §4.2.2", StandardValue="≤30℃", CheckType=InspectionCheckType.NumericCheck },
+                        new() { ItemId=2, Query="通风装置是否正常运行", CapabilityName="storage-compliance",
+                            ExpectedRegulation="GB 15603-2022 §5.1.1", CheckType=InspectionCheckType.BooleanCheck },
+                        new() { ItemId=3, Query="应急喷淋装置是否可用", CapabilityName="storage-compliance",
+                            ExpectedRegulation="GB 15603-2022 §5.3", CheckType=InspectionCheckType.BooleanCheck },
+                        new() { ItemId=4, Query="物料标签和GHS标识是否完好", CapabilityName="ghs-label-check",
+                            ExpectedRegulation="GB 15258-2009", CheckType=InspectionCheckType.BooleanCheck },
+                        new() { ItemId=5, Query="有无禁忌物料混存", CapabilityName="storage-compliance",
+                            ExpectedRegulation="GB 15603-2022 §4.2.2", CheckType=InspectionCheckType.AIInference },
+                    }
+                },
+                new InspectionTemplate
+                {
+                    Name = "罐区每周安全检查", Area = "储罐区", Frequency = "每周",
+                    Items = new List<InspectionItem>
+                    {
+                        new() { ItemId=1, Query="储罐液位是否在安全范围内", CapabilityName="storage-compliance", CheckType=InspectionCheckType.NumericCheck },
+                        new() { ItemId=2, Query="储罐与相邻设施安全距离是否合规", CapabilityName="safety-distance",
+                            ExpectedRegulation="GB 50160 §5.2.1", CheckType=InspectionCheckType.AIInference },
+                        new() { ItemId=3, Query="防雷防静电接地是否完好", CapabilityName="storage-compliance", CheckType=InspectionCheckType.BooleanCheck },
+                        new() { ItemId=4, Query="围堰和防火堤是否完好无渗漏", CapabilityName="storage-compliance", CheckType=InspectionCheckType.BooleanCheck },
+                    }
+                },
+                new InspectionTemplate
+                {
+                    Name = "消防设施月度检查", Area = "全园区", Frequency = "每月",
+                    Items = new List<InspectionItem>
+                    {
+                        new() { ItemId=1, Query="灭火器压力是否在绿区", CapabilityName="regulatory-audit", CheckType=InspectionCheckType.BooleanCheck },
+                        new() { ItemId=2, Query="消防通道是否畅通无阻塞", CapabilityName="regulatory-audit",
+                            ExpectedRegulation="GB 50016 §7.1.8", CheckType=InspectionCheckType.BooleanCheck },
+                        new() { ItemId=3, Query="消防水泵是否正常启动", CapabilityName="regulatory-audit", CheckType=InspectionCheckType.BooleanCheck },
+                        new() { ItemId=4, Query="火灾报警系统是否正常", CapabilityName="regulatory-audit", CheckType=InspectionCheckType.BooleanCheck },
+                    }
+                }
+            };
+        }
     }
 
     /// <summary>

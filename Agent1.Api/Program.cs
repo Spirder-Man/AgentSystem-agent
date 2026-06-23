@@ -1,6 +1,7 @@
 using Agent1;
 using Agent1.Config;
 using Agent1.Services;
+using Agent1.Services.Orchestration;
 using Agent1.Services.Logging;
 using Agent1.Services.Logging.Sinks;
 using Agent1.Services.Monitoring;
@@ -121,6 +122,12 @@ builder.Services.AddSingleton<IAuditService>(sp =>
 builder.Services.AddSingleton<IModuleFactory, ModuleFactory>();
 builder.Services.AddSingleton<ModuleDispatcher>();
 builder.Services.AddSingleton<ResponseCacheService>();
+
+// [P0 编排API] 业务编排层服务 — 支撑 Inspection/Ticket/ComplianceSummary API
+builder.Services.AddSingleton<InspectionOrchestrator>();
+builder.Services.AddSingleton<DeterministicRuleEngine>();
+builder.Services.AddSingleton<ComplianceRuleEngine>();
+builder.Services.AddSingleton<InspectionRepository>();
 
 // [P1 安全加固] Token 黑名单 — 登出时撤销 Access Token
 builder.Services.AddSingleton<TokenBlacklistService>();

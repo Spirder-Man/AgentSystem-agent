@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Agent1 功能全景与差距分析 — 工程蓝图</title>
+<style>
+:root {
+  --c-bg: #f8fafc; --c-canvas: #ffffff; --c-border: #cbd5e1;
+  --c-text-main: #0f172a; --c-text-sub: #64748b;
+  --c-green: #16a34a; --c-red: #dc2626; --c-amber: #d97706; --c-blue: #2563eb;
+  --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'SF Mono', Monaco, Consolas, monospace;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--c-bg); font-family:var(--font-ui); color:var(--c-text-main); padding:32px; }
+.canvas { background:var(--c-canvas); border:2px solid var(--c-border); padding:28px 32px; max-width:1280px; margin:0 auto; }
+.hd { border-bottom:1px solid var(--c-border); padding-bottom:12px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:flex-end; }
+.hd-title { font-size:22px; font-weight:600; }
+.hd-sub { font-size:11px; font-weight:500; color:var(--c-text-sub); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px; }
+.meta { display:flex; gap:20px; font-size:11px; color:var(--c-text-sub); }
+.meta-i { display:flex; align-items:center; gap:4px; }
+.meta-l { font-weight:600; text-transform:uppercase; letter-spacing:0.3px; }
+.mono { font-family:var(--font-mono); }
+.g4 { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:12px; margin-bottom:20px; }
+.g2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px; }
+.g1 { margin-bottom:20px; }
+.g3 { display:grid; grid-template-columns:1fr 2fr; gap:12px; margin-bottom:20px; }
+.pn { border:1px solid var(--c-border); }
+.pn-h { padding:8px 12px; border-bottom:1px solid var(--c-border); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; background:#f8fafc; display:flex; justify-content:space-between; align-items:center; }
+.pn-b { padding:8px 12px; }
+.rw { display:flex; align-items:center; padding:4px 0; border-bottom:1px solid #f1f5f9; font-size:12px; }
+.rw:last-child { border-bottom:none; }
+.rw-l { flex:1; }
+.rw-v { font-family:var(--font-mono); font-size:11px; text-align:right; min-width:60px; }
+.bg { display:inline-block; font-size:10px; font-family:var(--font-mono); padding:2px 6px; border:1px solid; letter-spacing:0.3px; }
+.bg-p { background:#f0fdf4; color:var(--c-green); border-color:#bbf7d0; }
+.bg-f { background:#fef2f2; color:var(--c-red); border-color:#fecaca; }
+.bg-w { background:#fffbeb; color:var(--c-amber); border-color:#fde68a; }
+.bg-i { background:#eff6ff; color:var(--c-blue); border-color:#bfdbfe; }
+.bg-d { background:var(--c-text-main); color:#fff; border-color:var(--c-text-main); }
+.bg-n { background:#f0fdf4; color:#15803d; border-color:#bbf7d0; }
+.st { font-size:10px; font-family:var(--font-mono); }
+.fl { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.fl-st { padding:6px 12px; border:1px solid var(--c-border); text-align:center; font-size:11px; }
+.fl-ar { color:var(--c-text-sub); font-size:14px; }
+.pb { height:4px; background:#f1f5f9; margin-top:4px; overflow:hidden; }
+.pb-f { height:100%; background:var(--c-text-main); }
+table.tb { width:100%; border-collapse:collapse; font-size:11px; }
+table.tb th, table.tb td { border:1px solid var(--c-border); padding:4px 8px; text-align:center; }
+table.tb th { background:#f8fafc; font-weight:600; font-size:10px; text-transform:uppercase; }
+table.tb .c1 { background:#f0fdf4; }
+table.tb .c2 { background:#fffbeb; }
+table.tb .c3 { background:#fef2f2; }
+table.tb .c4 { background:#eff6ff; }
+.ft { font-size:10px; color:var(--c-text-sub); border-top:1px solid var(--c-border); padding-top:12px; margin-top:20px; display:flex; justify-content:space-between; }
+.dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px; }
+.dot-g { background:var(--c-green); }
+.dot-a { background:var(--c-amber); }
+.dot-r { background:var(--c-red); }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <div class="hd">
+    <div>
+      <h1 class="hd-title">Agent1 功能全景与差距分析</h1>
+      <p class="hd-sub">Chemical Safety AI Agent — Capability Matrix v5.0</p>
+    </div>
+    <div class="meta">
+      <span class="meta-i"><span class="meta-l">COVERAGE</span> <span class="mono">73% (29.5/40)</span></span>
+      <span class="meta-i"><span class="meta-l">FILES</span> <span class="mono">108 C# + 15 Tests</span></span>
+      <span class="meta-i"><span class="meta-l">DATE</span> <span class="mono">2026-06-23</span></span>
+    </div>
+  </div>
+
+  <div class="g4">
+    <div class="pn">
+      <div class="pn-h">A. 合规审查 <span class="bg bg-p">4.5/5</span></div>
+      <div class="pn-b">
+        <div class="rw"><span class="dot dot-g"></span><span class="rw-l">A1 储存合规检查</span><span class="rw-v bg bg-p">✅</span></div>
+        <div class="rw"><span class="dot dot-g"></span><span class="rw-l">A2 安全距离验证</span><span class="rw-v bg bg-p">✅</span></div>
+        <div class="rw"><span class="dot dot-g"></span><span class="rw-l">A3 危化品分类查询</span><span class="rw-v bg bg-p">✅</span></div>
+        <div class="rw"><span class="dot dot-g"></span><span class="rw-l">A4 法规版本追踪</span><span class="rw-v bg bg-p">✅</span></div>
+        <div class="rw"><span class="dot dot-a"></span><span class="rw-l">A5 多模态标签识别</span><span class="rw-v bg bg-w">⚠️</span></div>
+      </div>
+    </div>
+    <div class="pn">
+      <div class="pn-h">B. 风险管理 <span class="bg bg-w">1.5/5</span></div>
+      <div class="pn-b">
+        <div class="rw"><span class="dot dot-a"></span><span class="rw-l">B1 风险评估矩阵</span><span class="rw-v bg bg-w">⚠️</span></div>
+        <div class="rw"><span class="dot dot-g"></span><span class="rw-l">B2 重大危险源判定</span><span class="rw-v bg bg-p">✅</span></div>
+        <div class="rw"><span class="dot dot-r"></span><span class="rw-l">B3 事故后果模拟</span><span class="rw-v bg bg-f">❌</span></div>
+        <div class="rw"><span class="dot dot-r"></span><span class="rw-l">B4 风险等级可视化</span><span class="rw-v bg bg-f">❌</span></div>
+        <div class="rw"><span class="dot dot-a"></span><span class="rw-l">B5 风险缓解建议</span><span class="rw-v bg bg-w">⚠️</span></div>
+      </div>
+    </div>
+    <div class="pn">
+      <div class="pn-h">C. 应急响应 <span class="bg bg-p">5/5</span></div>
+      <div class="pn-b">
+        <div class="rw"><span class="dot dot-g"></span><span class="rw-l">C1 事故场景应急</span><span class="rw-v bg bg-p">✅</span></div>
+        <div class="rw"><span class="dot dot-g"></span><span class="rw-l">C2 PPE防护等级</span><span class="rw-v bg bg-p">✅</span></div>
+        <div class="rw"><span class="dot dot-g"></span><span class="rw-l">C3 疏散隔离半径</span><span class="rw-v bg bg-p">✅</span></div>
+        <div class="rw"><span class="dot dot-g"></span><span class="rw-l">C4 灭火介质推荐</span><span class="rw-v bg bg-p">✅</span></div>
+        <div class="rw"><span class="dot dot-g"></span><span class="rw-l">C5 医疗急救指引</span><span class="rw-v bg bg-p">✅</span></div>
+      </div>
+    </div>
+    <div class="pn">
+      <div class="pn-h">D. 管理决策 <span class="bg bg-n">5/5</span></div>
+      <div class="pn-b">
+        <div class="rw"><span class="dot dot-g"></span><span class="rw-l">D1 巡检计划与执行</span><span class="rw-v bg bg-n">✅ NEW</span></div>
+        <div class="rw"><span class="dot dot-g"></span><span class="rw-l">D2 整改工单生命周期</span><span class="rw-v bg bg-n">✅ UP</span></div>
+        <div class="rw"><span class="dot dot-g"></span><span class="rw-l">D3 合规状态总览</span><span class="rw-v bg bg-n">✅ NEW</span></div>
+        <div class="rw"><span class="dot dot-g"></span><span class="rw-l">D4 监管核查报告</span><span class="rw-v bg bg-p">✅</span></div>
+        <div class="rw"><span class="dot dot-g"></span><span class="rw-l">D5 知识图谱查询</span><span class="rw-v bg bg-p">✅</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="g1">
+    <div class="pn">
+      <div class="pn-h">基础设施 I1–I12 <span class="bg bg-p">12/12 全部完成</span></div>
+      <div class="pn-b">
+        <div class="fl">
+          <span class="bg bg-n">I1:Prompt防护</span>
+          <span class="bg bg-n">I2:输出校验</span>
+          <span class="bg bg-p">I3:审计日志</span>
+          <span class="bg bg-n">I4:流水线可观测</span>
+          <span class="bg bg-n">I5:事件溯源</span>
+          <span class="bg bg-n">I6:7步耗时指标</span>
+          <span class="bg bg-p">I7:熔断器降级</span>
+          <span class="bg bg-n">I8:定时扫描</span>
+          <span class="bg bg-n">I9:数据持久化</span>
+          <span class="bg bg-n">I10:能力路由</span>
+          <span class="bg bg-n">I11:状态机驱动</span>
+          <span class="bg bg-n">I12:事件订阅</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="g2">
+    <div class="pn">
+      <div class="pn-h">本轮新增 16 项 + 升级 2 项</div>
+      <div class="pn-b">
+        <table class="tb">
+          <tr><th>阶段</th><th>新增能力</th><th>标志文件</th></tr>
+          <tr><td class="c4">阶段0: 安全管道</td><td>I1,I2,I3 集成到ExecuteAsync</td><td class="mono">AgentDialog.cs</td></tr>
+          <tr><td class="c4">阶段0: 可观测性</td><td>I4,I5,I6 结构化采集</td><td class="mono">PipelineMetrics.cs</td></tr>
+          <tr><td class="c4">阶段1: 业务模型</td><td>D1,D3,I9,I11</td><td class="mono">InspectionOrchestrator.cs</td></tr>
+          <tr><td class="c4">阶段2: DT闭环</td><td>ChemicalAsset,RuleEngine</td><td class="mono">ComplianceRuleEngine.cs</td></tr>
+          <tr><td class="c4">阶段3: 四范式</td><td>I10,I12,Capability</td><td class="mono">CapabilityRegistry.cs</td></tr>
+          <tr><td class="c4">阶段4: 菜单收敛</td><td>I8,22→5收敛</td><td class="mono">AdminCommands.cs</td></tr>
+          <tr><td class="c1">升级改写</td><td>D2: 工单状态机 / Orchestrator持久化</td><td class="mono">TicketFollowupModule.cs</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="pn">
+      <div class="pn-h">Dependency-Track 闭环对标</div>
+      <div class="pn-b">
+        <div class="rw"><span class="rw-l">SBOM导入</span><span class="rw-v mono">→ ChemicalAsset台账</span></div>
+        <div class="rw"><span class="rw-l">漏洞数据源 NVD</span><span class="rw-v mono">→ 合规规则库 5条</span></div>
+        <div class="rw"><span class="rw-l">漏洞匹配引擎</span><span class="rw-v mono">→ ComplianceRuleEngine</span></div>
+        <div class="rw"><span class="rw-l">Finding状态机</span><span class="rw-v mono">→ ComplianceFinding 7态</span></div>
+        <div class="rw"><span class="rw-l">定期重分析</span><span class="rw-v mono">→ ScheduledScan ⏱24h</span></div>
+        <div class="rw"><span class="rw-l">告警通知</span><span class="rw-v mono">→ EventActionDispatcher</span></div>
+        <div class="rw"><span class="rw-l">Portfolio仪表盘</span><span class="rw-v mono">→ ComplianceOverview</span></div>
+        <div class="rw"><span class="rw-l">REST API</span><span class="rw-v bg bg-w">P2待实现</span></div>
+        <div class="rw"><span class="rw-l">多租户</span><span class="rw-v bg bg-w">P3待实现</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="g3">
+    <div class="pn">
+      <div class="pn-h">CLI 菜单收敛 22→5</div>
+      <div class="pn-b">
+        <div class="rw"><span class="rw-l mono">1.</span><span class="rw-l">💬 对话工作台</span><span class="rw-v mono">UnifiedDialog</span></div>
+        <div class="rw"><span class="rw-l mono">2.</span><span class="rw-l">🔍 巡检工作台</span><span class="rw-v mono">InspectionWorkbench</span></div>
+        <div class="rw"><span class="rw-l mono">3.</span><span class="rw-l">🚨 应急响应台</span><span class="rw-v mono">EmergencyResponse</span></div>
+        <div class="rw"><span class="rw-l mono">4.</span><span class="rw-l">📊 合规总览</span><span class="rw-v mono">Dashboard</span></div>
+        <div class="rw"><span class="rw-l mono">5.</span><span class="rw-l">⚙️ 系统运维</span><span class="rw-v mono">AdminMenu 17项</span></div>
+      </div>
+    </div>
+    <div class="pn">
+      <div class="pn-h">剩余缺口 (P2–P3)</div>
+      <div class="pn-b">
+        <div class="rw"><span class="bg bg-f">P2</span><span class="rw-l">API编排端点: Inspection/Ticket Controller</span><span class="rw-v mono">2文件</span></div>
+        <div class="rw"><span class="bg bg-f">P2</span><span class="rw-l">B1 风险评估矩阵CLI入口</span><span class="rw-v mono">1文件</span></div>
+        <div class="rw"><span class="bg bg-f">P2</span><span class="rw-l">报告导出 PDF/JSON + 通知实际订阅</span><span class="rw-v mono">1.5文件</span></div>
+        <div class="rw"><span class="bg bg-w">P3</span><span class="rw-l">B3 事故后果模拟 / B4 风险可视化</span><span class="rw-v mono">2文件</span></div>
+        <div class="rw"><span class="bg bg-w">P3</span><span class="rw-l">多租户/多角色权限分离</span><span class="rw-v mono">2文件</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="g1">
+    <div class="pn">
+      <div class="pn-h">进度总览</div>
+      <div class="pn-b">
+        <div class="fl">
+          <div class="fl-st" style="background:#f0fdf4;">P0<br/>安全+持久化<br/><span class="bg bg-p">✅</span></div><div class="fl-ar">→</div>
+          <div class="fl-st" style="background:#f0fdf4;">P1<br/>收敛+定时<br/><span class="bg bg-p">✅</span></div><div class="fl-ar">→</div>
+          <div class="fl-st" style="background:#fffbeb;">P2<br/>API+报告<br/><span class="bg bg-w">⬜</span></div><div class="fl-ar">→</div>
+          <div class="fl-st" style="background:#fef2f2;">P3<br/>多租户+模拟<br/><span class="bg bg-f">⬜</span></div>
+        </div>
+        <div class="pb" style="margin-top:12px;"><div class="pb-f" style="width:73%;"></div></div>
+        <div class="st" style="margin-top:4px; color:var(--c-text-sub);">整体完成度 73% (29.5/40项)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ft">
+    <span>DOC VER 5.0 · 2026-06-23 · Agent1 Chemical Safety AI Agent</span>
+    <span class="mono">COVERAGE:73% | NEW:16 | UPGRADED:2 | P0-P1:DONE | P2-P3:TODO</span>
+  </div>
+
+</div>
+</body>
+</html>

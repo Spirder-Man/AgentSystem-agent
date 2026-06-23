@@ -32,14 +32,16 @@ namespace Agent1.Services.Orchestration
         private readonly ISessionService _session;
 
         private readonly InspectionRepository _repo;
+        private readonly DeterministicRuleEngine _ruleEngine;
 
         public InspectionOrchestrator(
             AgentDialog agentDialog, IKnowledgeBaseService kb,
             IAuditService audit, ILlmService llm, ISessionService session,
-            InspectionRepository repo)
+            InspectionRepository repo, DeterministicRuleEngine ruleEngine)
         {
             _agentDialog = agentDialog; _kb = kb; _audit = audit;
             _llm = llm; _session = session; _repo = repo;
+            _ruleEngine = ruleEngine;
         }
 
         // ═══════════════════════════════════════
@@ -178,10 +180,17 @@ namespace Agent1.Services.Orchestration
         /// </summary>
         private async Task<InspectionItemResult> ExecuteInspectionItemAsync(InspectionItem item)
         {
-            // 创建独立 Session（保持检查项间隔离）
-            var session = _agentDialog.CreateSession(SessionType.ChemicalCompliance);
+            // [铁律核心] 确定性规则引擎优先 — NumericCheck/BooleanCheck不调LLM
+            var (directResult, needsLLM) = _ruleEngine.TryDetermine(item, item.Query);
+            if (!needsLLM && directResult != null)
+            {
+                var verdict = directResult.IsCompliant == true ? "合规" : "不合规";
+                Serilog.Log.Information("[RuleEngine] 规则引擎直接判定: Item={Id} → {Verdict}", item.ItemId, verdict);
+                return directResult;
+            }
 
-            // 执行 — 走完整的 6 步流水线
+            // 规则引擎未命中 → 走 LLM 推理
+            var session = _agentDialog.CreateSession(SessionType.ChemicalCompliance);
             var execResult = await _agentDialog.ExecuteAsync(item.Query, session);
 
             // 转换为业务结果
