@@ -13,7 +13,7 @@ namespace Agent1.Services
         Task<List<RetrievedChunk>> RetrieveAsync(string query, int topK = 5);
         string PreprocessQuery(string query);
         int GetDocumentCount();
-        void Clear();
+        Task ClearAsync();
         
         // 新增：化工场景专用方法
         Task AddChemicalRegulationAsync(string content, string regulationType, string priority, string? chemicalType = null);

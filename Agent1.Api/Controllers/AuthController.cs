@@ -191,11 +191,25 @@ public class AuthController : ControllerBase
             throw new InvalidOperationException("生产环境必须通过 AUTH_ACCOUNTS_JSON 环境变量配置账号");
         }
         _logger.LogWarning("⚠️ 使用开发默认账号 — 生产环境请通过环境变量 AUTH_ACCOUNTS_JSON 或 appsettings.json 配置真实密码");
+
+        // 随机生成安全密码，避免硬编码凭证泄露（每次启动不同，仅开发环境使用）
+        var adminPwd = GenerateSecureRandomPassword();
+        var auditorPwd = GenerateSecureRandomPassword();
+        var viewerPwd = GenerateSecureRandomPassword();
+
+        _logger.LogWarning("═══════════════════════════════════════════════════════════");
+        _logger.LogWarning("  开发环境默认账号（随机生成，仅本次启动有效）：");
+        _logger.LogWarning("  admin   → {AdminPwd}", adminPwd);
+        _logger.LogWarning("  auditor → {AuditorPwd}", auditorPwd);
+        _logger.LogWarning("  viewer  → {ViewerPwd}", viewerPwd);
+        _logger.LogWarning("  请通过 AUTH_ACCOUNTS_JSON 环境变量或 appsettings.json 配置固定密码");
+        _logger.LogWarning("═══════════════════════════════════════════════════════════");
+
         return new List<AccountEntry>
         {
-            new() { Username = "admin", Password = "admin123", Role = "admin" },
-            new() { Username = "auditor", Password = "auditor123", Role = "auditor" },
-            new() { Username = "viewer", Password = "viewer123", Role = "viewer" }
+            new() { Username = "admin", Password = adminPwd, Role = "admin" },
+            new() { Username = "auditor", Password = auditorPwd, Role = "auditor" },
+            new() { Username = "viewer", Password = viewerPwd, Role = "viewer" }
         };
     }
 
@@ -331,6 +345,12 @@ public class AuthController : ControllerBase
                  ?? HttpContext.Connection.RemoteIpAddress?.ToString();
         var ua = HttpContext.Request.Headers.UserAgent.ToString();
         return DeviceFingerprintService.ComputeFingerprint(ip, ua);
+    }
+
+    /// <summary>生成密码学强度的随机密码（开发环境默认账号使用）</summary>
+    private static string GenerateSecureRandomPassword()
+    {
+        return Convert.ToBase64String(RandomNumberGenerator.GetBytes(12))[..12];
     }
 
     /// <summary>对 Refresh Token 做 SHA256 哈希</summary>
