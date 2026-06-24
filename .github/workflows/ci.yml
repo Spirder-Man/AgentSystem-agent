@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, feature/partner-dev]
   pull_request:
     branches: [main]
 
@@ -111,3 +111,32 @@ jobs:
           context: .
           push: true
           tags: ghcr.io/${{ github.repository }}:latest
+
+  # ═══════════════════════════════════════
+  # Job 4: CI 结果邮件通知（失败时发送到 QQ 邮箱）
+  # ═══════════════════════════════════════
+  notify:
+    needs: [build-and-test, integration-test, docker]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send failure notification
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.qq.com
+          server_port: 587
+          username: ${{ secrets.QQ_EMAIL }}
+          password: ${{ secrets.QQ_SMTP_CODE }}
+          subject: "[Agent1 CI Failed] ${{ github.repository }} — ${{ github.ref_name }}"
+          body: |
+            CI 工作流执行失败！
+
+            仓库: ${{ github.repository }}
+            分支: ${{ github.ref_name }}
+            提交: ${{ github.sha }}
+            提交信息: ${{ github.event.head_commit.message }}
+            触发者: ${{ github.actor }}
+
+            查看详情: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          to: ${{ secrets.QQ_EMAIL }}
+          from: ${{ secrets.QQ_EMAIL }}
