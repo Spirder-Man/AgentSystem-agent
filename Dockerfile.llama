@@ -20,19 +20,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-# 克隆 llama.cpp（ghproxy 镜像加速）
+# 克隆 llama.cpp（repo 已迁移至 ggml-org，GitHub 自动 301 重定向）
+# 注：ghproxy 对中国大陆用户加速，若不需可删第一行
 RUN git clone --depth 1 --branch b4908 \
-    https://ghproxy.com/https://github.com/ggerganov/llama.cpp.git . || \
+    https://github.com/ggml-org/llama.cpp.git . || \
     git clone --depth 1 --branch b4908 \
     https://github.com/ggerganov/llama.cpp.git .
 
-# CUDA 编译
+# CUDA 编译（限制并行数 -j2 避免 Docker Desktop OOM）
 RUN cmake -B build \
     -DGGML_CUDA=ON \
     -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
     -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89" \
     -DCMAKE_BUILD_TYPE=Release && \
-    cmake --build build -j$(nproc) --target llama-server
+    cmake --build build -j2 --target llama-server
 
 # ── Stage 2: 精简运行镜像 ──
 FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04
