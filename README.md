@@ -234,18 +234,103 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 
 ## 🚀 快速开始
 
-### Linux 生产环境（RTX 3090 + llama.cpp 原生编译）⭐ 推荐
+### Linux 生产环境（RTX 3080 Ti / 3090 + llama.cpp 原生编译）⭐ 推荐
 
-> 📖 完整部署指南：[docs/deploy/Linux服务器一键启动与测试命令.md](docs/deploy/Linux服务器一键启动与测试命令.md)
+> 以下流程在 RTX 3080 Ti + CUDA 12.4 + Ubuntu 22.04 上亲测通过，0 残留问题。
 
-#### 步骤 1：启动 PostgreSQL
+#### 第 1 步：安装 .NET 8 SDK
 
 ```bash
-service postgresql start
-pg_isready  # 验证
+# APT 安装（不要用 dotnet-install.sh，国内太慢）
+wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb
+dpkg -i /tmp/packages-microsoft-prod.deb
+apt update
+apt install -y dotnet-sdk-8.0
+dotnet --version   # 验证: 应为 8.0.xxx
 ```
 
-#### 步骤 2：启动 AI 推理服务（llama.cpp 原生）
+#### 第 2 步：安装 PostgreSQL 16 + pgvector
+
+```bash
+curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql.gpg --yes
+echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt jammy-pgdg main" | tee /etc/apt/sources.list.d/pgdg.list
+apt update
+apt install -y postgresql-16 postgresql-client-16 postgresql-16-pgvector
+
+# 手动启动（容器环境禁止自动启动）
+pg_ctlcluster 16 main start
+
+# 设置密码 + 建库
+su - postgres -c "psql -c \"ALTER USER postgres PASSWORD '7758521';\""
+su - postgres -c "psql -c \"CREATE DATABASE chemical_park_ai_agent;\""
+su - postgres -c "psql -d chemical_park_ai_agent -c \"CREATE EXTENSION IF NOT EXISTS vector;\""
+```
+
+#### 第 3 步：编译 llama.cpp（CUDA GPU 版）
+
+```bash
+cd /root/autodl-tmp
+rm -rf llama.cpp
+git clone https://gitclone.com/github.com/ggerganov/llama.cpp.git
+cd llama.cpp
+
+# CUDA 编译 — 必须显式指定 nvcc 路径
+cmake -B build \
+  -DGGML_CUDA=ON \
+  -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+  -DCMAKE_CUDA_ARCHITECTURES="86"
+
+cmake --build build --config Release -j$(nproc)
+
+# 验证
+ls -lh build/bin/llama-server
+```
+
+#### 第 4 步：下载 GGUF 模型文件
+
+```bash
+mkdir -p /root/autodl-tmp/models
+
+# LLM 模型（~4.7GB）
+wget -O /root/autodl-tmp/models/Qwen_Qwen3-8B-Q4_K_M.gguf \
+  https://hf-mirror.com/bartowski/Qwen_Qwen3-8B-GGUF/resolve/main/Qwen_Qwen3-8B-Q4_K_M.gguf
+
+# 嵌入模型（~274MB）
+wget -O /root/autodl-tmp/models/nomic-embed-text-v1.5.f16.gguf \
+  https://hf-mirror.com/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.f16.gguf
+```
+
+> 如容器网络不通，走 JupyterLab 上传 → `find / -name "*.gguf"` 定位 → `mv` 到 models/。
+
+#### 第 5 步：克隆代码 + 初始化数据库
+
+```bash
+cd /root/autodl-tmp
+git clone https://gitee.com/liuchao_yue/agent-system.git
+cd agent-system
+git checkout linux原生编译模型llama.cpp && git pull origin linux原生编译模型llama.cpp
+
+# 初始化数据库
+cp init_database.sql /tmp/
+PGPASSWORD=7758521 psql -h localhost -U postgres -f /tmp/init_database.sql
+```
+
+#### 第 6 步：验证配置（默认已正确）
+
+`Agent1/appsettings.json` 中 LLM 端点已默认为 llama-server（v4.3 已修复），无需手动改：
+
+```
+"Llm": {
+    "Endpoint": "http://localhost:8080/v1"     ← 已默认正确
+},
+"VectorSearch": {
+    "EmbeddingEndpoint": "http://localhost:8081/v1"  ← 已默认正确
+}
+```
+
+> 环境变量 `LLM_ENDPOINT` 和 `KNOWLEDGE_BASE_PATH` 也可覆盖默认值。
+
+#### 第 7 步：启动 AI 推理服务
 
 ```bash
 mkdir -p /root/autodl-tmp/logs
@@ -256,7 +341,7 @@ nohup /root/autodl-tmp/llama.cpp/build/bin/llama-server \
   --host 0.0.0.0 --port 8080 -ngl 99 -c 8192 \
   > /root/autodl-tmp/logs/llama-server.log 2>&1 &
 
-# Embedding 嵌入服务（端口 8081，GPU 加速）
+# Embedding 嵌入服务（端口 8081）
 nohup /root/autodl-tmp/llama.cpp/build/bin/llama-server \
   -m /root/autodl-tmp/models/nomic-embed-text-v1.5.f16.gguf \
   --host 0.0.0.0 --port 8081 --embeddings \
@@ -266,21 +351,16 @@ nohup /root/autodl-tmp/llama.cpp/build/bin/llama-server \
 sleep 5
 
 # 健康检查
-curl -s http://localhost:8080/health  # LLM → "ok"
-curl -s http://localhost:8081/health  # Embedding → "ok"
+curl -s http://localhost:8080/health  # → {"status":"ok"}
+curl -s http://localhost:8081/health  # → {"status":"ok"}
 ```
 
-#### 步骤 3：拉取代码并编译
+#### 第 8 步：编译并启动
 
 ```bash
 cd /root/autodl-tmp/agent-system
-git checkout linux原生编译模型llama.cpp && git pull origin linux原生编译模型llama.cpp
 dotnet build Agent1/Agent1.csproj -c Release
-```
 
-#### 步骤 4：启动控制台程序
-
-```bash
 DOTNET_ENVIRONMENT=Production \
 JWT_KEY=qazwsxedcrfvtgbyhnujmikolpqazwsx \
 DB_PASSWORD=7758521 \
@@ -293,7 +373,7 @@ dotnet run --project Agent1
 - **8** — 化工合规自查（核心功能）
 - **13** — 合规评测集（GPU 加速核心验证）⭐
 
-#### 步骤 5（可选）：启动 API 服务
+#### 可选：启动 API 服务
 
 ```bash
 nohup dotnet run --project Agent1.Api \
@@ -307,13 +387,14 @@ curl http://localhost:5000/health/live
 
 ```bash
 # 1. 安装 PostgreSQL 16 + pgvector，创建数据库
-# 2. 安装 Ollama 并拉取模型
-ollama pull qwen3:8b
-ollama pull nomic-embed-text
+# 2. 启动 llama-server 或 Ollama 并加载模型
+#    llama.cpp: http://localhost:8080/v1 （推荐，与 Linux 一致）
+#    Ollama:    http://localhost:11434
 
 # 3. 配置 .env
 cp .env.example .env
 # 编辑 .env 填入数据库密码和 JWT 密钥
+# 如果用 Ollama 而非 llama.cpp，设置: LLM_ENDPOINT=http://localhost:11434
 
 # 4. 启动 API
 dotnet run --project Agent1.Api
@@ -438,10 +519,10 @@ MIT License
 
 ---
 
-**文档版本**：v4.2  
+**文档版本**：v4.4  
 **最后更新**：2026年6月24日  
 **分支**：`linux原生编译模型llama.cpp`  
-**状态**：P0-P2 全部清完 | 20 菜单全部实现 | 148测试全通过 | CLI自动化测试就绪 | 双仓库同步
+**状态**：P0-P2 全部清完 | 20 菜单全部实现 | 148测试全通过 | CLI自动化测试就绪 | 双仓库同步 | 容器化部署就绪 (llama.cpp)
 
 ## 📋 近期更新
 
