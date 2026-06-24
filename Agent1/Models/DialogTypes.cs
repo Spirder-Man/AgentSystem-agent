@@ -6,9 +6,9 @@ namespace Agent1.Models
 {
     public class UserProfile
     {
-        public string UserName { get; set; }
-        public string JobTitle { get; set; }
-        public string AssistantName { get; set; }
+        public string UserName { get; set; } = "";
+        public string JobTitle { get; set; } = "";
+        public string AssistantName { get; set; } = "SpirderMan";
     }
 
     public class ToolPlan
@@ -19,10 +19,10 @@ namespace Agent1.Models
 
     public class PipelineContext
     {
-        public SessionContext Session { get; set; }
-        public string History { get; set; }
-        public Dictionary<string, string> Memory { get; set; }
-        public UserProfile UserProfile { get; set; }
+        public SessionContext Session { get; set; } = null!;
+        public string History { get; set; } = "";
+        public Dictionary<string, string> Memory { get; set; } = new();
+        public UserProfile UserProfile { get; set; } = null!;
         public IntentType Intent { get; set; }
     }
 }
