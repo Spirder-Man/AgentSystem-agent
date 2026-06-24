@@ -1,5 +1,8 @@
 # 化工园区危化品合规审核AI Agent 文档库
 
+> **文档库版本**：v2.0（深度扩展版 — 2026-06-24）
+> **核心修复文档**：[P0-P1修复详细技术文档](troubleshooting/P0-P1修复详细技术文档.md) | [RAG工程Bug修复笔记](troubleshooting/RAG工程Bug修复笔记_2026-05-26.md) | [故障排查文档](troubleshooting/故障排查文档.md) | [代码自检清单](工程skill/代码自检清单%20Skill.md)
+
 ## 文档结构说明
 
 ```

@@ -1,5 +1,8 @@
 # Function Calling 模型评测 BUG 记录
 
+> **文档版本**：v1.1（深度扩展版 — 2026-06-24）
+> **关联修复文档**：[P0-P1修复详细技术文档](troubleshooting/P0-P1修复详细技术文档.md) | [RAG工程Bug修复笔记](troubleshooting/RAG工程Bug修复笔记_2026-05-26.md)
+
 > **日期**：2026-06-03  
 > **来源**：`full-20260603.log` 第 6~8 次会话评测执行  
 > **涉及文件**：`LlmService.cs`, `Program.cs`, `AgentDialog.cs`, `ChemicalComplianceTools.cs`  

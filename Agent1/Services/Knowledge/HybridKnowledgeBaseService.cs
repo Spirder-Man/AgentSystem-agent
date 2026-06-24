@@ -325,14 +325,14 @@ namespace Agent1.Services
 
                 if (!string.IsNullOrEmpty(chemicalType) && metadata.ContainsKey("ChemicalType"))
                 {
-                    var docChemicalType = metadata["ChemicalType"]?.ToString();
+                    var docChemicalType = metadata["ChemicalType"]?.ToString() ?? "";
                     if (docChemicalType != "通用" && !docChemicalType.Equals(chemicalType, StringComparison.OrdinalIgnoreCase))
                         return false;
                 }
 
                 if (!string.IsNullOrEmpty(regulationType) && metadata.ContainsKey("RegulationType"))
                 {
-                    var docRegulationType = metadata["RegulationType"]?.ToString();
+                    var docRegulationType = metadata["RegulationType"]?.ToString() ?? "";
                     if (!docRegulationType.Equals(regulationType, StringComparison.OrdinalIgnoreCase))
                         return false;
                 }
