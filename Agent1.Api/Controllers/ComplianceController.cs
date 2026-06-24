@@ -87,57 +87,7 @@ public class ComplianceController : ControllerBase
         });
     }
 
-    /// <summary>
-    /// 风险评估 — 基于化学品物化性质 + 周边环境的 3×3 风险矩阵
-    /// </summary>
-    [HttpPost("risk/assess")]
-    public async Task<IActionResult> AssessRisk([FromBody] RiskAssessmentRequest request)
-    {
-        if (string.IsNullOrWhiteSpace(request.ChemicalName))
-            return BadRequest(new { error = "化学品名称不能为空" });
-
-        var service = new RiskAssessmentService(_knowledgeBaseService);
-        var result = await service.AssessStorageRiskAsync(request.ChemicalName, request.Environment);
-
-        return Ok(new
-        {
-            result.ChemicalName,
-            result.RiskLevel,
-            LevelName = result.RiskLevel.ToString(),
-            result.HazardScore,
-            result.ExposureScore,
-            result.FlashPointC,
-            result.HazardCategories,
-            result.MajorHazardThresholdTons,
-            result.Recommendation,
-            // B5 风险缓解建议结构化
-            Mitigations = GenerateMitigations(result)
-        });
-    }
-
-    /// <summary>
-    /// B3 事故后果模拟 — 基于化学品+泄漏量+风速的简化扩散模型
-    /// </summary>
-    [HttpPost("consequence/simulate")]
-    public IActionResult SimulateConsequence([FromBody] ConsequenceSimulateRequest request)
-    {
-        if (string.IsNullOrWhiteSpace(request.ChemicalName))
-            return BadRequest(new { error = "化学品名称不能为空" });
-
-        var service = new ConsequenceSimulationService();
-        var result = service.Simulate(request.ChemicalName, request.QuantityKg,
-            request.WindSpeed, request.WindDirection ?? "北风", request.DistanceToPop);
-
-        return Ok(new
-        {
-            result.ChemicalName, result.QuantityKg, result.WindSpeed,
-            result.IsToxic, result.IsFlammable, result.IsGas,
-            result.ImpactRadiusM, result.RecommendedEvacuationM,
-            result.EstimatedPopulationAffected, result.EstimatedDurationMinutes,
-            result.RiskLevel, result.PopulationAtRisk, result.TimeToReachPopulation,
-            result.Error, Summary = result.ToSummary()
-        });
-    }
+    // ── 风险评估 + 事故后果模拟端点已移除 (P1 死代码清理) ──
 
     /// <summary>
     /// 化工合规审核 — 提交查询并返回合规判断
@@ -408,37 +358,9 @@ public class ComplianceController : ControllerBase
     {
         return User.Identity?.Name ?? User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "anonymous";
     }
-
-    /// <summary>B5 风险缓解建议结构化</summary>
-    private static List<MitigationItem> GenerateMitigations(RiskAssessmentResult result)
-    {
-        var items = new List<MitigationItem>();
-        if (result.RiskLevel >= Services.RiskLevel.Medium)
-        {
-            items.Add(new MitigationItem("储存检查", "检查储存容器完整性，确认无泄漏", "立即"));
-            items.Add(new MitigationItem("间距验证", "确认与周边设施安全距离符合 GB 50016", "7天内"));
-        }
-        if (result.RiskLevel >= Services.RiskLevel.High)
-        {
-            items.Add(new MitigationItem("消防系统", "测试消防系统可用性", "立即"));
-            items.Add(new MitigationItem("应急预案", "更新应急预案并组织培训", "14天内"));
-        }
-        if (result.RiskLevel >= Services.RiskLevel.Critical)
-        {
-            items.Add(new MitigationItem("疏散演练", "组织周边区域疏散演练", "立即安排"));
-            items.Add(new MitigationItem("通报上级", "向安全总监和应急管理局报告", "立即"));
-        }
-        return items;
-    }
 }
 
-// ── 请求/响应模型 ──
-
 public record ComplianceRequest(string Query);
-public record RiskAssessmentRequest(string ChemicalName, string? Environment);
-public record ConsequenceSimulateRequest(string ChemicalName, double QuantityKg = 200,
-    double WindSpeed = 3.0, string? WindDirection = null, double DistanceToPop = 500);
-
 public record MitigationItem(string Action, string Description, string Timeline);
 
 public record ComplianceResponse

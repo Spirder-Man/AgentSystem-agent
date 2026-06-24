@@ -33,14 +33,6 @@ namespace Agent1.Services
             _lazyKb = lazyKb;
         }
 
-        // [P0 Lazy<T>] SetKnowledgeBaseService 已废弃 — 延迟注入由 Lazy<T> 在首次 .Value 访问时自动完成
-        // 保留空方法用于向后兼容（部分测试类传 null 而非 Lazy）
-        [Obsolete("使用 Lazy<IKnowledgeBaseService> 构造函数，无需再调用 SetKnowledgeBaseService")]
-        public void SetKnowledgeBaseService(IKnowledgeBaseService kbService)
-        {
-            // no-op: 已通过 Lazy<T> 自动延迟注入
-        }
-
         /// <summary>Sprint 3: 注入 Reranker 服务</summary>
         public void SetRerankerService(RerankerService rerankerService)
         {

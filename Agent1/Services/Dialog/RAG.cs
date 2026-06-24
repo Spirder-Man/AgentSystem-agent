@@ -24,7 +24,7 @@ namespace Agent1.Services
         /// <summary>
         /// 工具服务
         /// </summary>
-        private readonly ChemicalComplianceTools _complianceTools; // P1: 替代 IndustrialTools 的化工合规工具集
+        private readonly ChemicalComplianceTools _complianceTools;
         /// &lt;summary&gt;
         /// 知识库服务（工业级BM25检索）
         /// &lt;/summary&gt;
@@ -42,30 +42,21 @@ namespace Agent1.Services
         {
             _llmService = llmService;
             _sessionService = sessionService;
-            _complianceTools = new ChemicalComplianceTools(); // P1: 化工合规工具集（危险类别/储存禁忌/安全距离）
+            _complianceTools = new ChemicalComplianceTools();
             _knowledgeBase = new KnowledgeBaseService();  // 初始化知识库服务（PostgreSQL + pgvector + BM25）
             _session = _sessionService.CreateSession(SessionType.ChemicalCompliance);
-            // 注意：不再调用 LoadIndustrialKnowledgeBase()，知识库由 KnowledgeBaseService 统一管理，
-            // 化工合规知识（国标/园区规则/历史案例）已通过数据库预加载，避免工业数据污染
         }
-        /// <summary>
-        /// 加载工业知识库，终端6路径
-        /// </summary>
-        /// <returns>工业知识库</returns>
-        // P1: LoadIndustrialKnowledgeBase() 已删除 —— 该方法加载的工业主轴/温度文件属于遗留数据，
-        // KnowledgeBaseService（PostgreSQL + pgvector + BM25）已接管所有知识库检索，无需硬编码文件加载
         /// <summary>
         /// 运行RAG推理器（多轮对话）
         /// </summary>
         /// <returns>异步任务</returns>
         public async Task RunRAGReflectionStreamTools()
         {
-            Console.WriteLine("\n====Agent + RAG（化工合规检索增强·多轮对话）===="); // P1: 从工业诊断切换为化工合规领域
+            Console.WriteLine("\n====Agent + RAG（化工合规检索增强·多轮对话）====");
             Console.WriteLine($"✅ 会话已创建，Session ID: {_session.SessionId}");
             Console.WriteLine("💡 输入 'exit' 或 'quit' 退出对话");
             Console.WriteLine("-----------------------------------");
 
-            // P1: 移除 LoadIndustrialKnowledgeBase() 调用 —— 知识库由 KnowledgeBaseService（PostgreSQL + pgvector）统一管理
             Console.WriteLine($"\n📚 化工合规知识库已就绪，共 {_knowledgeBase.GetDocumentCount()} 条记录（BM25 + pgvector 检索引擎就绪）");
             //又是判断退出当前对话的逻辑
             while (true)

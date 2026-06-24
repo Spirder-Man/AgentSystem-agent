@@ -181,7 +181,6 @@ namespace Agent1.Tests
                 mockSession.Object, mockMemory.Object,
                 mockLlm.Object, mockTool.Object,
                 mockAudit.Object,
-                eventStore: null,
                 memoryCoordinator: null);
 
             return (dialog, mockLlm);

@@ -97,7 +97,7 @@ class Program
                 var resp = await http.SendAsync(req);
                 sw.Stop();
             }
-            catch { }
+            catch { /* 压测异常不中断——单次请求失败继续下一轮 */ }
         }
 
         // Measure

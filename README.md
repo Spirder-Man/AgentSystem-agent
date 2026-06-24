@@ -5,7 +5,7 @@
 支持 20 个控制台菜单、12 个 ModuleType、REST API、JWT 认证、PostgreSQL+pgvector 混合检索、
 OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对 NVIDIA GPU (RTX 3090/3080 Ti) Linux 环境实现 RAG 全链路 GPU 加速**。
 
-> 整体完成度：~95% | 编译：0 错误 33 警告 | C# 文件：112 个 / ~17,000 行 | 测试：148 通过 | 自动化测试：25 条 CLI 全功能
+> 整体完成度：~95% | 编译：0 错误 | C# 文件：~105 个 / ~15,500 行 | 测试：148 通过 | 自动化测试：25 条 CLI 全功能
 
 ## 功能全景
 
@@ -55,16 +55,14 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 │   │   │   ├── ChemicalComplianceTools.cs  # 8 个 SK Plugin 工具
 │   │   │   ├── EmergencyResponseService.cs # [P3] 应急响应引擎
 │   │   │   ├── KnowledgeGraphService.cs    # [P3] 知识图谱 (BFS遍历)
-│   │   │   ├── RiskAssessmentService.cs    # [P2] 3×3 风险矩阵
 │   │   │   ├── SafetyGuardService.cs       # [P3] Prompt注入+输出检测
 │   │   │   ├── ChemicalSubstanceDatabase.cs # 58 种危化品结构化数据
 │   │   │   └── ChemicalRAG.cs    # 化工 RAG 管道 (含增量更新)
 │   │   ├── Knowledge/            # 知识库
-│   │   │   ├── KnowledgeBaseService.cs          # BM25 检索(SplitTextIntoChunks智能分块)
+│   │   │   ├── KnowledgeBaseService.cs          # BM25 检索
 │   │   │   ├── HybridKnowledgeBaseService.cs    # BM25+向量混合检索(RRF融合)
-│   │   │   ├── GpuVectorIndexService.cs         # GPU向量索引管理器(Sprint2)
-│   │   │   ├── RerankerService.cs               # Cross-Encoder Reranker(Sprint3)
-│   │   │   ├── QueryCacheService.cs             # LRU查询缓存(Sprint5)
+│   │   │   ├── RerankerService.cs               # Cross-Encoder Reranker
+│   │   │   ├── QueryCacheService.cs             # LRU查询缓存
 │   │   │   ├── PdfExtractor.cs / DocExtractor.cs # 文档解析
 │   │   │   ├── TextCleaner.cs / SemanticChunker.cs  # 清洗分块
 │   │   │   └── RetrievedChunk.cs / ChemicalDocumentRecord.cs
@@ -79,8 +77,6 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 │   │   ├── Infrastructure/       # 基础设施
 │   │   │   ├── DatabaseService.cs # PostgreSQL + pgvector
 │   │   │   ├── AuditService.cs    # 等保三级审计
-│   │   │   ├── IEventStore.cs     # 事件存储接口 (事件溯源)
-│   │   │   ├── InMemoryEventStore.cs    # 内存事件存储实现
 │   │   │   ├── PipelineModuleBase.cs    # 模块抽象基类 (6步流水线)
 │   │   │   ├── ModuleDispatcher.cs / ModuleFactory.cs
 │   │   │   ├── IInferenceModule.cs      # 推理模块接口
@@ -519,10 +515,10 @@ MIT License
 
 ---
 
-**文档版本**：v4.4  
+**文档版本**：v4.5  
 **最后更新**：2026年6月24日  
 **分支**：`linux原生编译模型llama.cpp`  
-**状态**：P0-P2 全部清完 | 20 菜单全部实现 | 148测试全通过 | CLI自动化测试就绪 | 双仓库同步 | 容器化部署就绪 (llama.cpp)
+**状态**：P0-P2 清完 | P1 死代码清理完成 | 148测试全通过 | 双仓库同步 | 容器化 (llama.cpp)
 
 ## 📋 近期更新
 

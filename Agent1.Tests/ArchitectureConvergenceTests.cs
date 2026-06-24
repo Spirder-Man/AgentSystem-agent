@@ -224,7 +224,7 @@ namespace Agent1.Tests
             var auditService = new Moq.Mock<IAuditService>().Object;
             var agentDialog = new Moq.Mock<AgentDialog>(
                 sessionService, memoryService, llmService, toolService, auditService,
-                (IEventStore?)null, (MemoryCoordinator?)null).Object;
+                (MemoryCoordinator?)null).Object;
 
             return new ModuleFactory(
                 sessionService, memoryService, llmService, toolService,

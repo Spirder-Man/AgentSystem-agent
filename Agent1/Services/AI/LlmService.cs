@@ -80,13 +80,6 @@ namespace Agent1.Services
             _kernel.FunctionInvocationFilters.Add(new FunctionCallDiagnosticsFilter(this));
         }
 
-        // [P0 Lazy<T>] SetKnowledgeBaseService 已废弃 — Lazy<T> 在首次 .Value 访问时自动完成依赖解析
-        [Obsolete("使用 Lazy<IKnowledgeBaseService> 构造函数，无需再调用 SetKnowledgeBaseService")]
-        public void SetKnowledgeBaseService(IKnowledgeBaseService kbService)
-        {
-            // no-op: 已通过 Lazy<T> 自动延迟注入
-        }
-
         public async Task<string> InvokeStreamAsync(string prompt, ConsoleColor color)
         {
             var result = new StringBuilder();

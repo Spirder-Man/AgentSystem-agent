@@ -389,7 +389,7 @@ namespace Agent1.Services
             return found.ToArray();
         }
 
-        private async Task<string> CallTool(ChemicalComplianceTools tools, string toolName, string userInput) // P2: IndustrialTools→ChemicalComplianceTools
+        private async Task<string> CallTool(ChemicalComplianceTools tools, string toolName, string userInput)
         {
             return toolName switch
             {

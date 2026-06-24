@@ -18,7 +18,6 @@ namespace Agent1.Services
         private readonly IToolService _toolService;
         private readonly MemoryCoordinator? _memoryCoordinator;
         private readonly IAuditService _auditService;
-        private readonly IEventStore? _eventStore;
 
         /// <summary>最近一次化工合规执行的工具结果（供 Reflection 验证层使用）</summary>
         [Obsolete("请使用 ExecuteAsync 返回的 CliExecutionResult.ToolCalls。LastToolResults 仅保留向后兼容。")]
@@ -33,7 +32,6 @@ namespace Agent1.Services
             ILlmService llmService,
             IToolService toolService,
             IAuditService auditService,
-            IEventStore? eventStore = null,
             MemoryCoordinator? memoryCoordinator = null)
         {
             _sessionService = sessionService;
@@ -41,7 +39,6 @@ namespace Agent1.Services
             _llmService = llmService;
             _toolService = toolService;
             _auditService = auditService;
-            _eventStore = eventStore;
             _memoryCoordinator = memoryCoordinator;
         }
 
@@ -472,7 +469,6 @@ namespace Agent1.Services
             _eventSeq++;
             var evt = PipelineEvent.Create(_eventSeq, traceId, eventType, description, data);
             _currentEvents.Add(evt);
-            _eventStore?.Append(evt);
         }
     }
 }
