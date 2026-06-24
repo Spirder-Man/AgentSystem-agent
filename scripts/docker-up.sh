@@ -50,7 +50,10 @@ fi
 # 5. 拉取镜像 + 构建
 echo ""
 echo "📦 拉取基础镜像..."
-docker compose pull postgres ollama 2>/dev/null || true
+docker compose pull postgres 2>/dev/null || true
+
+echo "🔨 构建 llama.cpp CUDA 镜像 (首次约10分钟)..."
+docker compose build llama-server llama-embed
 
 echo "🔨 构建 API 镜像..."
 docker compose build api
@@ -66,8 +69,8 @@ echo "⏳ 等待服务就绪..."
 echo "   PostgreSQL..."
 until docker compose exec -T postgres pg_isready -U postgres 2>/dev/null; do sleep 2; done
 
-echo "   Ollama (等待模型拉取完成)..."
-# ollama-pull 容器完成后自然 ollama 就有模型了
+echo "   llama-server (LLM, 等待模型加载)..."
+echo "   llama-embed (Embedding, 等待模型加载)..."
 
 echo "   API (等待 health check)..."
 for i in $(seq 1 30); do
@@ -94,7 +97,8 @@ echo "  │   用户: ${GRAFANA_USER:-admin}"
 echo "  │   密码: ${GRAFANA_PASSWORD:-agent1-admin}"
 echo "  │ Prometheus:     http://localhost:${PROMETHEUS_PORT:-9090}"
 echo "  │ PostgreSQL:     localhost:${DB_PORT:-5432}"
-echo "  │ Ollama:         localhost:${OLLAMA_PORT:-11434}"
+echo "  │ llama.cpp LLM:  http://localhost:${LLAMA_PORT:-8080}"
+echo "  │ llama.cpp Embed: http://localhost:${LLAMA_EMBED_PORT:-8081}"
 echo "  └─────────────────────────────────────"
 echo ""
 echo "  常用命令:"

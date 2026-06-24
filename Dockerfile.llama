@@ -1,0 +1,56 @@
+# ═══════════════════════════════════════════════
+# llama.cpp CUDA 编译版 + server 运行镜像
+# 
+# 使用方式:
+#   docker build -f Dockerfile.llama -t agent1-llama-cuda .
+#   docker run --gpus all -p 8080:8080 \
+#     -v /path/to/models:/models \
+#     agent1-llama-cuda \
+#     -m /models/qwen3-8b-q4_k_m.gguf --host 0.0.0.0 --port 8080
+# ═══════════════════════════════════════════════
+
+# ── Stage 1: CUDA + 编译 llama.cpp ──
+FROM nvidia/cuda:12.4.0-devel-ubuntu22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git build-essential cmake libcurl4-openssl-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# 克隆 llama.cpp（ghproxy 镜像加速）
+RUN git clone --depth 1 --branch b4908 \
+    https://ghproxy.com/https://github.com/ggerganov/llama.cpp.git . || \
+    git clone --depth 1 --branch b4908 \
+    https://github.com/ggerganov/llama.cpp.git .
+
+# CUDA 编译
+RUN cmake -B build \
+    -DGGML_CUDA=ON \
+    -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+    -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89" \
+    -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build build -j$(nproc) --target llama-server
+
+# ── Stage 2: 精简运行镜像 ──
+FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcurl4 && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/build/bin/llama-server /usr/local/bin/llama-server
+
+# 模型挂载点
+RUN mkdir -p /models
+
+EXPOSE 8080
+
+# 健康检查（llama-server 自带 /health 端点）
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -sf http://localhost:8080/health || exit 1
+
+ENTRYPOINT ["llama-server"]
+CMD ["-m", "/models/qwen3-8b-q4_k_m.gguf", "--host", "0.0.0.0", "--port", "8080", "-ngl", "99"]
