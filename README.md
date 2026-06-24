@@ -614,9 +614,9 @@ JWT_KEY=your-key-at-least-32-characters-long-please-change-me
 | `auditor` | 核心业务：仪表盘 + 合规审核 + 巡检 + 工单 |
 | `viewer` | 只读：仪表盘 + 查看巡检报告 |
 
-## 🖥️ 前端项目 (React SPA)
+## 🖥️ 前端项目 (Vue 3 SPA)
 
-前端基于 React 18 + TypeScript + Ant Design 5 + Vite 5，详见 [前端架构设计方案](docs/architecture/Agent1前端架构设计方案.md)。
+前端基于 Vue 3 + TypeScript + Element Plus + Vite 5，详见 [前端架构设计方案](docs/architecture/Agent1前端架构设计方案.md)。
 
 ### ⚡ 前后端并行开发（MSW Mock）
 
@@ -633,11 +633,11 @@ npm run dev:mock
 npm run dev
 ```
 
-**原理**：MSW 在浏览器的 Service Worker 线程中拦截 HTTP 请求，返回与后端 API 格式一致的假数据。React 组件完全不感知 Mock 层——关掉开关即切换真实 API，**零代码改动**。
+**原理**：MSW 在浏览器的 Service Worker 线程中拦截 HTTP 请求，返回与后端 API 格式一致的假数据。Vue 组件完全不感知 Mock 层——关掉开关即切换真实 API，**零代码改动**。
 
 ```
-Mock 模式:  React → Axios → MSW (浏览器拦截) → 假数据返回
-真实模式:  React → Axios → 网线 → Agent1.Api:5000 → PostgreSQL
+Mock 模式:  Vue 3 → Axios → MSW (浏览器拦截) → 假数据返回
+真实模式:  Vue 3 → Axios → 网线 → Agent1.Api:5000 → PostgreSQL
 ```
 
 Mock 数据包含：
@@ -651,15 +651,17 @@ Mock 数据包含：
 
 | 层级 | 技术 | 说明 |
 |------|------|------|
-| 框架 | React 18 + TypeScript 5 | 与后端 C# 强类型体系对齐 |
-| 构建 | Vite 5 | 秒级 HMR |
-| UI | Ant Design 5 + Tailwind CSS 3 | 企业级组件 + 原子化 CSS |
-| 路由 | React Router v6 | 嵌套路由 + 懒加载 + 角色守卫 |
-| 服务端状态 | TanStack Query 5 | LLM 长耗时请求的缓存/重试 |
-| 客户端状态 | Zustand 4 | 轻量（<1KB），存 Auth/全局配置 |
+| 框架 | Vue 3 (Composition API) | `<script setup lang="ts">`，与后端 C# 强类型体系对齐 |
+| 语言 | TypeScript 5 | 编译期类型安全 |
+| 构建 | Vite 5 | 秒级 HMR，原生 ESM |
+| UI | Element Plus + Tailwind CSS 3 | 中文企业级组件库 + 原子化 CSS |
+| 路由 | Vue Router 4 | 嵌套路由 + 懒加载 + 角色守卫 |
+| 服务端状态 | Vue Query (@tanstack/vue-query) | LLM 长耗时请求的缓存/重试/失效 |
+| 客户端状态 | Pinia | Vue 3 官方推荐，轻量无 Boilerplate |
 | HTTP | Axios | JWT 拦截器 + Token 自动刷新 |
-| Mock | MSW 2 | Service Worker 拦截，前后端并行 |
-| 图表 | ECharts 5 | 合规态势仪表盘/风险分布 |
+| Mock | MSW 2 | Service Worker 拦截（框架无关），前后端并行 |
+| 图表 | ECharts 5 + vue-echarts | 合规态势仪表盘/风险分布 |
+| 表单 | vee-validate + zod | 声明式校验，zod schema 与 C# record 对齐 |
 | 测试 | Vitest + Playwright | 单元 + E2E + 视觉回归 |
 
 ### 页面地图

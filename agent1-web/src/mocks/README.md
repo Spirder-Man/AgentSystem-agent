@@ -3,11 +3,13 @@
 ## 一句话原理
 
 ```
-正常模式:  React → Axios → 网线 → Agent1.Api → PostgreSQL → 返回
-Mock 模式: React → Axios → MSW (浏览器 Service Worker 拦截) → 返回假数据
+正常模式:  Vue 3 → Axios → 网线 → Agent1.Api → PostgreSQL → 返回
+Mock 模式: Vue 3 → Axios → MSW (浏览器 Service Worker 拦截) → 返回假数据
                                 ↑
                         网线根本没有发出
 ```
+
+> **框架无关**：MSW 在网络层拦截 HTTP 请求，与 Vue/React/Angular 完全无关。以下所有 Mock 代码对任何前端框架通用。
 
 ## 文件结构
 
@@ -23,9 +25,9 @@ agent1-web/src/
 │   │   ├── inspection.ts     ← 巡检/资产假数据
 │   │   └── tickets.ts        ← 工单假数据 + 状态流转引擎
 │   └── README.md             ← 本文件
-├── hooks/                    ← TanStack Query hooks
-├── pages/                    ← 页面组件
-└── stores/                   ← Zustand 状态
+├── composables/              ← Vue 3 Composables (类似 React Hooks)
+├── pages/                    ← Vue SFC 页面组件
+└── stores/                   ← Pinia 状态管理
 ```
 
 ## 三层隔离
@@ -119,17 +121,55 @@ VITE_API_BASE_URL=http://localhost:5000
 # 不设置 VITE_ENABLE_MOCK 或设为 false
 ```
 
-组件完全不感知 Mock 层:
+Vue 组件完全不感知 Mock 层:
 
 ```typescript
-// useComplianceCheck.ts — 无论 Mock 还是真实 API，代码完全一样
+// composables/useComplianceCheck.ts — 无论 Mock 还是真实 API，代码完全一样
+import { useMutation } from '@tanstack/vue-query'
+import apiClient from '@/lib/axios'
+
 export function useComplianceCheck() {
-  return useMutation<ComplianceResponse, Error, ComplianceRequest>({
-    mutationFn: (req) =>
-      apiClient.post('/api/Compliance/check', req).then((r) => r.data),
-  });
+  return useMutation({
+    mutationFn: (req: ComplianceRequest) =>
+      apiClient.post('/api/Compliance/check', req).then(r => r.data),
+  })
 }
 ```
+
+```vue
+<!-- CompliancePage.vue — 组件不关心数据来源 -->
+<template>
+  <el-button @click="check" :loading="isPending">提交审核</el-button>
+  <el-card v-if="data">
+    <markdown-viewer :content="data.response" />
+  </el-card>
+</template>
+
+<script setup lang="ts">
+const { mutate, data, isPending } = useComplianceCheck()
+const check = () => mutate({ query: inputValue.value })
+</script>
+```
+
+## Vue 3 + Element Plus 技术栈对照
+
+| 层级 | 技术 | 说明 |
+|------|------|------|
+| 框架 | Vue 3 (Composition API) | `<script setup lang="ts">` |
+| 语言 | TypeScript 5 | 与后端 C# 强类型体系对齐 |
+| 构建 | Vite 5 | 秒级 HMR |
+| UI 组件 | Element Plus | 中文企业级组件库，Table/Form/Dialog 开箱即用 |
+| CSS | Tailwind CSS 3 | 原子化 CSS，与 Element Plus 互补 |
+| 路由 | Vue Router 4 | 嵌套路由 + 懒加载 + 角色守卫 |
+| 服务端状态 | Vue Query (@tanstack/vue-query) | LLM 长耗时请求的自动缓存/重试 |
+| 客户端状态 | Pinia | Vue 3 官方推荐，轻量无 Boilerplate |
+| HTTP | Axios | JWT 拦截器 + Token 自动刷新 |
+| Mock | MSW 2 | Service Worker 拦截，前后端并行 |
+| 图表 | ECharts + vue-echarts | 合规态势仪表盘/风险分布 |
+| 表单 | vee-validate + zod | 声明式表单校验 |
+| 图标 | @element-plus/icons-vue | 与 Element Plus 统一风格 |
+| Markdown | markdown-it + highlight.js | LLM 输出渲染 |
+| 测试 | Vitest + Playwright | 单元 + E2E + 视觉回归 |
 
 ## 前后端并行开发流程
 
@@ -138,7 +178,7 @@ export function useComplianceCheck() {
 
 后端线 (修 Bug)          前端线 (基于 Mock)       契约线 (types/api.ts)
 ─────────────────      ─────────────────      ─────────────────
-修复 RAG 管道            配置 Vite + React        定义类型
+修复 RAG 管道            配置 Vite + Vue 3        定义类型
 (API 接口不变)           + MSW Mock              评审通过
     │                        │                       │
     │                   开发登录页                     │
