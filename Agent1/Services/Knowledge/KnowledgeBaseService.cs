@@ -94,15 +94,15 @@ namespace Agent1.Services
             /// <summary>
             /// 文档内容，包含原始文本。
             /// </summary>
-            public string Content { get; set; }
+            public string Content { get; set; } = "";
             /// <summary>
             /// 文档分词，包含文档中的所有单词。
             /// </summary>
-            public List<string> Tokens { get; set; }
+            public List<string> Tokens { get; set; } = new();
             /// <summary>
             /// 文档词频，包含每个单词在文档中的出现次数。
             /// </summary>
-            public Dictionary<string, int> TermFreq { get; set; }
+            public Dictionary<string, int> TermFreq { get; set; } = new();
             /// <summary>
             /// 文档长度，即文档中单词的数量。
             /// </summary>
@@ -110,7 +110,7 @@ namespace Agent1.Services
             /// <summary>
             /// 文档元数据，包含文档的额外信息，如文档标题、文档类型等。
             /// </summary>
-            public Dictionary<string, object> Metadata { get; set; }
+            public Dictionary<string, object> Metadata { get; set; } = new();
         }
         /// <summary>
         /// 知识库服务类的构造函数，初始化知识库。
@@ -421,7 +421,7 @@ namespace Agent1.Services
                 // 按危化品类型过滤（如指定）
                 if (!string.IsNullOrEmpty(chemicalType) && metadata.ContainsKey("ChemicalType"))
                 {
-                    var docChemicalType = metadata["ChemicalType"]?.ToString();
+                    var docChemicalType = metadata["ChemicalType"]?.ToString() ?? "";
                     if (docChemicalType != "通用" && !docChemicalType.Equals(chemicalType, StringComparison.OrdinalIgnoreCase))
                         return false;
                 }
@@ -429,7 +429,7 @@ namespace Agent1.Services
                 // 按法规类型过滤（如指定）
                 if (!string.IsNullOrEmpty(regulationType) && metadata.ContainsKey("RegulationType"))
                 {
-                    var docRegulationType = metadata["RegulationType"]?.ToString();
+                    var docRegulationType = metadata["RegulationType"]?.ToString() ?? "";
                     if (!docRegulationType.Equals(regulationType, StringComparison.OrdinalIgnoreCase))
                         return false;
                 }
