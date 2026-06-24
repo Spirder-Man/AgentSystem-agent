@@ -503,23 +503,181 @@ curl -X POST http://localhost:5000/api/compliance/hazard/query \
   -d '{"substanceName":"苯"}'
 ```
 
-## 🔐 生产环境安全配置
+## 🔐 安全配置指南
 
-所有敏感信息通过环境变量注入，**绝不**硬编码或提交 Git：
+所有敏感信息通过外部配置注入，**绝不**硬编码到源码或提交 Git。系统提供三层优先级机制，
+确保从开发到生产的每个阶段都有合适的配置方式。
+
+### 账号密码配置
+
+系统按以下优先级（从高到低）加载账号：
+
+```
+环境变量 AUTH_ACCOUNTS_JSON  >  appsettings.json Auth.Accounts  >  开发随机密码（仅非生产环境）
+```
+
+#### 方式一：环境变量（Docker / 生产推荐）
+
+```bash
+# Linux / macOS
+export AUTH_ACCOUNTS_JSON='[{"Username":"admin","Password":"MySecureP@ss","Role":"admin"},{"Username":"auditor","Password":"AuditP@ss","Role":"auditor"}]'
+
+# Windows PowerShell
+$env:AUTH_ACCOUNTS_JSON = '[{"Username":"admin","Password":"MySecureP@ss","Role":"admin"}]'
+```
+
+**Docker Compose** 中注入（`docker-compose.yml`）：
+
+```yaml
+api:
+  environment:
+    - AUTH_ACCOUNTS_JSON=[{"Username":"admin","Password":"MySecureP@ss","Role":"admin"}]
+```
+
+#### 方式二：appsettings.json（本地开发推荐）
+
+在 `Agent1/appsettings.json` 中添加：
+
+```json
+{
+  "Auth": {
+    "Accounts": [
+      { "Username": "admin",   "Password": "MyPassword123",   "Role": "admin" },
+      { "Username": "auditor", "Password": "AuditorPwd123",   "Role": "auditor" },
+      { "Username": "viewer",  "Password": "ViewerPwd123",    "Role": "viewer" }
+    ]
+  }
+}
+```
+
+> 💡 明文密码在首次加载时会被**自动升级为 BCrypt 哈希**（`workFactor=12`），
+> 控制台会打印升级后的哈希值。你可以用哈希值替换明文，此后只做哈希比对，更加安全。
+
+#### 方式三：开发随机密码（零配置启动）
+
+如果未配置任何账号且非 `Production` 环境，系统会**自动生成密码学强度的随机密码**
+并打印在控制台（带醒目分隔框）：
+
+```
+═══════════════════════════════════════════════════════════
+  开发环境默认账号（随机生成，仅本次启动有效）：
+  admin   → aB3xK9mW7pQ2
+  auditor → dR8nL4vF6hJ1
+  viewer  → tY5cG2sE8wM0
+  请通过 AUTH_ACCOUNTS_JSON 环境变量或 appsettings.json 配置固定密码
+═══════════════════════════════════════════════════════════
+```
+
+> ⚠️ 每次重启密码都会变。如需固定密码，请使用方式一或方式二。
+
+#### 生产环境保护
+
+若 `ASPNETCORE_ENVIRONMENT=Production` 且未配置任何账号，系统会**拒绝启动**并抛出异常：
+
+```
+System.InvalidOperationException: 生产环境必须通过 AUTH_ACCOUNTS_JSON 环境变量配置账号
+```
+
+### JWT 签名密钥
+
+```bash
+# .env 文件或环境变量（推荐）
+JWT_KEY=your-key-at-least-32-characters-long-please-change-me
+```
+
+或在 `appsettings.json` 中：
+
+```json
+{
+  "Jwt": {
+    "Key": "your-key-at-least-32-characters-long-please-change-me",
+    "Issuer": "Agent1",
+    "Audience": "Agent1.Api",
+    "AccessTokenExpireMinutes": "60",
+    "RefreshTokenExpireDays": "7"
+  }
+}
+```
 
 | 变量 | 说明 | 生产要求 |
 |------|------|----------|
-| `DB_PASSWORD` | PostgreSQL 密码 | **强制设置**，否则启动失败 |
-| `JWT_KEY` | JWT 签名密钥（≥32字符） | **强制设置**，否则启动失败 |
-| `AUTH_ACCOUNTS_JSON` | 账号列表 JSON | **强制设置**，否则拒绝开发默认账号 |
+| `JWT_KEY` | JWT 签名密钥（≥32 字符） | **强制设置** |
+| `DB_PASSWORD` | PostgreSQL 密码 | **强制设置** |
+| `AUTH_ACCOUNTS_JSON` | 账号列表 JSON | **强制设置**（至少 admin 角色） |
 | `ASPNETCORE_ENVIRONMENT` | 运行环境 | 设为 `Production` |
 
-AUTH_ACCOUNTS_JSON 格式：
-```json
-[{"Username":"admin","Password":"xxx","Role":"admin"},{"Username":"auditor","Password":"xxx","Role":"auditor"}]
+### 预置角色与权限
+
+| 角色 | 权限 |
+|------|------|
+| `admin` | 全部功能：仪表盘 + 合规审核 + 巡检 + 工单 + 系统管理 + GPU 监控 |
+| `auditor` | 核心业务：仪表盘 + 合规审核 + 巡检 + 工单 |
+| `viewer` | 只读：仪表盘 + 查看巡检报告 |
+
+## 🖥️ 前端项目 (React SPA)
+
+前端基于 React 18 + TypeScript + Ant Design 5 + Vite 5，详见 [前端架构设计方案](docs/architecture/Agent1前端架构设计方案.md)。
+
+### ⚡ 前后端并行开发（MSW Mock）
+
+前端通过 **MSW (Mock Service Worker)** 在浏览器端模拟后端 API，实现前后端完全解耦并行开发：
+
+```bash
+cd agent1-web
+npm install
+
+# Mock 模式（后端不需要启动，纯前端开发）
+npm run dev:mock
+
+# 真实 API 模式（连接后端 Agent1.Api:5000）
+npm run dev
 ```
 
-> ⚠️ 生产环境启动时会检查以上三项，不满足则直接 `Exit(1)` 拒绝启动。
+**原理**：MSW 在浏览器的 Service Worker 线程中拦截 HTTP 请求，返回与后端 API 格式一致的假数据。React 组件完全不感知 Mock 层——关掉开关即切换真实 API，**零代码改动**。
+
+```
+Mock 模式:  React → Axios → MSW (浏览器拦截) → 假数据返回
+真实模式:  React → Axios → 网线 → Agent1.Api:5000 → PostgreSQL
+```
+
+Mock 数据包含：
+- **合规审核模拟** — 关键词匹配返回不同合规结论，2-5 秒模拟 LLM 推理延迟
+- **工单状态流转引擎** — 完整实现 New→Confirmed→InProgress→Remediated→Verified 状态机
+- **巡检/资产/报告假数据** — 覆盖全部 25 个 API 端点
+
+> 详见 `agent1-web/src/mocks/README.md`
+
+### 前端技术栈
+
+| 层级 | 技术 | 说明 |
+|------|------|------|
+| 框架 | React 18 + TypeScript 5 | 与后端 C# 强类型体系对齐 |
+| 构建 | Vite 5 | 秒级 HMR |
+| UI | Ant Design 5 + Tailwind CSS 3 | 企业级组件 + 原子化 CSS |
+| 路由 | React Router v6 | 嵌套路由 + 懒加载 + 角色守卫 |
+| 服务端状态 | TanStack Query 5 | LLM 长耗时请求的缓存/重试 |
+| 客户端状态 | Zustand 4 | 轻量（<1KB），存 Auth/全局配置 |
+| HTTP | Axios | JWT 拦截器 + Token 自动刷新 |
+| Mock | MSW 2 | Service Worker 拦截，前后端并行 |
+| 图表 | ECharts 5 | 合规态势仪表盘/风险分布 |
+| 测试 | Vitest + Playwright | 单元 + E2E + 视觉回归 |
+
+### 页面地图
+
+```
+/login                          # 登录页
+/dashboard                      # 合规态势总览仪表盘
+/compliance/check               # 合规审核（核心）
+/compliance/hazard              # 危化品类别查询
+/compliance/storage             # 储存兼容性检查
+/inspection/plans               # 巡检计划管理
+/inspection/assets              # 资产台账
+/knowledge-graph                # 知识图谱大屏
+/emergency                      # 应急响应
+/gpu-monitor                    # GPU 推理监控（admin）
+/tickets                        # 整改工单
+/admin                          # 系统管理（admin）
+```
 
 ## 📊 可观测性
 

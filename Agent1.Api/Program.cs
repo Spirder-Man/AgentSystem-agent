@@ -579,3 +579,8 @@ catch (Exception ex)
     Console.Error.WriteLine($"致命错误: {ex.Message}");
     return 1;
 }
+
+/// <summary>
+/// 使 WebApplicationFactory&lt;Program&gt; 可访问此入口点（用于集成测试）。
+/// </summary>
+public partial class Program { }

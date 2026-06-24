@@ -26,6 +26,9 @@ public class RateLimitingMiddleware
         var clientKey = GetClientKey(context);
         var now = DateTime.UtcNow;
 
+        int resetAfterSeconds = 0;
+        bool shouldRateLimit = false;
+
         var window = _clients.GetOrAdd(clientKey, _ => new SlidingWindow());
         lock (window)
         {
@@ -34,18 +37,24 @@ public class RateLimitingMiddleware
 
             if (window.Timestamps.Count >= _maxRequests)
             {
-                context.Response.StatusCode = 429;
-                context.Response.ContentType = "application/json; charset=utf-8";
-                var resetAfter = (int)(window.Timestamps[0] + _window - now).TotalSeconds;
-                context.Response.Headers["Retry-After"] = Math.Max(resetAfter, 1).ToString();
-                // 同步等待写入完成，防止响应体截断
-                context.Response.WriteAsync(
-                    $"{{\"error\":\"请求过于频繁，请 {Math.Max(resetAfter, 1)} 秒后重试\",\"retry_after_seconds\":{Math.Max(resetAfter, 1)}}}")
-                    .GetAwaiter().GetResult();
-                return;
+                shouldRateLimit = true;
+                resetAfterSeconds = (int)(window.Timestamps[0] + _window - now).TotalSeconds;
+                if (resetAfterSeconds < 1) resetAfterSeconds = 1;
             }
+            else
+            {
+                window.Timestamps.Add(now);
+            }
+        }
 
-            window.Timestamps.Add(now);
+        if (shouldRateLimit)
+        {
+            context.Response.StatusCode = 429;
+            context.Response.ContentType = "application/json; charset=utf-8";
+            context.Response.Headers["Retry-After"] = resetAfterSeconds.ToString();
+            await context.Response.WriteAsync(
+                $"{{\"error\":\"请求过于频繁，请 {resetAfterSeconds} 秒后重试\",\"retry_after_seconds\":{resetAfterSeconds}}}");
+            return;
         }
 
         await _next(context);

@@ -238,11 +238,12 @@ namespace Agent1.Services
         /// <summary>
         /// 清空知识库中的所有文档。
         /// </summary>
-        public void Clear()
+        public Task ClearAsync()
         {
             _documents.Clear();
             _termDocFreq.Clear();
             _avgDocLength = 0;
+            return Task.CompletedTask;
         }
 
         /// <summary>[P3 增量更新] 按源文件删除文档，返回被删除数量</summary>

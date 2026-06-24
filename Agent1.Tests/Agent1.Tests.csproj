@@ -1,20 +1,30 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-	<TargetFramework>net8.0</TargetFramework>
-	<IsPackable>false</IsPackable>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- 测试覆盖率收集（coverlet） -->
+    <CollectCoverage>true</CollectCoverage>
+    <CoverletOutputFormat>cobertura</CoverletOutputFormat>
+    <CoverletOutput>../TestResults/coverage.cobertura.xml</CoverletOutput>
   </PropertyGroup>
 
   <ItemGroup>
-	<PackageReference Include="xunit" Version="2.5.3" />
-	<PackageReference Include="xunit.runner.visualstudio" Version="2.5.3">
-	  <PrivateAssets>all</PrivateAssets>
-	</PackageReference>
-	<PackageReference Include="Moq" Version="4.20.0" />
-	<PackageReference Include="FluentAssertions" Version="6.10.0" />
-	<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
+    <PackageReference Include="xunit" Version="2.5.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Moq" Version="4.20.0" />
+    <PackageReference Include="FluentAssertions" Version="6.10.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.0" />
+    <PackageReference Include="coverlet.collector" Version="6.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
-	<ProjectReference Include="..\Agent1\Agent1.csproj" />
+    <ProjectReference Include="..\Agent1\Agent1.csproj" />
+    <ProjectReference Include="..\Agent1.Api\Agent1.Api.csproj" />
   </ItemGroup>
 </Project>
