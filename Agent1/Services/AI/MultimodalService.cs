@@ -12,7 +12,7 @@ namespace Agent1.Services
     /// 支持的模型：qwen-vl (Qwen2-VL)、llava 等 Ollama 支持的视觉模型。
     /// 适用场景：GHS 标签识别、储罐/管道照片分析、消防设施合规检查。
     /// </summary>
-    public class MultimodalService
+    public class MultimodalService : IDisposable
     {
         private readonly HttpClient _httpClient;
         private readonly string _modelId;
@@ -33,6 +33,11 @@ namespace Agent1.Services
                 Timeout = TimeSpan.FromMinutes(3),
                 BaseAddress = _endpoint
             };
+        }
+
+        public void Dispose()
+        {
+            _httpClient?.Dispose();
         }
 
         /// <summary>

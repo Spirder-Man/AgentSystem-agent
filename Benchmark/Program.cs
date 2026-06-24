@@ -24,7 +24,7 @@ class Program
         Concurrency = Math.Clamp(Concurrency, 1, 100);
         MeasureRequests = Math.Clamp(MeasureRequests, 1, 1000);
 
-        var http = new HttpClient { BaseAddress = new Uri(BaseUrl), Timeout = TimeSpan.FromSeconds(60) };
+        using var http = new HttpClient { BaseAddress = new Uri(BaseUrl), Timeout = TimeSpan.FromSeconds(60) };
 
         Console.WriteLine("========================================");
         Console.WriteLine(" Agent1 API Precision Benchmark (C#)");

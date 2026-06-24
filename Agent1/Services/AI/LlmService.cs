@@ -17,10 +17,11 @@ using Agent1.Config;
 
 namespace Agent1.Services
 {
-    public class LlmService : ILlmService
+    public class LlmService : ILlmService, IDisposable
     {
         private readonly Kernel _kernel;
         private readonly HttpClient _httpClient;
+        private HttpClient? _injectedHttpClient; // 追踪通过反射注入到 SK 内部的 HttpClient
         private readonly ChemicalComplianceTools _complianceTools;
         // [P3 生产加固] 从配置读取重试/熔断参数，运维可通过 appsettings.json 调整
         private int MaxRetries => AppConfig.Instance.Llm.MaxRetries;
@@ -800,6 +801,7 @@ namespace Agent1.Services
         public void Dispose()
         {
             _httpClient?.Dispose();
+            _injectedHttpClient?.Dispose();
         }
 
         /// <summary>
@@ -809,7 +811,7 @@ namespace Agent1.Services
         ///   → InnerClient(属性) → OllamaApiClient → _client (HttpClient)
         /// 采用递归搜索策略（字段+属性），自动适应 SK 内部结构变化。
         /// </summary>
-        private static void InjectThinkingHandler(Kernel kernel, OllamaThinkingHandler handler)
+        private void InjectThinkingHandler(Kernel kernel, OllamaThinkingHandler handler)
         {
             try
             {
@@ -832,12 +834,20 @@ namespace Agent1.Services
                 var baseAddr = ModelConfig.Endpoint;
                 if (!baseAddr.AbsoluteUri.EndsWith("/"))
                     baseAddr = new Uri(baseAddr.AbsoluteUri + "/");
+                // 先释放旧 HttpClient（如果存在），防止 socket 泄漏
+                var oldClient = httpClientField.GetValue(owner) as HttpClient;
+                if (oldClient != null && oldClient != _httpClient)
+                {
+                    oldClient.Dispose();
+                }
+
                 var newHttpClient = new HttpClient(handler)
                 {
                     Timeout = TimeSpan.FromMinutes(15),
                     BaseAddress = baseAddr
                 };
                 httpClientField.SetValue(owner, newHttpClient);
+                _injectedHttpClient = newHttpClient; // 追踪以便 Dispose
 
                 Console.WriteLine($"   ✅ [Thinking] OllamaThinkingHandler 已注入 → {owner.GetType().Name}.{httpClientField.Name} (think 默认关闭)");
             }

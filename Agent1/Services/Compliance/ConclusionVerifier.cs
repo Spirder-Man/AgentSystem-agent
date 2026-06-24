@@ -158,15 +158,6 @@ namespace Agent1.Services
             }
         }
 
-        /// <summary>[P1-2] 同步兼容: 不执行 KB 验证的快速版本</summary>
-        public static VerificationResult Verify(
-            string llmResponse,
-            List<FunctionCallRecord> toolCalls,
-            string? category = null)
-        {
-            return VerifyAsync(llmResponse, toolCalls, null, category).GetAwaiter().GetResult();
-        }
-
         /// <summary>
         /// 快速验证：仅检查法规编号格式是否有效。
         /// </summary>
