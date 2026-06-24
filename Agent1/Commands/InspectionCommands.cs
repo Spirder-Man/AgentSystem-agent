@@ -25,7 +25,7 @@ namespace Agent1.Commands
         private readonly CapabilityRegistry _capabilityRegistry;
         private readonly ModuleDispatcher _dispatcher;
 
-        public string Key => "21";
+        public string Key => "2";
         public string Label => "🔍 巡检工作台 [计划·执行·报告·工单]";
 
         public InspectionWorkbenchCommand(InspectionOrchestrator orchestrator,

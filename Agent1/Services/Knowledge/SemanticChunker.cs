@@ -51,18 +51,19 @@ namespace Agent1.Services
         /// <param name="cleanText">已清洗的文本</param>
         /// <param name="regulationType">文档类型：国标 / 园区规则 / 历史案例 / 通用</param>
         /// <param name="regulationNumber">法规编号（来自 PdfExtractor）</param>
+        /// <param name="pageNumber">[P2-5] 页码（来自 PdfExtractor，用于检索结果溯源）</param>
         /// <returns>语义块列表</returns>
-        public List<SemanticChunk> Chunk(string cleanText, string regulationType, string? regulationNumber = null)
+        public List<SemanticChunk> Chunk(string cleanText, string regulationType, string? regulationNumber = null, int? pageNumber = null)
         {
             if (string.IsNullOrWhiteSpace(cleanText))
                 return new List<SemanticChunk>();
 
             return regulationType switch
             {
-                "国标" => ChunkByClause(cleanText, regulationNumber),
-                "园区规则" => ChunkByArticle(cleanText, regulationNumber),
-                "历史案例" => ChunkByParagraph(cleanText, regulationNumber),
-                _ => ChunkByParagraph(cleanText, regulationNumber)
+                "国标" => ChunkByClause(cleanText, regulationNumber, pageNumber),
+                "园区规则" => ChunkByArticle(cleanText, regulationNumber, pageNumber),
+                "历史案例" => ChunkByParagraph(cleanText, regulationNumber, pageNumber),
+                _ => ChunkByParagraph(cleanText, regulationNumber, pageNumber)
             };
         }
 
@@ -70,7 +71,7 @@ namespace Agent1.Services
         /// 按条款编号切分 — 适用于 GB 系列国标
         /// 匹配模式："3.1 术语", "3.2.1 分类", "A.1 附录" 等
         /// </summary>
-        private List<SemanticChunk> ChunkByClause(string text, string? regulationNumber)
+        private List<SemanticChunk> ChunkByClause(string text, string? regulationNumber, int? pageNumber)
         {
             var chunks = new List<SemanticChunk>();
 
@@ -100,6 +101,7 @@ namespace Agent1.Services
                             RegulationNumber = regulationNumber,
                             ChapterTitle = currentChapter,
                             ClauseNumber = currentClause,
+                            PageNumber = pageNumber,
                             ChunkIndex = chunkIndex++
                         });
                         currentContent.Clear();
@@ -128,6 +130,7 @@ namespace Agent1.Services
                         RegulationNumber = regulationNumber,
                         ChapterTitle = currentChapter,
                         ClauseNumber = currentClause,
+                        PageNumber = pageNumber,
                         ChunkIndex = chunkIndex++
                     });
                     currentContent.Clear();
@@ -143,6 +146,7 @@ namespace Agent1.Services
                     RegulationNumber = regulationNumber,
                     ChapterTitle = currentChapter,
                     ClauseNumber = currentClause,
+                    PageNumber = pageNumber,
                     ChunkIndex = chunkIndex++
                 });
             }
@@ -159,7 +163,7 @@ namespace Agent1.Services
         /// <summary>
         /// 按"第X条"切分 — 适用于园区规则
         /// </summary>
-        private List<SemanticChunk> ChunkByArticle(string text, string? regulationNumber)
+        private List<SemanticChunk> ChunkByArticle(string text, string? regulationNumber, int? pageNumber)
         {
             var chunks = new List<SemanticChunk>();
             var articlePattern = new Regex(@"^(第[一二三四五六七八九十百]+条)", RegexOptions.Multiline);
@@ -185,6 +189,7 @@ namespace Agent1.Services
                             Content = currentContent.ToString().Trim(),
                             RegulationNumber = regulationNumber,
                             ClauseNumber = currentArticle,
+                            PageNumber = pageNumber,
                             ChunkIndex = chunkIndex++
                         });
                         currentContent.Clear();
@@ -201,6 +206,7 @@ namespace Agent1.Services
                         Content = currentContent.ToString().Trim(),
                         RegulationNumber = regulationNumber,
                         ClauseNumber = currentArticle,
+                        PageNumber = pageNumber,
                         ChunkIndex = chunkIndex++
                     });
                     currentContent.Clear();
@@ -214,6 +220,7 @@ namespace Agent1.Services
                     Content = currentContent.ToString().Trim(),
                     RegulationNumber = regulationNumber,
                     ClauseNumber = currentArticle,
+                    PageNumber = pageNumber,
                     ChunkIndex = chunkIndex++
                 });
             }
@@ -226,7 +233,7 @@ namespace Agent1.Services
         /// <summary>
         /// 按段落切分 — 适用于历史案例和通用文档
         /// </summary>
-        private List<SemanticChunk> ChunkByParagraph(string text, string? regulationNumber)
+        private List<SemanticChunk> ChunkByParagraph(string text, string? regulationNumber, int? pageNumber)
         {
             var chunks = new List<SemanticChunk>();
             var paragraphs = text.Split(new[] { "\n\n", "\r\n\r\n" }, StringSplitOptions.RemoveEmptyEntries);
@@ -242,6 +249,7 @@ namespace Agent1.Services
                     {
                         Content = currentContent.ToString().Trim(),
                         RegulationNumber = regulationNumber,
+                        PageNumber = pageNumber,
                         ChunkIndex = chunkIndex++
                     });
                     currentContent.Clear();
@@ -258,6 +266,7 @@ namespace Agent1.Services
                 {
                     Content = currentContent.ToString().Trim(),
                     RegulationNumber = regulationNumber,
+                    PageNumber = pageNumber,
                     ChunkIndex = chunkIndex++
                 });
             }

@@ -7,6 +7,9 @@ on:
     branches: [main]
 
 jobs:
+  # ═══════════════════════════════════════
+  # Job 1: 编译 + 纯单元测试（Mock, 零外部依赖）
+  # ═══════════════════════════════════════
   build-and-test:
     runs-on: ubuntu-latest
 
@@ -24,15 +27,68 @@ jobs:
       - name: Build
         run: dotnet build --configuration Release --no-restore
 
-      - name: Unit Tests
+      - name: Unit Tests (Mock, no DB/LLM needed)
         run: dotnet test --configuration Release --no-build --verbosity normal
+
+      - name: Architecture Convergence Test
+        run: dotnet run --project ArchitectureTest --configuration Release
+        continue-on-error: true
 
       - name: Benchmark (non-blocking)
         run: dotnet run --project Benchmark --configuration Release -- 5 20 http://localhost:5000
         continue-on-error: true
 
-  docker:
+  # ═══════════════════════════════════════
+  # Job 2: 数据库集成测试（CI 自动提供临时 PostgreSQL）
+  # ═══════════════════════════════════════
+  integration-test:
     needs: build-and-test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: chemical_park_ai_agent
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: integration_test_pwd
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build
+        run: dotnet build --configuration Release
+
+      - name: Init Database
+        run: |
+          PGPASSWORD=integration_test_pwd psql -h localhost -U postgres -d chemical_park_ai_agent -f init_database.sql
+
+      - name: Run Integration Tests
+        run: dotnet test --configuration Release --filter "Category=Integration"
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: chemical_park_ai_agent
+          DB_USERNAME: postgres
+          DB_PASSWORD: integration_test_pwd
+
+  # ═══════════════════════════════════════
+  # Job 3: Docker 镜像构建（仅 main 分支）
+  # ═══════════════════════════════════════
+  docker:
+    needs: [build-and-test, integration-test]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 

@@ -340,6 +340,7 @@ namespace Agent1.Services
                             ["ChapterTitle"] = c.ChapterTitle ?? "",
                             ["ClauseNumber"] = c.ClauseNumber ?? "",
                             ["ChunkIndex"] = c.ChunkIndex,
+                            ["PageNumber"] = c.PageNumber ?? (object)DBNull.Value,
                             ["ExtractionQuality"] = cr.IsGarbled ? "partial" : "good"
                         });
                         _totalChunks++;
@@ -381,6 +382,7 @@ namespace Agent1.Services
                             ["ChapterTitle"] = c.ChapterTitle ?? "",
                             ["ClauseNumber"] = c.ClauseNumber ?? "",
                             ["ChunkIndex"] = c.ChunkIndex,
+                            ["PageNumber"] = c.PageNumber ?? (object)DBNull.Value,
                             ["ExtractionQuality"] = result.ExtractionMethod == "FilenameOnly" ? "partial" : "good"
                         });
                         _totalChunks++;
@@ -421,7 +423,7 @@ namespace Agent1.Services
                 var cleanResult = _textCleaner.Clean(pdfResult.FullText, regulationType);
                 //语义分块
                 var chunks = _semanticChunker.Chunk(cleanResult.CleanText, regulationType,
-                    pdfResult.RegulationNumber ?? fileName);
+                    pdfResult.RegulationNumber ?? fileName, pageNumber: 1);
                 //构建字典存储检索后的分词
                 foreach (var c in chunks)
                 {
@@ -433,6 +435,7 @@ namespace Agent1.Services
                         ["ChapterTitle"] = c.ChapterTitle ?? "",
                         ["ClauseNumber"] = c.ClauseNumber ?? "",
                         ["ChunkIndex"] = c.ChunkIndex,
+                        ["PageNumber"] = c.PageNumber ?? 1,
                         ["ExtractionQuality"] = pdfResult.Quality
                     });
                     _totalChunks++;
@@ -471,6 +474,7 @@ namespace Agent1.Services
                             ["ChapterTitle"] = c.ChapterTitle ?? "",
                             ["ClauseNumber"] = c.ClauseNumber ?? "",
                             ["ChunkIndex"] = c.ChunkIndex,
+                            ["PageNumber"] = c.PageNumber ?? (object)DBNull.Value,
                             ["ExtractionQuality"] = docResult.ExtractionMethod == "FilenameOnly" ? "partial" : "good"
                         });
                         _totalChunks++;

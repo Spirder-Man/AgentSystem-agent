@@ -1,0 +1,12 @@
+# ═══════════════════════════════════════
+# Grafana — Dashboard 自动提供者配置
+# 启动时自动加载 dashboard.json
+# ═══════════════════════════════════════
+apiVersion: 1
+
+providers:
+  - name: "Agent1 SLO"
+    folder: ""
+    type: file
+    options:
+      path: /etc/grafana/provisioning/dashboards

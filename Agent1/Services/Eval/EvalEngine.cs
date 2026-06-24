@@ -843,6 +843,15 @@ public class EvalEngine
         return false;
     }
 
+    /// <summary>
+    /// [P2-6] 评测结论判定 — 三级优先级：结构化标签 → 法规编号匹配 → 关键词回退。
+    /// 
+    /// 已知边界风险（需运行时验证）：
+    ///   1. 标签与关键词结论冲突时的优先级（当前：标签优先）
+    ///   2. "可以" 在条件句中的多义性（已通过 hasCaveat/hasConditional 减轻）
+    ///   3. "不合规" 出现在免责声明中而非结论句中（如"若不采取隔离则不合规"）
+    ///   待验证项见 docs/FunctionCalling模型评测BUG记录.md 第6.3/7.4节
+    /// </summary>
     public static bool CheckConclusion(string? response, EvalConclusion? expected, bool toolTriggered, string? category = null, string? intent = null, string? toolResult = null)
     {
         if (string.IsNullOrEmpty(response) || expected == null)
@@ -867,7 +876,6 @@ public class EvalEngine
 
             if (category == "安全距离" && expected.ExpectedDistance.HasValue)
             {
-                // [P1 FIX] 先查LLM回答，若不含距离则回退查工具原始结果
                 if (CheckSafetyDistanceMatch(response, expected.ExpectedDistance.Value))
                     return true;
                 if (!string.IsNullOrEmpty(toolResult) && CheckSafetyDistanceMatch(toolResult, expected.ExpectedDistance.Value))
@@ -883,12 +891,15 @@ public class EvalEngine
             return hasDistance || hasRegulation || hasEmptyData;
         }
 
-        // 合规判断路径
+        // ═══ 合规判断路径 ═══
+
+        // Level 1: 结构化标签解析
         var tagMatch = Regex.Match(response, @"\[判定\s*:\s*is_compliant\s*=\s*(true|false|unknown|待核实|依据原文)\s*\]", RegexOptions.IgnoreCase);
         bool tagPassed = false;
         if (tagMatch.Success)
         {
             var tagValue = tagMatch.Groups[1].Value.Trim();
+            // 非确定性标签（unknown/待核实/依据原文）→ 不参与判定
             if (tagValue.Equals("unknown", StringComparison.OrdinalIgnoreCase)
                 || tagValue.Equals("待核实") || tagValue.Equals("依据原文"))
                 return false;
@@ -896,23 +907,55 @@ public class EvalEngine
             tagPassed = parsed == expected.IsCompliant;
         }
 
+        // Level 2: 法规编号匹配（标签存在但不一致时作为兜底）
         bool regPassed = true;
         if (!string.IsNullOrEmpty(expected.ExpectedRegulationNumber))
             regPassed = CheckRegulationMatch(response, expected.ExpectedRegulationNumber);
 
         if (tagPassed) return true;
-        if (regPassed && tagMatch.Success) return true;
+        if (regPassed && tagMatch.Success) return true; // 法规匹配 + 标签存在（结构化输出可信）
 
+        // Level 3: 关键词回退（改良版，添加否定前置词排除）
         var respLower = response.ToLowerInvariant();
+
+        // [P2-6] 避免误判：排除否定前置词修饰的场景
+        // "不可以" ≠ "可以", "不能同库" ≠ "可以同库", "不应储存" ≠ "可以储存"
+        bool IsPositiveWithNegation(string text, string positiveWord)
+        {
+            var idx = text.IndexOf(positiveWord, StringComparison.Ordinal);
+            if (idx < 0) return false;
+            // 检查前面是否有否定词（不/非/未/无/勿/莫/别）
+            if (idx > 0)
+            {
+                var prevChar = text[idx - 1];
+                if (prevChar == '不' || prevChar == '非' || prevChar == '未' || prevChar == '无')
+                    return false;
+            }
+            return true;
+        }
+
         bool hasCaveat = respLower.Contains("不建议") || respLower.Contains("建议查阅")
                       || respLower.Contains("仍建议核实") || respLower.Contains("未发现直接冲突");
         bool hasConditional = respLower.Contains("如果") || respLower.Contains("则") || respLower.Contains("当");
 
         if (expected.IsCompliant == true)
-            return (respLower.Contains("合规") || respLower.Contains("允许") || respLower.Contains("可以")) && !hasCaveat;
+        {
+            // 正向判定：必须有正向词，且排除免责声明（hasCaveat）
+            var hasPositive = IsPositiveWithNegation(respLower, "合规")
+                           || IsPositiveWithNegation(respLower, "允许")
+                           || IsPositiveWithNegation(respLower, "可以")
+                           || respLower.Contains("符合");
+            return hasPositive && !hasCaveat;
+        }
         else if (expected.IsCompliant == false)
-            return (respLower.Contains("不合规") || respLower.Contains("不允许")
-                 || respLower.Contains("禁止") || respLower.Contains("严禁") || respLower.Contains("禁忌")) && !hasConditional;
+        {
+            // 负向判定：必须有负向词，且排除条件句（hasConditional）
+            // [P2-6] 补充"不可以"等否定前置形式
+            var hasNegative = respLower.Contains("不合规") || respLower.Contains("不允许")
+                           || respLower.Contains("不可以") || respLower.Contains("不能") || respLower.Contains("不应")
+                           || respLower.Contains("禁止") || respLower.Contains("严禁") || respLower.Contains("禁忌");
+            return hasNegative && !hasConditional;
+        }
 
         return false;
     }

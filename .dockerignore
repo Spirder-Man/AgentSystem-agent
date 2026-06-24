@@ -10,6 +10,61 @@
 .agents/
 .qoder/
 .trae/
+.cowork-temp/
+
+# Git
+.git/
+.gitignore
+
+# Logs
+logs/
+*.log
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Data
+.env
+*.tmp
+
+# Test projects (not needed in Docker build context)
+Agent1.Tests/
+ArchitectureTest/
+Benchmark/
+
+# Scripts
+scripts/
+*.py
+*.sh
+
+# Cache
+cache-monitor/
+**/Microsoft.SemanticKernel/
+
+# Docs (except README)
+docs/
+*.md
+!README.md
+
+# External tools (not part of API)
+wechat-group-report/
+gravity-maze/
+
+# Knowledge base (mounted as volume at runtime)
+knowledgebase/
+# .NET
+**/bin/
+**/obj/
+*.user
+*.suo
+
+# IDE
+.vs/
+.vscode/
+.agents/
+.qoder/
+.trae/
 
 # Git
 .git/

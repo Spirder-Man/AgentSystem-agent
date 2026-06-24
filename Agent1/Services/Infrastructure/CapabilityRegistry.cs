@@ -41,9 +41,9 @@ namespace Agent1.Services
     {
         private readonly Dictionary<string, Capability> _capabilities = new();
         private readonly AgentDialog _agentDialog;
-        private readonly ModuleFactory _moduleFactory;
+        private readonly IModuleFactory _moduleFactory;
 
-        public CapabilityRegistry(AgentDialog agentDialog, ModuleFactory moduleFactory)
+        public CapabilityRegistry(AgentDialog agentDialog, IModuleFactory moduleFactory)
         {
             _agentDialog = agentDialog;
             _moduleFactory = moduleFactory;

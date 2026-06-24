@@ -132,6 +132,9 @@ builder.Services.AddSingleton<InspectionRepository>();
 // [P1 安全加固] Token 黑名单 — 登出时撤销 Access Token
 builder.Services.AddSingleton<TokenBlacklistService>();
 
+// [P0-3] 会话清理后台服务 — 每10分钟清理超过30分钟的过期会话，防止内存泄漏
+builder.Services.AddHostedService<SessionCleanupHostedService>();
+
 // [P1] 告警系统 — 注册提前创建的 AlertDispatcher（已含 ConsoleAlertService）
 // 补充注册邮件通道（需在 AppConfig.Load 之后，配置已就绪）
 var emailCfg = AppConfig.Instance.Alerting.Email;

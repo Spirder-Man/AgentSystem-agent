@@ -44,10 +44,19 @@ USER appuser
 
 # ASP.NET Core 监听端口
 ENV ASPNETCORE_URLS=http://+:8080
+
+# ════════════════════════════════════════
+# 环境变量默认值（可在 docker-compose 中覆盖）
+# ════════════════════════════════════════
+ENV LLM_ENDPOINT=http://ollama:11434
+ENV KNOWLEDGE_BASE_PATH=/app/knowledgebase
+ENV CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+ENV ASPNETCORE_ENVIRONMENT=Production
+
 EXPOSE 8080
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health/live || exit 1
 
 ENTRYPOINT ["dotnet", "Agent1.Api.dll"]

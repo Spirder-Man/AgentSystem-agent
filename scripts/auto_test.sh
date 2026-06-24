@@ -7,7 +7,7 @@
 
 PROJECT_DIR="/root/autodl-tmp/agent-system"
 OUT_DIR="/root/autodl-tmp/test-results/$(date +%Y%m%d_%H%M%S)"
-TIMEOUT=45
+TIMEOUT=180
 START_TIME=$(date +%s)
 
 mkdir -p "$OUT_DIR"

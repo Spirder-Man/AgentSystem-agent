@@ -1,18 +1,22 @@
 # ==========================================
-# AgentSystem - Docker Compose 配置
-# 一键启动 PostgreSQL 16 + pgvector + Ollama + API 服务
+# Agent1 - 化工合规 AI 平台生产级容器编排
+# 一键启动: PostgreSQL + Ollama(LLM+Embedding) + API + Prometheus + Grafana
 # ==========================================
-# 使用方式：
+# 使用方式:
 #   1. cp .env.example .env        （首次或根据需要修改密码）
-#   2. docker-compose up -d        （启动全部服务，首次自动拉取模型）
-#   3. docker-compose logs -f api  （查看 API 日志）
-#   4. docker-compose down         （停止全部服务）
+#   2. bash scripts/docker-up.sh   （一键启动）
+#   或 docker-compose up -d         （直接启动）
+#   3. docker-compose logs -f api   （查看 API 日志）
+#   4. docker-compose down          （停止全部服务）
 # ==========================================
 
 services:
+  # ═══════════════════════════════════════
+  # PostgreSQL 16 + pgvector 向量扩展
+  # ═══════════════════════════════════════
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: chemical_agent_db
+    container_name: agent1_db
     restart: unless-stopped
     ports:
       - "${DB_PORT:-5432}:5432"
@@ -21,20 +25,22 @@ services:
       POSTGRES_USER: ${DB_USERNAME:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?生产环境必须设置 DB_PASSWORD}
     volumes:
-      # 数据持久化（容器重启不丢失数据）
       - postgres_data:/var/lib/postgresql/data
-      # 启动时自动执行建表脚本
       - ./init_database.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_NAME:-chemical_park_ai_agent}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - agent1_net
 
-  # ── Ollama 本地 LLM 推理服务 ──
+  # ═══════════════════════════════════════
+  # Ollama 本地 LLM + Embedding 推理服务
+  # ═══════════════════════════════════════
   ollama:
     image: ollama/ollama:latest
-    container_name: chemical_agent_ollama
+    container_name: agent1_ollama
     restart: unless-stopped
     ports:
       - "${OLLAMA_PORT:-11434}:11434"
@@ -50,7 +56,9 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
-    # GPU 加速（NVIDIA GPU，取消注释启用）:
+    networks:
+      - agent1_net
+    # GPU 加速 (NVIDIA GPU — 取消注释启用):
     # deploy:
     #   resources:
     #     reservations:
@@ -59,10 +67,12 @@ services:
     #           count: 1
     #           capabilities: [gpu]
 
-  # ── 模型自动拉取（首次启动完成后退出）──
+  # ═══════════════════════════════════════
+  # 模型自动拉取 (首次启动完成后退出)
+  # ═══════════════════════════════════════
   ollama-pull:
     image: ollama/ollama:latest
-    container_name: chemical_agent_ollama_pull
+    container_name: agent1_ollama_pull
     restart: "no"
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -79,30 +89,46 @@ services:
     depends_on:
       ollama:
         condition: service_healthy
+    networks:
+      - agent1_net
 
+  # ═══════════════════════════════════════
+  # Agent1 API 服务
+  # ═══════════════════════════════════════
   api:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: chemical_agent_api
+    container_name: agent1_api
     restart: unless-stopped
     ports:
       - "${API_PORT:-8080}:8080"
     environment:
+      # ── 运行时 ──
       - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Production}
+      - ASPNETCORE_URLS=http://+:8080
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      # ── 数据库 ──
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=${DB_NAME:-chemical_park_ai_agent}
       - DB_USERNAME=${DB_USERNAME:-postgres}
       - DB_PASSWORD=${DB_PASSWORD:?生产环境必须设置 DB_PASSWORD}
-      - JWT_KEY=${JWT_KEY:-}
-      - AUTH_ACCOUNTS_JSON=${AUTH_ACCOUNTS_JSON}
-      - LLM__Endpoint=http://ollama:11434
-      - KnowledgeBase__BasePath=/app/knowledgebase
+      # ── JWT ──
+      - JWT_KEY=${JWT_KEY:?生产环境必须设置 JWT_KEY}
+      # ── 账号 ──
+      - AUTH_ACCOUNTS_JSON=${AUTH_ACCOUNTS_JSON:-[]}
+      # ── LLM 端点 (P0-2: 环境变量覆盖 appsettings.json 默认值) ──
+      - LLM_ENDPOINT=http://ollama:11434
+      # ── 知识库路径 (P0-1: 跨平台路径) ──
+      - KNOWLEDGE_BASE_PATH=/app/knowledgebase
+      # ── 告警邮件 (P1: SMTP) ──
+      - ALERT_EMAIL_PASSWORD=${ALERT_EMAIL_PASSWORD:-}
+      - ALERT_RECIPIENT_EMAILS=${ALERT_RECIPIENT_EMAILS:-}
+      # ── 可观测性 ──
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4317}
     volumes:
-      # 日志持久化
       - api_logs:/app/logs
-      # 知识库只读挂载
       - ./knowledgebase:/app/knowledgebase:ro
     depends_on:
       postgres:
@@ -115,11 +141,87 @@ services:
       timeout: 10s
       retries: 3
       start_period: 90s
+    networks:
+      - agent1_net
 
+  # ═══════════════════════════════════════
+  # Prometheus — 指标采集 + 告警规则
+  # ═══════════════════════════════════════
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: agent1_prometheus
+    restart: unless-stopped
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/recording-rules.yml:/etc/prometheus/recording-rules.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9090/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - agent1_net
+
+  # ═══════════════════════════════════════
+  # Grafana — 可视化仪表盘
+  # ═══════════════════════════════════════
+  grafana:
+    image: grafana/grafana:10.4.5
+    container_name: agent1_grafana
+    restart: unless-stopped
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-agent1-admin}
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboard.json:/etc/grafana/provisioning/dashboards/agent1-slo.json:ro
+      - ./grafana/datasource.yml:/etc/grafana/provisioning/datasources/prometheus.yml:ro
+      - ./grafana/dashboard-provider.yml:/etc/grafana/provisioning/dashboards/default.yml:ro
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - agent1_net
+
+# ═══════════════════════════════════════
+# 持久化卷
+# ═══════════════════════════════════════
 volumes:
   postgres_data:
-    name: chemical_agent_postgres_data
+    name: agent1_postgres_data
   api_logs:
-    name: chemical_agent_api_logs
+    name: agent1_api_logs
   ollama_data:
-    name: chemical_agent_ollama_data
+    name: agent1_ollama_data
+  prometheus_data:
+    name: agent1_prometheus_data
+  grafana_data:
+    name: agent1_grafana_data
+
+# ═══════════════════════════════════════
+# 内部网络 (容器间通信)
+# ═══════════════════════════════════════
+networks:
+  agent1_net:
+    name: agent1_net
+    driver: bridge

@@ -21,7 +21,7 @@ namespace Agent1.Commands
         private readonly InspectionRepository _repo;
         private readonly ModuleDispatcher _dispatcher;
 
-        public string Key => "22";
+        public string Key => "4";
         public string Label => "📊 合规总览 [扫描·台账·发现·整改率]";
 
         public DashboardCommand(InspectionOrchestrator orchestrator,

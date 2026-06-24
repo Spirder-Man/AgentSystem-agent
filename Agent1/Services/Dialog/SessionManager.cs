@@ -36,6 +36,9 @@ namespace Agent1.Services
     {
         private static readonly Dictionary<string, SessionContext> _sessions = new Dictionary<string, SessionContext>();
         private static readonly object _lock = new object();
+        private static int _createCount = 0;
+        private static readonly TimeSpan SessionTimeout = TimeSpan.FromMinutes(30);
+        private const int CleanupCreateInterval = 20; // 每 20 次 CreateSession 触发一次清理
 
         public static SessionContext CreateSession(string? customPrompt = null, SessionType type = SessionType.General)
         {
@@ -50,6 +53,13 @@ namespace Agent1.Services
                     session.UserPromptTemplate = customPrompt;
                 }
                 _sessions[session.SessionId] = session;
+
+                // [P0-3] 自清洁：每 N 次创建触发一次过期会话清理
+                if (++_createCount % CleanupCreateInterval == 0)
+                {
+                    CleanupExpiredInternal(SessionTimeout);
+                }
+
                 return session;
             }
         }
@@ -192,17 +202,27 @@ namespace Agent1.Services
             }
         }
 
+        /// <summary>[P0-3] 清理超过指定时长的过期会话（线程安全，可外部调用）</summary>
         public static void CleanupExpiredSessions(TimeSpan timeout)
         {
             lock (_lock)
             {
-                var expiredIds = _sessions.Where(kv => DateTime.Now - kv.Value.LastUpdated > timeout)
-                                         .Select(kv => kv.Key)
-                                         .ToList();
+                CleanupExpiredInternal(timeout);
+            }
+        }
+
+        /// <summary>[P0-3] 内部清理逻辑 — 调用方必须已持有 _lock</summary>
+        private static void CleanupExpiredInternal(TimeSpan timeout)
+        {
+            var expiredIds = _sessions.Where(kv => DateTime.Now - kv.Value.LastUpdated > timeout)
+                                     .Select(kv => kv.Key)
+                                     .ToList();
+            if (expiredIds.Count > 0)
+            {
                 foreach (var id in expiredIds)
-                {
                     _sessions.Remove(id);
-                }
+                Serilog.Log.Debug("[SessionManager] 清理过期会话: {Count} 个 (阈值={Timeout}min)",
+                    expiredIds.Count, timeout.TotalMinutes);
             }
         }
 

@@ -84,6 +84,16 @@ namespace Agent1.Config
                 config.Database.DatabaseName = dbName;
 
             // [P1] 告警邮件密码 — 从环境变量注入，绝不写入配置文件
+            // [P0-2] LLM 端点 — 支持环境变量覆盖（Linux llama-server :8080 / Windows Ollama :11434）
+            var llmEndpoint = Environment.GetEnvironmentVariable("LLM_ENDPOINT");
+            if (!string.IsNullOrEmpty(llmEndpoint))
+                config.Llm.Endpoint = llmEndpoint;
+
+            // [P0-1] 知识库路径 — 支持环境变量覆盖（Linux 绝对路径 / Windows 相对路径）
+            var kbPath = Environment.GetEnvironmentVariable("KNOWLEDGE_BASE_PATH");
+            if (!string.IsNullOrEmpty(kbPath))
+                config.KnowledgeBase.BasePath = kbPath;
+
             var alertPwd = Environment.GetEnvironmentVariable("ALERT_EMAIL_PASSWORD");
             if (!string.IsNullOrEmpty(alertPwd))
                 config.Alerting.Email.SenderPassword = alertPwd;
@@ -144,7 +154,7 @@ namespace Agent1.Config
     public class ChemicalLlmConfig
     {
         public string ModelId { get; set; } = "deepseek-r1:local7b";
-        public string Endpoint { get; set; } = "http://localhost:11434";
+        public string Endpoint { get; set; } = "http://localhost:8080/v1";
         public string MultimodalModelId { get; set; } = "qwen-vl:latest";
 
         // Phase 2a 预留: 工具调用规划专用模型（可与 ModelId 相同）
@@ -161,7 +171,7 @@ namespace Agent1.Config
     // 化工知识库配置
     public class ChemicalKnowledgeBaseConfig
     {
-        public string BasePath { get; set; } = @"d:\桌面\agent\项目\Agent1\knowledgebase";
+        public string BasePath { get; set; } = "knowledgebase";
         public List<KnowledgeSourceConfig> Sources { get; set; } = new()
         {
             new() { Name = "国标", Path = "国标", Priority = 100 },

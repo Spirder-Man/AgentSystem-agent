@@ -1,0 +1,30 @@
+# ═══════════════════════════════════════════════
+# Prometheus 采集配置 — Agent1 化工合规 AI 平台
+# 采集目标: Agent1 API /metrics 端点 (Prometheus text 格式)
+# ═══════════════════════════════════════════════
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    service: agent1
+
+# 预录规则 (SLO 指标预计算)
+rule_files:
+  - "/etc/prometheus/recording-rules.yml"
+
+scrape_configs:
+  # ── Agent1 API 指标 ──
+  - job_name: "agent1-api"
+    metrics_path: "/metrics"
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["api:8080"]
+        labels:
+          env: "production"
+          app: "agent1"
+
+  # ── Prometheus 自身指标 ──
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]

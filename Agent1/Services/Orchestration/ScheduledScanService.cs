@@ -19,6 +19,7 @@ namespace Agent1.Services.Orchestration
         private readonly InspectionRepository _repo;
         private readonly EventActionDispatcher _eventDispatcher;
         private Timer? _timer;
+        private Timer? _sessionCleanupTimer;  // [P0-3] 会话清理定时器
         private bool _disposed;
 
         /// <summary>扫描间隔（默认24小时 = 86400000ms）</summary>
@@ -26,6 +27,10 @@ namespace Agent1.Services.Orchestration
 
         /// <summary>首次扫描延迟（启动后60秒，避免阻塞启动流程）</summary>
         private static readonly TimeSpan InitialDelay = TimeSpan.FromSeconds(60);
+
+        // [P0-3] 会话清理配置
+        private static readonly TimeSpan SessionCleanupInterval = TimeSpan.FromMinutes(10);
+        private static readonly TimeSpan SessionCleanupTimeout = TimeSpan.FromMinutes(30);
 
         public ScheduledScanService(
             ComplianceRuleEngine ruleEngine,
@@ -45,12 +50,29 @@ namespace Agent1.Services.Orchestration
 
             Serilog.Log.Information("[ScheduledScan] 定时扫描已启动 | 间隔={Interval}h | 首次延迟={Delay}s",
                 DefaultInterval.TotalHours, InitialDelay.TotalSeconds);
+
+            // [P0-3] 启动会话清理定时器
+            _sessionCleanupTimer = new Timer(_ =>
+            {
+                try
+                {
+                    SessionManager.CleanupExpiredSessions(SessionCleanupTimeout);
+                }
+                catch (Exception ex)
+                {
+                    Serilog.Log.Error("[ScheduledScan] 会话清理异常: {Error}", ex.Message);
+                }
+            }, null, TimeSpan.FromMinutes(5), SessionCleanupInterval);
+
+            Serilog.Log.Information("[ScheduledScan] 会话清理已启动 | 间隔={Interval}min | 超时={Timeout}min",
+                SessionCleanupInterval.TotalMinutes, SessionCleanupTimeout.TotalMinutes);
         }
 
         /// <summary>停止定时扫描</summary>
         public void Stop()
         {
             _timer?.Change(Timeout.Infinite, Timeout.Infinite);
+            _sessionCleanupTimer?.Change(Timeout.Infinite, Timeout.Infinite);
             Serilog.Log.Information("[ScheduledScan] 定时扫描已停止");
         }
 
@@ -110,6 +132,7 @@ namespace Agent1.Services.Orchestration
         {
             if (_disposed) return;
             _timer?.Dispose();
+            _sessionCleanupTimer?.Dispose();
             _disposed = true;
         }
     }
