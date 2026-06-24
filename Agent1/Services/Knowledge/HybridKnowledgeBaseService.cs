@@ -8,7 +8,7 @@ using Agent1.Config;
 
 namespace Agent1.Services
 {
-    public class HybridKnowledgeBaseService : IKnowledgeBaseService
+    public class HybridKnowledgeBaseService : IKnowledgeBaseService, IDisposable
     {
         private readonly IDatabaseService _databaseService;
         private readonly ILlmService _llmService;
@@ -25,6 +25,11 @@ namespace Agent1.Services
             _vectorConfig = config.VectorSearch;
             _bm25Service = new KnowledgeBaseService();
             _queryCache = new QueryCacheService(config);
+        }
+
+        public void Dispose()
+        {
+            _queryCache?.Dispose();
         }
 
         public async Task AddDocumentAsync(string content, Dictionary<string, object>? metadata = null)
@@ -266,10 +271,10 @@ namespace Agent1.Services
             return _bm25Service.GetDocumentCount();
         }
 
-        public void Clear()
+        public async Task ClearAsync()
         {
-            _bm25Service.Clear();
-            _databaseService.ClearChemicalDocumentsAsync().GetAwaiter().GetResult();
+            await _bm25Service.ClearAsync();
+            await _databaseService.ClearChemicalDocumentsAsync();
         }
 
         /// <summary>[P3 增量更新] 按源文件删除 BM25 内存分块 + DB 分块</summary>
@@ -373,7 +378,7 @@ namespace Agent1.Services
                 return;
             }
 
-            _bm25Service.Clear();
+            await _bm25Service.ClearAsync();
             foreach (var (content, regulationType, priority, sourceFile) in docs)
             {
                 var metadata = new Dictionary<string, object>
@@ -615,11 +620,6 @@ namespace Agent1.Services
             }
 
             return baseScore + priorityBonus + termBonus;
-        }
-
-        public List<RetrievedChunk> Retrieve(string query, int topK = 5)
-        {
-            return RetrieveAsync(query, topK).GetAwaiter().GetResult();
         }
 
         /// <summary>

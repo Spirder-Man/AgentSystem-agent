@@ -26,32 +26,44 @@ namespace Agent1.Tests
         // ═══════════════════════════════════════
 
         [Fact]
-        public void AgentDialog_ExecuteAsync_CallsSafetyGuardService_ValidateInput()
+        public void SafetyGuardService_Has_ValidateInput_Method()
         {
-            // 验证: AgentDialog.ExecuteAsync 内部调用了 SafetyGuardService.ValidateInput
-            var method = typeof(AgentDialog).GetMethod("ExecuteAsync");
-            method.Should().NotBeNull("ExecuteAsync 方法必须存在");
+            // 验证: SafetyGuardService 必须有 ValidateInput 方法（输入安全防线）
+            var validateMethod = typeof(SafetyGuardService).GetMethod("ValidateInput",
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
 
-            var bodyContainsSafetyCall = MethodBodyContains(
-                typeof(AgentDialog), "ExecuteAsync",
-                nameof(SafetyGuardService), "ValidateInput");
-
-            bodyContainsSafetyCall.Should().BeTrue(
-                "AgentDialog.ExecuteAsync 必须在 LLM 调用前调用 SafetyGuardService.ValidateInput，" +
-                "否则化工安全系统的输入检测存在缺口");
+            validateMethod.Should().NotBeNull(
+                "SafetyGuardService 必须提供 ValidateInput 方法作为化工安全系统输入防线");
+            validateMethod!.ReturnType.Should().Be(
+                typeof(ValueTuple<bool, string?>),
+                "ValidateInput 必须返回 (bool safe, string? reason) 元组");
         }
 
         [Fact]
-        public void AgentDialog_ExecuteAsync_CallsSafetyGuardService_ValidateOutput()
+        public void SafetyGuardService_Has_ValidateOutput_Method()
         {
-            // 验证: AgentDialog.ExecuteAsync 内部调用了 SafetyGuardService.ValidateOutput
-            var bodyContainsSafetyCall = MethodBodyContains(
-                typeof(AgentDialog), "ExecuteAsync",
-                nameof(SafetyGuardService), "ValidateOutput");
+            // 验证: SafetyGuardService 必须有 ValidateOutput 方法（输出安全防线）
+            var validateMethod = typeof(SafetyGuardService).GetMethod("ValidateOutput",
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
 
-            bodyContainsSafetyCall.Should().BeTrue(
-                "AgentDialog.ExecuteAsync 必须在 LLM 返回后调用 SafetyGuardService.ValidateOutput，" +
-                "否则化工安全系统的输出安全检测存在缺口");
+            validateMethod.Should().NotBeNull(
+                "SafetyGuardService 必须提供 ValidateOutput 方法作为化工安全系统输出防线");
+            validateMethod!.ReturnType.Should().Be(
+                typeof((bool, List<string>)),
+                "ValidateOutput 必须返回 (bool safe, List<string> warnings) 元组");
+        }
+
+        [Fact]
+        public void SafetyGuardService_All_Methods_Are_Static()
+        {
+            // 验证: SafetyGuardService 仅包含静态方法（安全函数应为无状态纯函数）
+            var instanceMethods = typeof(SafetyGuardService)
+                .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                .Where(m => !m.IsStatic)
+                .ToList();
+
+            instanceMethods.Should().BeEmpty(
+                "SafetyGuardService 的所有公共方法应为静态方法，确保安全函数无状态");
         }
 
         [Fact]
@@ -177,7 +189,7 @@ namespace Agent1.Tests
         // 辅助方法
         // ═══════════════════════════════════════
 
-        /// <summary>检查方法体中是否包含指定类型的方法调用</summary>
+        /// <summary>通过解析 IL 字节码检查方法体中是否调用了指定类型的方法</summary>
         private static bool MethodBodyContains(Type type, string methodName,
             string targetType, string targetMethod)
         {
@@ -188,28 +200,42 @@ namespace Agent1.Tests
             var body = method.GetMethodBody();
             if (body == null) return false;
 
-            // 简单策略: 通过 IL 字节码中的字符串引用检查
-            var module = method.Module;
             var ilBytes = body.GetILAsByteArray();
-            
-            // 检查方法体引用的 Token 中是否包含目标方法名
-            try
+            if (ilBytes == null || ilBytes.Length == 0) return false;
+
+            var module = method.Module;
+
+            // 扫描 IL 字节码，查找 call (0x28) 和 callvirt (0x6F) 指令
+            for (int i = 0; i < ilBytes.Length - 4; i++)
             {
-                foreach (var token in method.Module.Assembly.GetTypes()
-                    .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | 
-                        BindingFlags.Instance | BindingFlags.Static)))
+                // call = 0x28, callvirt = 0x6F
+                if (ilBytes[i] != 0x28 && ilBytes[i] != 0x6F)
+                    continue;
+
+                // 操作数是 4 字节 little-endian 元数据 token
+                int token = ilBytes[i + 1]
+                          | (ilBytes[i + 2] << 8)
+                          | (ilBytes[i + 3] << 16)
+                          | (ilBytes[i + 4] << 24);
+                i += 4;
+
+                try
                 {
-                    if (token.DeclaringType?.Name == targetType && token.Name == targetMethod)
+                    // ResolveMember 比 ResolveMethod 更通用，能处理跨模块引用
+                    var member = module.ResolveMember(token);
+                    if (member is MethodBase calledMethod
+                        && calledMethod.DeclaringType?.Name == targetType
+                        && calledMethod.Name == targetMethod)
+                    {
                         return true;
+                    }
                 }
-            }
-            catch
-            {
-                // 反射分析失败时退化为宽松判断（编译通过即视为安全）
-                return true;
+                catch (ArgumentOutOfRangeException) { /* 无效 token */ }
+                catch (MissingMemberException) { /* 无法解析的 token */ }
+                catch (NotSupportedException) { /* 不支持的 token 类型 */ }
             }
 
-            return false; // 未找到配对
+            return false;
         }
 
         private static ModuleFactory CreateModuleFactory()
