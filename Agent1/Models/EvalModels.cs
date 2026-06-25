@@ -147,6 +147,13 @@ public class EvalResult
     [JsonPropertyName("mrr")]
     public double? MRR { get; set; }
 
+    // ── Top-10 检索指标 (Task 11: 集成测试补全) ──
+    [JsonPropertyName("precision_at_10")]
+    public double? PrecisionAt10 { get; set; }
+
+    [JsonPropertyName("recall_at_10")]
+    public double? RecallAt10 { get; set; }
+
     [JsonPropertyName("retrieval_evaluated")]
     public bool RetrievalEvaluated { get; set; }
 
@@ -219,6 +226,13 @@ public class EvalReport
 
     [JsonPropertyName("mean_mrr")]
     public double? MeanMRR { get; set; }
+
+    // ── Top-10 检索指标汇总 (Task 11) ──
+    [JsonPropertyName("mean_precision_at_10")]
+    public double? MeanPrecisionAt10 { get; set; }
+
+    [JsonPropertyName("mean_recall_at_10")]
+    public double? MeanRecallAt10 { get; set; }
 
     // ── 生成维度汇总 ──
     [JsonPropertyName("mean_faithfulness")]
