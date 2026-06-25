@@ -16,7 +16,7 @@ namespace Agent1.Tests;
 ///   dotnet test --filter "Category=ApiIntegration"
 /// </summary>
 [Trait("Category", "ApiIntegration")]
-public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Agent1.Api.Program>>
+internal class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Agent1.Api.Program>>
 {
     private readonly WebApplicationFactory<Agent1.Api.Program> _factory;
 
