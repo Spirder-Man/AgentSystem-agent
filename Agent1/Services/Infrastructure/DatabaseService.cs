@@ -422,6 +422,7 @@ namespace Agent1.Services
             catch (Exception ex)
             {
                 Console.WriteLine($"   ❌ 化工文档添加失败: {ex.Message}");
+                throw; // P0修复：单条插入异常必须传播，否则调用方以为成功
             }
         }
 
@@ -439,21 +440,30 @@ namespace Agent1.Services
 
                 try
                 {
+                    // P0修复：批量 SQL 对齐单条 INSERT，补全全部 12 个元数据字段
                     var sql = @"
                         INSERT INTO chemical_documents (
                             content, embedding, regulation_type, priority,
-                            source_file, chemical_type
+                            source_file, chemical_type,
+                            regulation_number, chapter_title, clause_number,
+                            page_number, chunk_index, extraction_quality
                         )
                         VALUES (
                             @content, @embedding::vector, @regulationType, @priority,
-                            @sourceFile, @chemicalType
+                            @sourceFile, @chemicalType,
+                            @regulationNumber, @chapterTitle, @clauseNumber,
+                            @pageNumber, @chunkIndex, @extractionQuality
                         );
                     ";
 
                     int successCount = 0;
                     foreach (var record in records)
                     {
-                        if (record.IsDirty) continue;
+                        if (record.IsDirty)
+                        {
+                            Console.WriteLine($"   🚫 脏数据拦截(批量): 长度={record.Content?.Length ?? 0}, 质量={record.ExtractionQuality ?? "无"}");
+                            continue;
+                        }
 
                         using var command = new NpgsqlCommand(sql, connection, transaction);
                         command.Parameters.AddWithValue("@content", record.Content);
@@ -470,6 +480,12 @@ namespace Agent1.Services
                         command.Parameters.AddWithValue("@priority", record.Priority);
                         command.Parameters.AddWithValue("@sourceFile", record.SourceFile ?? (object)DBNull.Value);
                         command.Parameters.AddWithValue("@chemicalType", record.ChemicalType ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@regulationNumber", record.RegulationNumber ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@chapterTitle", record.ChapterTitle ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@clauseNumber", record.ClauseNumber ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@pageNumber", record.PageNumber ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@chunkIndex", record.ChunkIndex ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@extractionQuality", record.ExtractionQuality ?? (object)DBNull.Value);
 
                         await command.ExecuteNonQueryAsync();
                         successCount++;
@@ -481,12 +497,13 @@ namespace Agent1.Services
                 catch
                 {
                     await transaction.RollbackAsync();
-                    throw;
+                    throw; // P0修复：异常向外传播，不静默吞掉
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"   ❌ 批量入库失败: {ex.Message}");
+                throw; // P0修复：批量入库异常必须传播，否则上层以为成功
             }
         }
 
@@ -636,10 +653,11 @@ namespace Agent1.Services
                 using var connection = CreateConnection();
                 await connection.OpenAsync();
                 // P0 FIX: pgvector 类型需显式 CAST 为 TEXT，避免 "public.vector not supported" 错误
+                // P0 FIX: 移除 WHERE embedding IS NOT NULL — 方法名是"All"就应返回全部文档
                 using var command = new NpgsqlCommand(
-                    @"SELECT id, content, embedding::TEXT, regulation_type, priority, source_file, chemical_type
+                    @"SELECT id, content, embedding::TEXT, regulation_type, priority, source_file, chemical_type,
+                             regulation_number, chapter_title, clause_number, page_number, chunk_index, extraction_quality
                       FROM chemical_documents
-                      WHERE embedding IS NOT NULL
                       ORDER BY id;",
                     connection);
                 using var reader = await command.ExecuteReaderAsync();
@@ -652,7 +670,14 @@ namespace Agent1.Services
                         RegulationType = reader.IsDBNull(3) ? "通用" : reader.GetString(3),
                         Priority = reader.IsDBNull(4) ? "中" : reader.GetString(4),
                         SourceFile = reader.IsDBNull(5) ? null : reader.GetString(5),
-                        ChemicalType = reader.IsDBNull(6) ? null : reader.GetString(6)
+                        ChemicalType = reader.IsDBNull(6) ? null : reader.GetString(6),
+                        // P0修复：补全 6 个元数据字段读取
+                        RegulationNumber = reader.IsDBNull(7) ? null : reader.GetString(7),
+                        ChapterTitle = reader.IsDBNull(8) ? null : reader.GetString(8),
+                        ClauseNumber = reader.IsDBNull(9) ? null : reader.GetString(9),
+                        PageNumber = reader.IsDBNull(10) ? null : reader.GetInt32(10),
+                        ChunkIndex = reader.IsDBNull(11) ? null : reader.GetInt32(11),
+                        ExtractionQuality = reader.IsDBNull(12) ? null : reader.GetString(12)
                     };
 
                     // 解析 pgvector 格式: [0.1,0.2,...]
