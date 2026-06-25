@@ -1,5 +1,5 @@
 namespace Agent1.Api;
 
-public partial class Program
+internal partial class Program
 {
 }
