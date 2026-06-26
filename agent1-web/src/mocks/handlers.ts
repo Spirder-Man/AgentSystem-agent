@@ -27,17 +27,21 @@ import { mockTicketList, applyTicketStatusUpdate } from './data/tickets';
 // 工具函数
 // ═══════════════════════════════════════
 
-/** 模拟 LLM 推理延迟（2-5 秒随机，80% 概率 2-3 秒） */
+/** 模拟 LLM 推理延迟（基于 Task 11 实测：Qwen3-8B on RTX 3090 通常 3-25s） */
 async function simulateLlmDelay(): Promise<void> {
-  const baseDelay = Math.random() < 0.8 ? 2000 : 4000;
-  const jitter = Math.random() * 1000;
+  // 70% 概率 3-12s（常规查询），20% 概率 12-25s（复杂推理），10% 概率 25-45s（巡检全量扫描）
+  const rand = Math.random();
+  const baseDelay = rand < 0.7 ? 3000 + Math.random() * 9000   // 3-12s
+    : rand < 0.9 ? 12000 + Math.random() * 13000                 // 12-25s
+    : 25000 + Math.random() * 20000;                              // 25-45s
+  const jitter = Math.random() * 3000;
   await delay(baseDelay + jitter);
 }
 
 /** 模拟 5% 概率的服务器错误（测试错误处理） */
 function maybeSimulateError(): ApiError | null {
   if (Math.random() < 0.05) {
-    return { error: '服务暂时不可用，请稍后重试', retryAfter: 5 };
+    return { error: '服务繁忙，请稍后重试', retryAfter: 10 };
   }
   return null;
 }
@@ -61,8 +65,9 @@ export const handlers = [
     }
 
     // 允许任意用户名+密码组合（开发阶段），真实 API 会验证账号
-    const role = body.username.includes('admin') ? 'admin'
-      : body.username.includes('auditor') ? 'auditor'
+    const usernameLower = body.username.toLowerCase();
+    const role = usernameLower.includes('admin') ? 'admin'
+      : usernameLower.includes('auditor') ? 'auditor'
       : 'viewer';
 
     return HttpResponse.json<LoginResponse>({
@@ -126,16 +131,18 @@ export const handlers = [
   }),
 
   // ── POST /api/Compliance/hazard/query ──
+  // ⚠️ 对齐后端: QueryHazard() 使用 LLM 推理 (ExecuteEvalFastQueryAsync)
   http.post('/api/Compliance/hazard/query', async ({ request }) => {
-    await delay(500);
+    await simulateLlmDelay();
     const body = await request.json() as HazardQueryRequest;
     const result = getHazardResponse(body.substanceName);
     return HttpResponse.json<HazardQueryResponse>(result);
   }),
 
   // ── POST /api/Compliance/storage/compatibility ──
+  // ⚠️ 对齐后端: CheckStorageCompatibility() 使用 LLM 推理 (ExecuteEvalFastAsync)
   http.post('/api/Compliance/storage/compatibility', async ({ request }) => {
-    await delay(500);
+    await simulateLlmDelay();
     const body = await request.json() as StorageCompatibilityRequest;
     const result = getStorageCompatibilityResponse(body.substanceA, body.substanceB);
     return HttpResponse.json<StorageCompatibilityResponse>(result);
@@ -172,7 +179,12 @@ export const handlers = [
       })),
     };
     mockPlans.unshift(newPlan);
-    return HttpResponse.json<InspectionPlan>(newPlan);
+    // 对齐后端 InspectionController.CreatePlan() 返回: {planId, name, items: count}
+    return HttpResponse.json({
+      planId: newPlan.planId,
+      name: newPlan.name,
+      items: newPlan.items.length,
+    });
   }),
 
   // ── GET /api/Inspection/plans/:id ──
@@ -186,17 +198,57 @@ export const handlers = [
   }),
 
   // ── POST /api/Inspection/plans/:id/execute ──
+  // ⚠️ 对齐后端: ExecutePlan() 仅返回摘要字段，不包含 results 数组
+  //    前端需额外调用 GET /api/Inspection/rounds/:id 获取详细结果
   http.post('/api/Inspection/plans/:id/execute', async ({ params }) => {
+    const error = maybeSimulateError();
+    if (error) return HttpResponse.json(error, { status: 503 });
+
     await simulateLlmDelay(); // 执行巡检需要 LLM 推理
     const round = getMockRound(`round-${Date.now()}`, params.id as string);
-    return HttpResponse.json<InspectionRound>(round);
+    return HttpResponse.json({
+      roundId: round.roundId,
+      planId: round.planId,
+      complianceRate: round.complianceRate,
+      compliantCount: round.compliantCount,
+      nonCompliantCount: round.nonCompliantCount,
+      warningCount: round.warningCount,
+      ticketCount: round.ticketCount,
+      totalElapsedMs: round.totalElapsedMs,
+      executedBy: round.executedBy,
+      startedAt: round.startedAt,
+      completedAt: round.completedAt,
+    });
   }),
 
   // ── GET /api/Inspection/rounds/:id ──
+  // ⚠️ 对齐后端: Warnings 返回数量(非数组), Tools 使用 PascalCase, ElapsedMs 来自 Metrics
   http.get('/api/Inspection/rounds/:id', async ({ params }) => {
     await delay(200);
     const round = getMockRound(params.id as string, 'plan-001');
-    return HttpResponse.json<InspectionRound>(round);
+    return HttpResponse.json({
+      roundId: round.roundId,
+      planId: round.planId,
+      complianceRate: round.complianceRate,
+      compliantCount: round.compliantCount,
+      nonCompliantCount: round.nonCompliantCount,
+      ticketCount: round.ticketCount,
+      warningCount: round.warningCount,
+      totalElapsedMs: round.totalElapsedMs,
+      executedBy: round.executedBy,
+      startedAt: round.startedAt,
+      completedAt: round.completedAt,
+      results: round.results.map(r => ({
+        itemId: r.itemId,
+        isCompliant: r.isCompliant,
+        regulationRef: r.regulationRef,
+        conclusion: r.conclusion,
+        warnings: r.warnings.length,
+        tools: r.tools,
+        traceId: r.traceId,
+        elapsedMs: r.elapsedMs,
+      })),
+    });
   }),
 
   // ── GET /api/Inspection/reports/:id ──
@@ -207,10 +259,37 @@ export const handlers = [
   }),
 
   // ── GET /api/Inspection/reports/:id/export ──
+  // ⚠️ 对齐后端 ExportReport() 返回: {meta, plan, summary, findings, tickets, audit}
   http.get('/api/Inspection/reports/:id/export', async ({ params }) => {
     await delay(100);
     const report = getMockReport(params.id as string, 'round-001');
-    return HttpResponse.json(report);
+    return HttpResponse.json({
+      meta: {
+        reportId: report.reportId,
+        roundId: report.roundId,
+        format: 'json',
+        generatedAt: report.generatedAt,
+        generatedBy: report.generatedBy,
+      },
+      plan: {
+        planId: report.plan.planId,
+        name: report.plan.name,
+        area: report.plan.area,
+        inspector: '张三',
+      },
+      summary: {
+        complianceRate: report.complianceRate,
+        summary: report.summary,
+      },
+      findings: report.criticalFindings,
+      tickets: [
+        { id: 1, issue: '苯与丙酮同库储存违规', priority: 'Critical', status: 'New', assignee: '', regulationRef: 'GB 15603-2022 §4.2.2' },
+      ],
+      audit: {
+        auditHash: report.auditHash,
+        algorithm: 'SHA256',
+      },
+    });
   }),
 
   // ── GET /api/Inspection/assets ──
@@ -220,7 +299,11 @@ export const handlers = [
   }),
 
   // ── POST /api/Inspection/scan ──
+  // ⚠️ 对齐后端: RunAutoScan() 使用 LLM 规则引擎扫描 (ScanAssetsAsync)
   http.post('/api/Inspection/scan', async () => {
+    const error = maybeSimulateError();
+    if (error) return HttpResponse.json(error, { status: 503 });
+
     await simulateLlmDelay();
     return HttpResponse.json<ScanResult>(mockScanResult);
   }),
@@ -244,6 +327,7 @@ export const handlers = [
   }),
 
   // ── PUT /api/Tickets/:id/status ──
+  // ⚠️ 对齐后端 TicketsController.UpdateStatus() 返回: {ticketId, newStatus, logCount}
   http.put('/api/Tickets/:id/status', async ({ params, request }) => {
     await delay(300);
     const body = await request.json() as TicketStatusUpdateRequest;
@@ -251,12 +335,16 @@ export const handlers = [
 
     const updated = applyTicketStatusUpdate(ticketId, body.action, body.assignee);
     if (!updated) {
-      return HttpResponse.json<ApiError>(
-        { error: '工单不存在或状态流转不合法' },
+      return HttpResponse.json(
+        { error: `工单 #${ticketId} 不存在或状态流转不合法` },
         { status: 400 }
       );
     }
-    return HttpResponse.json<TicketItem>(updated);
+    return HttpResponse.json({
+      ticketId: updated.id,
+      newStatus: updated.status,
+      logCount: updated.logCount,
+    });
   }),
 
   // ═══════════════════════════════════════
