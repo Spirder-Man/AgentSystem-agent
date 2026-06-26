@@ -1,6 +1,6 @@
 # Agent1 — 化工园区危化品合规审查 AI Agent
 
-> **项目版本**：v3.3（文档深度扩展 — 2026-06-24）
+> **项目版本**：v3.4（前端 Mock v2.5 修复 + Task 11 集成测试 — 2026-06-25）
 > **核心修复文档**：[P0-P1修复详细技术文档](docs/troubleshooting/P0-P1修复详细技术文档.md) | [RAG工程Bug修复笔记](docs/troubleshooting/RAG工程Bug修复笔记_2026-05-26.md) | [故障排查文档](docs/troubleshooting/故障排查文档.md) | [代码自检清单](docs/工程skill/代码自检清单%20Skill.md)
 
 基于 .NET 8 + Semantic Kernel + **llama.cpp 原生编译**构建的企业级化工园区危化品合规审查 AI Agent。
@@ -641,9 +641,9 @@ Mock 模式:  Vue 3 → Axios → MSW (浏览器拦截) → 假数据返回
 ```
 
 Mock 数据包含：
-- **合规审核模拟** — 关键词匹配返回不同合规结论，2-5 秒模拟 LLM 推理延迟
+- **合规审核模拟** — 关键词匹配返回不同合规结论，3-45 秒模拟 LLM 推理延迟（v2.5 基于 Task 11 实测校准）
 - **工单状态流转引擎** — 完整实现 New→Confirmed→InProgress→Remediated→Verified 状态机
-- **巡检/资产/报告假数据** — 覆盖全部 25 个 API 端点
+- **巡检/资产/报告假数据** — 覆盖全部 27 个 API 端点，响应结构与后端 96% 对齐
 
 > 详见 `agent1-web/src/mocks/README.md`
 
@@ -753,12 +753,21 @@ MIT License
 
 ---
 
-**文档版本**：v4.5  
-**最后更新**：2026年6月24日  
-**分支**：`linux原生编译模型llama.cpp`  
-**状态**：P0-P2 清完 | P1 死代码清理完成 | 148测试全通过 | 双仓库同步 | 容器化 (llama.cpp)
+**文档版本**：v4.6  
+**最后更新**：2026年6月25日  
+**分支**：`feature/partner-dev`  
+**状态**：P0-P2 清完 | Mock v2.5 修复完成 | Task 11 集成测试 (22/25 PASS) | 双仓库同步 | 容器化 (llama.cpp)
 
 ## 📋 近期更新
+
+### 前端 Mock v2.5 修复 — 与后端 API 结构对齐（2026-06-25）
+- **P0 修复**: `execute` 端点不再返回 `results`（对齐后端仅返回摘要）、`export` 端点响应结构重写为 `{meta,plan,summary,findings,tickets,audit}`
+- **P0 修复**: LLM 推理延迟从 2-5s 升级为 3-45s 三级概率分布（基于 Task 11 实测：RTX 3090 + Qwen3-8B）
+- **P1 修复**: `tickets/:id/status` 响应改为 `{ticketId,newStatus,logCount}`、`rounds/:id` 的 `warnings` 改为返回数量
+- **P1 补全**: `hazard/query` 和 `storage/compatibility` 补全 LLM 延迟模拟、`scan` 和 `execute` 增加 503 错误注入
+- **P2**: `maybeSimulateError()` 的 `retryAfter` 5→10 对齐后端、login 角色判断大小写不敏感
+- **端点一致性**: 27 个端点中 26 个（96%）响应结构与后端对齐
+- **文件**: `handlers.ts` (+102/-15) | `README.md` (Mock 文档同步更新)
 
 ### Linux 3080 Ti 全功能自动化测试通过（2026-06-24）
 - **自动化测试脚本**: `scripts/auto_test.sh` — 25 条 CLI 全功能一键测试, 独立日志 + 汇总报告
