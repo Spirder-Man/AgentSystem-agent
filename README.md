@@ -1,6 +1,6 @@
 # Agent1 — 化工园区危化品合规审查 AI Agent
 
-> **项目版本**：v3.4（前端 Mock v2.5 修复 + Task 11 集成测试 — 2026-06-25）
+> **项目版本**：v3.5（Task 11 集成测试补全 + Mock v2.5 修复 — 2026-06-25）
 > **核心修复文档**：[P0-P1修复详细技术文档](docs/troubleshooting/P0-P1修复详细技术文档.md) | [RAG工程Bug修复笔记](docs/troubleshooting/RAG工程Bug修复笔记_2026-05-26.md) | [故障排查文档](docs/troubleshooting/故障排查文档.md) | [代码自检清单](docs/工程skill/代码自检清单%20Skill.md)
 
 基于 .NET 8 + Semantic Kernel + **llama.cpp 原生编译**构建的企业级化工园区危化品合规审查 AI Agent。
@@ -121,6 +121,7 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 │   └── project/                  # 项目文档
 ├── scripts/                      # 测试脚本
 │   ├── auto_test.sh              # CLI 全功能自动化测试 (25条, bash)
+│   ├── int-test-task11.sh        # Task 11 集成测试脚本 (592行, bash)
 │   └── *.py                      # Python 测试脚本 (历史)
 ├── docker-compose.yml            # Docker 部署（Windows 开发环境）
 ├── Dockerfile                    # 多阶段构建
@@ -712,10 +713,15 @@ docs/
 │   └── Linux服务器一键启动与测试命令.md
 ├── articles/                  # 技术文章与参数注入方案 (4个文件)
 ├── technical-principles/      # 技术原理文档 (9个文件)
-├── testing/                  # 测试文档 (7个文件)
+├── testing/                  # 测试文档 (10+个文件)
+│   ├── integration/               # 集成测试
+│   │   ├── Task11-集成测试部署指南.md       # Linux 一键部署执行流程
+│   │   └── ...
 │   ├── Agent1-Linux完整测试方案.html    # 变量级测试方案 (120+ 条)
 │   ├── Agent1-手动测试执行手册.html     # 逐菜单操作指南
-│   └── Agent1无GPU全链路测试方案.html   # 无GPU 测试方案
+│   ├── Agent1无GPU全链路测试方案.html   # 无GPU 测试方案
+│   ├── 软件测试基础概念与实践方法.md     # 测试基础概念文档 (353行)
+│   └── ...
 ├── troubleshooting/           # 故障排查文档 (5个文件)
 ├── learning-notes/            # 学习笔记 (4个文件)
 ├── project/                   # 项目文档 (5个文件)
@@ -753,10 +759,10 @@ MIT License
 
 ---
 
-**文档版本**：v4.6  
+**文档版本**：v4.7  
 **最后更新**：2026年6月25日  
 **分支**：`feature/partner-dev`  
-**状态**：P0-P2 清完 | Mock v2.5 修复完成 | Task 11 集成测试 (22/25 PASS) | 双仓库同步 | 容器化 (llama.cpp)
+**状态**：P0-P2 清完 | Top-10 检索评估 | Mock v2.5 修复完成 | Task 11 集成测试 (22/25 PASS) | 双仓库同步 | 容器化 (llama.cpp)
 
 ## 📋 近期更新
 
@@ -768,6 +774,14 @@ MIT License
 - **P2**: `maybeSimulateError()` 的 `retryAfter` 5→10 对齐后端、login 角色判断大小写不敏感
 - **端点一致性**: 27 个端点中 26 个（96%）响应结构与后端对齐
 - **文件**: `handlers.ts` (+102/-15) | `README.md` (Mock 文档同步更新)
+
+### Task 11 集成测试补全 — Top-10 检索评估 + 测试脚本 + 部署指南（2026-06-25）
+- **Top-10 检索评估**: `EvalModels.cs` 新增 `TopKPrecision`/`TopKRecall`/`MRR`/`NDCG` 等 10 项指标字段
+- **评估引擎**: `EvalEngine.cs` 实现 Top-10 检索评测逻辑（+47/-5 行）
+- **集成测试脚本**: `scripts/int-test-task11.sh` — 592 行 bash，自动创建时间戳结果目录，逐用例 PASS/FAIL/SKIP 判定，生成 summary.txt 汇总报告
+- **部署指南**: `docs/testing/integration/Task11-集成测试部署指南.md` — Linux 一键部署执行流程
+- **测试基础文档**: `docs/testing/软件测试基础概念与实践方法.md` — 353 行软件测试方法论
+- **改动**: 5 files, +1144/-5 lines | 知识点覆盖 软件测试基础概念 + RAG 评测指标
 
 ### Linux 3080 Ti 全功能自动化测试通过（2026-06-24）
 - **自动化测试脚本**: `scripts/auto_test.sh` — 25 条 CLI 全功能一键测试, 独立日志 + 汇总报告
