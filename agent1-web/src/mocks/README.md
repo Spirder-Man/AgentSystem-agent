@@ -73,6 +73,14 @@ npm run dev   # VITE_ENABLE_MOCK 默认 false
 
 前端需要开发 LLM 推理中的「进度指示器」和「超时处理」。Mock 不加延迟 → 这些UI永远测不到。
 
+**延迟策略 (v2.5 基于 Task 11 实测校准):**
+- 70% 概率 3-12s（常规合规查询/危化品查询）
+- 20% 概率 12-25s（复杂推理/巡检执行）
+- 10% 概率 25-45s（全量资产扫描/多步推理）
+- 5% 概率直接返回 503（模拟后端 SemaphoreSlim 并发限制）
+
+> 真实数据来源：Task 11 集成测试中 llama.cpp Qwen3-8B 平均延迟 4.5s，巡检全流程 45s。
+
 ### 3. 为什么 mock 数据有模板匹配引擎
 
 `getComplianceResponse(query)` 根据关键词返回不同的合规结论，而不是永远返回同一条。这样前端开发时能看到不同输入对应的不同 UI 表现（合规/不合规/警告/法规引用）。
@@ -89,21 +97,21 @@ npm run dev   # VITE_ENABLE_MOCK 默认 false
 | POST /api/Auth/refresh | 200ms | |
 | POST /api/Auth/logout | 100ms | |
 | GET /api/Compliance/summary | 200ms | 仪表盘核心数据 |
-| **POST /api/Compliance/check** | **2-5s** | ⚡ 模拟 LLM 推理 — 前端进度条测试关键 |
-| POST /api/Compliance/hazard/query | 500ms | |
-| POST /api/Compliance/storage/compatibility | 500ms | |
+| **POST /api/Compliance/check** | **3-45s** | ⚡ LLM 推理 — 前端进度条测试关键 |
+| **POST /api/Compliance/hazard/query** | **3-45s** | ⚡ LLM 推理 (v2.5 新增) |
+| **POST /api/Compliance/storage/compatibility** | **3-45s** | ⚡ LLM 推理 (v2.5 新增) |
 | GET /api/Inspection/plans | 200ms | |
-| POST /api/Inspection/plans | 300ms | |
+| POST /api/Inspection/plans | 300ms | 返回 {planId, name, items:count} 对齐后端 |
 | GET /api/Inspection/plans/:id | 200ms | |
-| POST /api/Inspection/plans/:id/execute | 2-5s | LLM 推理 |
-| GET /api/Inspection/rounds/:id | 200ms | |
+| **POST /api/Inspection/plans/:id/execute** | **3-45s** | ⚡ LLM 推理 — 仅返回摘要 (v2.5 对齐后端) |
+| GET /api/Inspection/rounds/:id | 200ms | results.warnings=数量 (v2.5 对齐后端) |
 | GET /api/Inspection/reports/:id | 200ms | |
-| GET /api/Inspection/reports/:id/export | 100ms | |
+| GET /api/Inspection/reports/:id/export | 100ms | 返回 {meta,plan,summary,findings,tickets,audit} (v2.5) |
 | GET /api/Inspection/assets | 200ms | |
-| POST /api/Inspection/scan | 2-5s | LLM 推理 |
+| **POST /api/Inspection/scan** | **3-45s** | ⚡ LLM 推理 + 503注入 (v2.5 新增) |
 | POST /api/Inspection/quick-check | 1.5s | |
 | GET /api/Tickets | 200ms | |
-| PUT /api/Tickets/:id/status | 300ms | 含状态流转验证 |
+| PUT /api/Tickets/:id/status | 300ms | 返回 {ticketId, newStatus, logCount} (v2.5) |
 | GET /health | 50ms | |
 | GET /metrics | 立即 | Prometheus text format |
 | GET /cache/stats | 立即 | |
