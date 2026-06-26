@@ -2,6 +2,7 @@
 
 > **项目版本**：v3.5（Task 11 集成测试补全 + Mock v2.5 修复 — 2026-06-25）
 > **核心修复文档**：[P0-P1修复详细技术文档](docs/troubleshooting/P0-P1修复详细技术文档.md) | [RAG工程Bug修复笔记](docs/troubleshooting/RAG工程Bug修复笔记_2026-05-26.md) | [故障排查文档](docs/troubleshooting/故障排查文档.md) | [代码自检清单](docs/工程skill/代码自检清单%20Skill.md)
+> **前端开发**：[前端开发快速上手指南](docs/architecture/Agent1前端开发快速上手指南.md) | [Mock 机制说明](agent1-web/src/mocks/README.md)
 
 基于 .NET 8 + Semantic Kernel + **llama.cpp 原生编译**构建的企业级化工园区危化品合规审查 AI Agent。
 
@@ -704,10 +705,11 @@ Push → Restore → Build (.NET 8) → Test (148 tests) → Docker (仅main分�
 
 ```
 docs/
-├── architecture/              # 架构设计文档 (13个文件)
+├── architecture/              # 架构设计文档 (14个文件)
 │   ├── Agent1宏观架构导向图.md
 │   ├── 架构设计文档.md
 │   ├── ModelScope模型选型决策框架.md
+│   ├── Agent1前端开发快速上手指南.md   # 前端 Mock 并行开发完整指南
 │   └── ...
 ├── deploy/                    # 部署运维文档
 │   └── Linux服务器一键启动与测试命令.md
@@ -781,7 +783,8 @@ MIT License
 - **集成测试脚本**: `scripts/int-test-task11.sh` — 592 行 bash，自动创建时间戳结果目录，逐用例 PASS/FAIL/SKIP 判定，生成 summary.txt 汇总报告
 - **部署指南**: `docs/testing/integration/Task11-集成测试部署指南.md` — Linux 一键部署执行流程
 - **测试基础文档**: `docs/testing/软件测试基础概念与实践方法.md` — 353 行软件测试方法论
-- **改动**: 5 files, +1144/-5 lines | 知识点覆盖 软件测试基础概念 + RAG 评测指标
+- **前端开发指南**: `docs/architecture/Agent1前端开发快速上手指南.md` — 600 行完整交互架构 + 页面开发指南
+- **改动**: 6 files, +1744/-5 lines | 知识点覆盖 软件测试基础概念 + RAG 评测指标 + 前端 Mock 开发流程
 
 ### Linux 3080 Ti 全功能自动化测试通过（2026-06-24）
 - **自动化测试脚本**: `scripts/auto_test.sh` — 25 条 CLI 全功能一键测试, 独立日志 + 汇总报告
