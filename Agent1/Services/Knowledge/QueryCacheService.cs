@@ -30,6 +30,7 @@ namespace Agent1.Services
         public double HitRate => (_hits + _misses) > 0 ? (double)_hits / (_hits + _misses) : 0;
         public int EntryCount => _cache.Count;
 
+        
         public QueryCacheService(AppConfig config)
         {
             var kbConfig = config.KnowledgeBase;

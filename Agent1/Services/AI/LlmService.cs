@@ -14,6 +14,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Threading;
 using Agent1.Config;
+using Agent1.Models;
 
 namespace Agent1.Services
 {
@@ -957,15 +958,24 @@ namespace Agent1.Services
                 _owner = owner;
             }
 
+            /// <summary>
+            /// 拦截请求并注入 think 参数。
+            /// 一句话总结：它是一个"门卫"，在 HTTP 请求出门之前检查一下，
+            /// 如果需要思考模式，就在 JSON 里塞一个 "think":true，然后放行。
+            /// </summary>
             protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
             {
+                // 第1步：判断是不是发往 /api/chat 的 POST 请求
                 if (request.Content != null
                     && request.RequestUri != null
                     && request.RequestUri.AbsolutePath.Contains("/api/chat")
                     && request.Method == HttpMethod.Post)
                 {
+                    // 第2步：读出原始JSON body
                     var body = await request.Content.ReadAsStringAsync(cancellationToken);
 
+
+                    //第3步：只在 EnableThinking=true 且 body 里没有 think 参数时才注入
                     // 仅在显式要求思考时才注入 think:true；
                     // think:false 不再注入，让 Qwen3 根据 tools 在场自动选择 non-thinking（更快）
                     if (_owner.EnableThinking && !body.Contains("\"think\""))
@@ -980,7 +990,7 @@ namespace Agent1.Services
                         }
                     }
                 }
-
+                // 第5步：把修改后的请求发给 llama.cpp
                 return await base.SendAsync(request, cancellationToken);
             }
         }
@@ -1007,6 +1017,8 @@ namespace Agent1.Services
         public string? Result { get; set; }
         public bool Success { get; set; }
         public DateTime Timestamp { get; set; } = DateTime.Now;
+        /// <summary>[QF-2026-001] 工具返回值的质量等级（RAG_HIT/DATABASE_HIT/DICTIONARY_HIT/FALLBACK）</summary>
+        public QualityLevel? Quality { get; set; }
     }
 
     /// <summary>
@@ -1032,6 +1044,9 @@ namespace Agent1.Services
                 return;
             }
 
+            // [QF-2026-001] 每次工具调用前清除旧的质量上下文
+            ToolQualityContext.Clear();
+
             var record = new FunctionCallRecord
             {
                 FunctionName = context.Function.Name,
@@ -1044,11 +1059,14 @@ namespace Agent1.Services
                 await next(context);
                 record.Success = true;
                 record.Result = context.Result?.ToString();
+                // [QF-2026-001] 从 AsyncLocal 上下文读取工具质量标签
+                record.Quality = ToolQualityContext.Current?.Quality;
             }
             catch (Exception ex)
             {
                 record.Success = false;
                 record.Result = $"异常: {ex.Message}";
+                record.Quality = QualityLevel.ERROR;
             }
 
             _llmService.LastFunctionCalls.Add(record);

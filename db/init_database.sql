@@ -78,24 +78,6 @@ CREATE TABLE IF NOT EXISTS chemical_documents (
 -- 6. 创建索引
 -- ============================================================================
 
--- 尝试创建中文全文搜索索引，失败则使用simple配置
-DO $$
-BEGIN
-    BEGIN
-        -- 尝试中文配置
-        CREATE INDEX IF NOT EXISTS idx_chemical_documents_content_gin 
-        ON chemical_documents USING gin (to_tsvector('chinese', content));
-        RAISE NOTICE '✅ 中文全文搜索索引创建成功';
-    EXCEPTION
-        WHEN OTHERS THEN
-            -- 回退到simple配置
-            RAISE NOTICE '⚠️ 中文配置不可用，使用simple配置';
-            CREATE INDEX IF NOT EXISTS idx_chemical_documents_content_gin 
-            ON chemical_documents USING gin (to_tsvector('simple', content));
-            RAISE NOTICE '✅ simple全文搜索索引创建成功';
-    END;
-END $$;
-
 -- 向量索引（HNSW用于高召回率的相似性搜索）
 CREATE INDEX IF NOT EXISTS idx_chemical_documents_embedding_hnsw 
 ON chemical_documents USING hnsw (embedding vector_cosine_ops)

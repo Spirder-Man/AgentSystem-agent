@@ -147,34 +147,7 @@ namespace Agent1.Services
                     await createTableCmd.ExecuteNonQueryAsync();
                 }
 
-                // 第二步：尝试创建中文全文搜索索引，如果失败则使用simple配置
-                try
-                {
-                    var chineseIndexSql = @"
-                        CREATE INDEX IF NOT EXISTS idx_chemical_documents_content_gin 
-                        ON chemical_documents USING gin (to_tsvector('chinese', content));
-                    ";
-                    using (var chineseIndexCmd = new NpgsqlCommand(chineseIndexSql, connection))
-                    {
-                        await chineseIndexCmd.ExecuteNonQueryAsync();
-                    }
-                    Console.WriteLine("   ✅ 中文全文搜索索引创建成功");
-                }
-                catch
-                {
-                    Console.WriteLine("   ⚠️ 中文配置不可用，使用simple配置");
-                    var simpleIndexSql = @"
-                        CREATE INDEX IF NOT EXISTS idx_chemical_documents_content_gin 
-                        ON chemical_documents USING gin (to_tsvector('simple', content));
-                    ";
-                    using (var simpleIndexCmd = new NpgsqlCommand(simpleIndexSql, connection))
-                    {
-                        await simpleIndexCmd.ExecuteNonQueryAsync();
-                    }
-                    Console.WriteLine("   ✅ simple全文搜索索引创建成功");
-                }
-
-                // 第三步：创建向量索引
+                // 第二步：创建向量索引
                 var vectorIndexSql = $@"
                     CREATE INDEX IF NOT EXISTS idx_chemical_documents_embedding_hnsw 
                     ON chemical_documents USING hnsw (embedding vector_cosine_ops)
@@ -185,7 +158,7 @@ namespace Agent1.Services
                     await vectorIndexCmd.ExecuteNonQueryAsync();
                 }
 
-                // 第四步：创建业务字段索引
+                // 第三步：创建业务字段索引
                 var businessIndexSql = @"
                     CREATE INDEX IF NOT EXISTS idx_chemical_documents_regulation_type 
                     ON chemical_documents (regulation_type);

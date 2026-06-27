@@ -39,6 +39,25 @@ namespace Agent1.Services
             _rerankerService = rerankerService;
         }
 
+        // ════════════════════════════════════════
+        // [QF-2026-001] L1 编译期质量标记辅助方法
+        // ════════════════════════════════════════
+
+        /// <summary>
+        /// [L1] 标记工具返回值质量等级，同时设置 AsyncLocal 上下文供 FunctionCallDiagnosticsFilter 和 StoreToolFacts 读取。
+        /// 返回原始 string 保持 [KernelFunction] 签名不变。
+        /// </summary>
+        private static string MarkQuality(string content, QualityLevel quality, params string[] regs)
+        {
+            ToolQualityContext.Current = new ToolResult
+            {
+                Content = content,
+                Quality = quality,
+                RegulationRefs = regs.ToList()
+            };
+            return content;
+        }
+
         /// <summary>是否启用了 RAG 检索（Lazy 对象非空即表示已配置）</summary>
         private bool UseRag => _lazyKb != null;
 
@@ -214,7 +233,9 @@ namespace Agent1.Services
                 return CheckHazardCategoryFallback(substanceName);
             }
 
-            return FormatRagResult($"危化品「{substanceName}」危险类别检索结果", chunks);
+            return MarkQuality(
+                FormatRagResult($"危化品「{substanceName}」危险类别检索结果", chunks),
+                QualityLevel.RAG_HIT);
         }
 
         [KernelFunction, Description("查询两种危化品是否可以同库储存（依据 GB15603）。参数 substanceA: 第一种危化品名称, substanceB: 第二种危化品名称。")]
@@ -243,7 +264,9 @@ namespace Agent1.Services
                 return CheckStorageCompatibilityFallback(substanceA, substanceB);
             }
 
-            return FormatRagResult($"「{substanceA}」与「{substanceB}」储存兼容性检索结果", chunks);
+            return MarkQuality(
+                FormatRagResult($"「{substanceA}」与「{substanceB}」储存兼容性检索结果", chunks),
+                QualityLevel.RAG_HIT);
         }
 
         [KernelFunction, Description("查询指定设施类型的安全距离/防火间距要求（依据 GB50160/GB50016）。适用于「XX与XX的安全距离」「XX与XX的防火间距」「XX与XX的最小间距」等问题。参数 facilityType: 设施类型描述，如\"储罐-建筑\"、\"甲类仓库-明火点\"、\"气柜-办公楼\"。")]
@@ -288,8 +311,10 @@ namespace Agent1.Services
                 Console.WriteLine($"   [工具诊断] RAG 未提取到距离，回退硬编码字典");
                 var fallback = GetSafetyDistanceFallback(facilityType);
                 if (regSet.Count > 0 && !fallback.Contains("[REGULATIONS:"))
-                    return $"[REGULATIONS: {string.Join(", ", regSet.OrderBy(r => r))}]\n{fallback}";
-                return fallback;
+                    return MarkQuality(
+                        $"[REGULATIONS: {string.Join(", ", regSet.OrderBy(r => r))}]\n{fallback}",
+                        QualityLevel.RAG_HIT, regSet.ToArray());
+                return fallback; // fallback 内部已有 MarkQuality
             }
 
             var sb = new StringBuilder();
@@ -311,7 +336,7 @@ namespace Agent1.Services
                 sb.AppendLine(TruncateChunk(chunk.Content));
                 sb.AppendLine();
             }
-            return sb.ToString().TrimEnd();
+            return MarkQuality(sb.ToString().TrimEnd(), QualityLevel.RAG_HIT, regSet.ToArray());
         }
 
         /// <summary>
@@ -478,23 +503,33 @@ namespace Agent1.Services
         // 降级方法：硬编码字典（RAG 检索失败 / 无 kbService 时兜底）
         // ════════════════════════════════════════
 
+        /// <summary>
+        /// 降级方法：查询指定危化品的危险类别（RAG 检索失败 / 无 kbService 时兜底）。
+        /// </summary>
         private string CheckHazardCategoryFallback(string substanceName)
         {
+            // [P0-4 FIX] 使用 Id+内容前缀作去重键, 替代 Guid.NewGuid() 避免随机键破坏 RRF 融合
             var sub = ChemicalSubstanceDatabase.Lookup(substanceName);
             if (sub != null && sub.HazardCategories.Count > 0)
             {
                 var gbNums = sub.HazardCategories.Select(h => h.GbStandard).Distinct().ToList();
                 var catNames = sub.HazardCategories.Select(h =>
                     string.IsNullOrEmpty(h.SubCategory) ? h.Category : $"{h.Category}({h.SubCategory})").ToList();
-                return $"[REGULATIONS: {string.Join(", ", gbNums)}]\n「{sub.Name}」危险类别: {string.Join("; ", catNames)} [判定:is_compliant=unknown]";
+                return MarkQuality(
+                    $"[REGULATIONS: {string.Join(", ", gbNums)}]\n「{sub.Name}」危险类别: {string.Join("; ", catNames)} [判定:is_compliant=unknown]",
+                    QualityLevel.DATABASE_HIT, gbNums.ToArray());
             }
-
-            foreach (var kvp in HazardCategories)
+            
+            foreach (var kvp in HazardCategories)// 遍历所有危化品类别
             {
                 if (substanceName.Contains(kvp.Key) || kvp.Key.Contains(substanceName))
-                    return $"[REGULATIONS: {kvp.Value}]\n「{substanceName}」属于「{kvp.Key}」类别，适用标准：{kvp.Value} [判定:is_compliant=unknown]";
+                    return MarkQuality(
+                        $"[REGULATIONS: {kvp.Value}]\n「{substanceName}」属于「{kvp.Key}」类别，适用标准：{kvp.Value} [判定:is_compliant=unknown]",
+                        QualityLevel.DICTIONARY_HIT, kvp.Value);
             }
-            return $"「{substanceName}」未在常见危化品类别中直接匹配，建议查阅 GB 30000 系列标准全文（knowledgebase/国标/ 目录下已收录完整标准文件） [判定:is_compliant=unknown]";
+            return MarkQuality(
+                $"「{substanceName}」未在常见危化品类别中直接匹配，建议查阅 GB 30000 系列标准全文（knowledgebase/国标/ 目录下已收录完整标准文件） [判定:is_compliant=unknown]",
+                QualityLevel.FALLBACK);
         }
 
         private string CheckStorageCompatibilityFallback(string substanceA, string substanceB)
@@ -503,9 +538,14 @@ namespace Agent1.Services
             if (dbResult != null)
             {
                 var regRef = !string.IsNullOrEmpty(dbResult.RegulationRef) ? $" [依据: {dbResult.RegulationRef}]" : "";
+                var gb = string.IsNullOrEmpty(dbResult.RegulationRef) ? "GB 15603" : dbResult.RegulationRef;
                 if (dbResult.IsCompatible)
-                    return $"[REGULATIONS: {(string.IsNullOrEmpty(dbResult.RegulationRef) ? "GB 15603" : dbResult.RegulationRef)}]\n✅ {dbResult.Reason}{regRef} [判定:is_compliant=true]";
-                return $"[REGULATIONS: {(string.IsNullOrEmpty(dbResult.RegulationRef) ? "GB 15603" : dbResult.RegulationRef)}]\n⚠️ 禁用：{dbResult.Reason}{regRef} [判定:is_compliant=false]";
+                    return MarkQuality(
+                        $"[REGULATIONS: {gb}]\n✅ {dbResult.Reason}{regRef} [判定:is_compliant=true]",
+                        QualityLevel.DATABASE_HIT, gb);
+                return MarkQuality(
+                    $"[REGULATIONS: {gb}]\n⚠️ 禁用：{dbResult.Reason}{regRef} [判定:is_compliant=false]",
+                    QualityLevel.DATABASE_HIT, gb);
             }
 
             foreach (var kvp in StorageIncompatibilities)
@@ -513,9 +553,13 @@ namespace Agent1.Services
                 bool aIsIncompatible = kvp.Value.Any(s => substanceB.Contains(s));
                 bool bIsIncompatible = kvp.Value.Any(s => substanceA.Contains(s));
                 if (aIsIncompatible || bIsIncompatible)
-                    return $"[REGULATIONS: GB15603-1995]\n⚠️ 禁用：「{substanceA}」与「{substanceB}」存在配伍禁忌——{kvp.Key}类不可与之同库贮存。依据：GB15603-1995 第4.2.2条 禁忌物料不得同库贮存 [判定:is_compliant=false]";
+                    return MarkQuality(
+                        $"[REGULATIONS: GB15603-1995]\n⚠️ 禁用：「{substanceA}」与「{substanceB}」存在配伍禁忌——{kvp.Key}类不可与之同库贮存。依据：GB15603-1995 第4.2.2条 禁忌物料不得同库贮存 [判定:is_compliant=false]",
+                        QualityLevel.DICTIONARY_HIT, "GB15603-1995");
             }
-            return $"[REGULATIONS: GB15603]\n✅ 「{substanceA}」与「{substanceB}」在常见禁忌表中未发现直接冲突，但仍建议按照 GB15603 分类贮存原则进行核实（knowledgebase/国标/GB15603 已收录全文） [判定:is_compliant=true]";
+            return MarkQuality(
+                $"[REGULATIONS: GB15603]\n✅ 「{substanceA}」与「{substanceB}」在常见禁忌表中未发现直接冲突，但仍建议按照 GB15603 分类贮存原则进行核实（knowledgebase/国标/GB15603 已收录全文） [判定:is_compliant=true]",
+                QualityLevel.DICTIONARY_HIT, "GB15603");
         }
 
         private string GetSafetyDistanceFallback(string facilityType)
@@ -525,15 +569,23 @@ namespace Agent1.Services
             var dbRule = ChemicalSubstanceDatabase.GetSafetyDistance(key);
             if (dbRule != null)
             {
-                return $"[REGULATIONS: {dbRule.RegulationRef}]\n[DISTANCE: {dbRule.MinDistanceMeters}m]\n「{dbRule.FacilityPair}」的最小安全间距为 {dbRule.MinDistanceMeters} 米 (依据: {dbRule.RegulationRef}) [判定:is_compliant=待核实]";
+                return MarkQuality(
+                    $"[REGULATIONS: {dbRule.RegulationRef}]\n[DISTANCE: {dbRule.MinDistanceMeters}m]\n「{dbRule.FacilityPair}」的最小安全间距为 {dbRule.MinDistanceMeters} 米 (依据: {dbRule.RegulationRef}) [判定:is_compliant=待核实]",
+                    QualityLevel.DATABASE_HIT, dbRule.RegulationRef);
             }
 
             if (SafetyDistances.TryGetValue(key, out int distance))
-                return $"[REGULATIONS: GB50160]\n[DISTANCE: {distance}m]\n「{key}」的最小安全间距为 {distance} 米 [判定:is_compliant=待核实]";
+                return MarkQuality(
+                    $"[REGULATIONS: GB50160]\n[DISTANCE: {distance}m]\n「{key}」的最小安全间距为 {distance} 米 [判定:is_compliant=待核实]",
+                    QualityLevel.DICTIONARY_HIT, "GB50160");
             var matched = SafetyDistances.Keys.Where(k => k.Contains(key) || key.Contains(k)).ToList();
             if (matched.Count > 0)
-                return $"[REGULATIONS: GB50160]\n[DISTANCE: {SafetyDistances[matched[0]]}m]\n已匹配「{matched[0]}」：最小安全间距为 {SafetyDistances[matched[0]]} 米 [判定:is_compliant=待核实]";
-            return $"未找到「{key}」的精确安全距离数值，建议在 knowledgebase/国标/ 目录下查阅 GB50160《石油化工企业设计防火规范》和 GB50016《建筑设计防火规范》全文 [判定:is_compliant=待核实]";
+                return MarkQuality(
+                    $"[REGULATIONS: GB50160]\n[DISTANCE: {SafetyDistances[matched[0]]}m]\n已匹配「{matched[0]}」：最小安全间距为 {SafetyDistances[matched[0]]} 米 [判定:is_compliant=待核实]",
+                    QualityLevel.DICTIONARY_HIT, "GB50160");
+            return MarkQuality(
+                $"未找到「{key}」的精确安全距离数值，建议在 knowledgebase/国标/ 目录下查阅 GB50160《石油化工企业设计防火规范》和 GB50016《建筑设计防火规范》全文 [判定:is_compliant=待核实]",
+                QualityLevel.FALLBACK);
         }
 
         // ════════════════════════════════════════

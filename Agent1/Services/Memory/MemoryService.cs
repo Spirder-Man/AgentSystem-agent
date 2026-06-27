@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.RegularExpressions;
 using Agent1.Config;
 using Agent1.Models;
 
@@ -21,6 +22,32 @@ namespace Agent1.Services
         private readonly ConcurrentDictionary<string, SessionMemoryData> _sessions = new();
         private string _currentSessionId = "__default__";
         private static readonly object _lock = new();
+
+        // ── G1 + G3 写入门禁：综合质量检查 ──
+        // [QF-2026-001] L1 优先使用 ToolQualityContext (编译期约束标记)
+        //               L3/G3 回退到 QualityRules 正则模式匹配
+        //               规则从 quality-rules.json 加载，支持运行时热更新
+
+        /// <summary>
+        /// [G1+G3] 综合质量检查：检测工具返回结果是否不应作为领域事实缓存。
+        /// L1 优先：ToolQualityContext.Current?.IsFallback → L3 回退：QualityRules 正则模式
+        /// </summary>
+        private static bool IsFallbackContent(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return true;
+
+            // L1: ToolQualityContext 优先（编译期约束标记，最可靠）
+            if (ToolQualityContext.Current?.IsFallback == true)
+                return true;
+
+            // L3/G3: QualityRules 正则模式兜底（声明式规则，可运行时更新）
+            var patterns = QualityRules.Instance.FallbackPatterns;
+            foreach (var pattern in patterns)
+                if (Regex.IsMatch(text, pattern, RegexOptions.IgnoreCase))
+                    return true;
+
+            return false;
+        }
 
         // ── 上下文压缩阈值 ──
         // [P3] 从配置读取压缩/保留参数
@@ -160,6 +187,13 @@ namespace Agent1.Services
 
                 if (toolName.Contains("HazardCategory") || toolName.Contains("CheckHazard"))
                 {
+                    // [G1] 写入门禁：兜底文本不得进入缓存
+                    if (IsFallbackContent(result))
+                    {
+                        Console.WriteLine($"   🚫 记忆质量门禁：拒绝缓存兜底文本 [{toolName}]");
+                        continue;
+                    }
+
                     var parts = result.Split('，', '。', ';');
                     if (parts.Length >= 1)
                     {
@@ -172,6 +206,13 @@ namespace Agent1.Services
                 }
                 else if (toolName.Contains("StorageCompatibility") || toolName.Contains("CheckStorage"))
                 {
+                    // [G1] 写入门禁：兜底文本不得进入缓存
+                    if (IsFallbackContent(result))
+                    {
+                        Console.WriteLine($"   🚫 记忆质量门禁：拒绝缓存兜底文本 [{toolName}]");
+                        continue;
+                    }
+
                     var substances = ExtractTwoSubstances(userInput);
                     if (!string.IsNullOrEmpty(substances.Item1) && !string.IsNullOrEmpty(substances.Item2))
                     {
@@ -180,6 +221,13 @@ namespace Agent1.Services
                 }
                 else if (toolName.Contains("SafetyDistance") || toolName.Contains("GetSafety"))
                 {
+                    // [G1] 写入门禁：兜底文本不得进入缓存
+                    if (IsFallbackContent(result))
+                    {
+                        Console.WriteLine($"   🚫 记忆质量门禁：拒绝缓存兜底文本 [{toolName}]");
+                        continue;
+                    }
+
                     var facility = ExtractFacility(userInput);
                     if (!string.IsNullOrEmpty(facility))
                     {

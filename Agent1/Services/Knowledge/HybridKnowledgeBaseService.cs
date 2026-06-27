@@ -539,6 +539,7 @@ namespace Agent1.Services
             // [P0-4 FIX] 使用 Id+内容前缀作去重键, 替代 Guid.NewGuid() 避免随机键破坏 RRF 融合
             for (int rank = 0; rank < bm25Results.Count; rank++)
             {
+                // [P0-4 FIX] 使用 Id+内容前缀作去重键, 替代 Guid.NewGuid() 避免随机键破坏 RRF 融合
                 var key = GetDedupKey(bm25Results[rank], rank);
                 var rrfScore = 1.0 / (rrfK + rank + 1);  // rank 0-based, +1 转 1-based
                 rrfScores[key] = (bm25Results[rank], rrfScore);
