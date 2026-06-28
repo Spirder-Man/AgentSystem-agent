@@ -44,7 +44,7 @@ namespace Agent1.Services
             sb.AppendLine($"📋 从结论中提取到 {Claims.Count} 条法规/事实声明:\n");
             foreach (var c in Claims)
                 sb.AppendLine(c.ToString());
-            sb.AppendLine($"\n📊 事实精度: {Claims.Count(c => c.FoundInSource)}/{Claims.Count} ({FactualPrecision:P1})");
+            sb.AppendLine($"\n📊 事实精度: {Claims.Count(c => c.FoundInSource)}/{Claims.Count} ({FactualPrecision*100:F1}%)");
             if (HallucinatedClaims.Count > 0)
             {
                 sb.AppendLine($"⚠️ 可疑声明 ({HallucinatedClaims.Count}条):");
