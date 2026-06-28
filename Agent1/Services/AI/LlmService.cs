@@ -54,7 +54,7 @@ namespace Agent1.Services
         {
             _lazyKb = lazyKb;
             // ChemicalComplianceTools 同样接受 Lazy，将解析推迟到首次工具调用
-            _complianceTools = new ChemicalComplianceTools(lazyKb);
+            _complianceTools = new ChemicalComplianceTools(lazyKb, ChemicalDatabaseService.Instance);
 
             // [Thinking控制] 创建 OllamaThinkingHandler，后续通过反射注入到 SK 内部 HttpClient
             var thinkingHandler = new OllamaThinkingHandler(this);

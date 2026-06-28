@@ -26,11 +26,14 @@ namespace Agent1.Services
         // .Value 仅在首次实际使用时触发 DI 解析，避免构造函数期死锁
         private readonly Lazy<IKnowledgeBaseService>? _lazyKb;
         private RerankerService? _rerankerService;
+        /// <summary>Phase 3: SQLite 结构化数据库 —— 确定性知识100%走此路径</summary>
+        private readonly ChemicalDatabaseService? _chemDb;
 
-        /// <summary>完整构造：启用 RAG 检索模式。lazyKb 为 null 时降级到硬编码字典</summary>
-        public ChemicalComplianceTools(Lazy<IKnowledgeBaseService>? lazyKb = null)
+        /// <summary>完整构造：启用 RAG 检索模式。lazyKb 为 null 时降级到硬编码字典。chemDb 为 null 时降级到 ChemicalSubstanceDatabase 静态字典</summary>
+        public ChemicalComplianceTools(Lazy<IKnowledgeBaseService>? lazyKb = null, ChemicalDatabaseService? chemDb = null)
         {
             _lazyKb = lazyKb;
+            _chemDb = chemDb;
         }
 
         /// <summary>Sprint 3: 注入 Reranker 服务</summary>
@@ -65,6 +68,27 @@ namespace Agent1.Services
         private static readonly ConcurrentDictionary<string, (List<RetrievedChunk> chunks, DateTime expiresAt)> RagCache = new();
         private static readonly TimeSpan RagCacheTtl = TimeSpan.FromMinutes(5);
         private const int RagCacheMaxEntries = 200;
+
+        /// <summary>
+        /// [Phase 4.4] 尝试 HyDE 检索增强，不可用时降级为普通 RAG 检索。
+        /// HyDE 仅在 HybridKnowledgeBaseService 可用时启用。
+        /// </summary>
+        private async Task<List<RetrievedChunk>> HyDeRetrieveIfAvailableAsync(string query, string? context = null, int topK = 3)
+        {
+            if (_lazyKb?.Value is HybridKnowledgeBaseService hybridKb)
+            {
+                try
+                {
+                    return await hybridKb.HydeRetrieveAsync(query, context, topK);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"   [工具诊断] HyDE 检索异常，降级为普通RAG: {ex.Message}");
+                }
+            }
+            // 降级：普通 RAG 检索
+            return await GetCachedOrRetrieveAsync(query, regulationType: "国标", topK: topK);
+        }
 
         /// <summary>[P2-2] 带缓存的 RAG 检索 + Sprint 3 Reranker 精排</summary>
         private async Task<List<RetrievedChunk>> GetCachedOrRetrieveAsync(string query, string regulationType = "国标", int topK = 3)
@@ -215,12 +239,22 @@ namespace Agent1.Services
             substanceName = NormalizeSubstanceName(substanceName);
             Console.WriteLine($"   [工具诊断] CheckHazardCategory 被调用, substanceName=\"{substanceName}\"");
 
+            // [Phase 3] 优先查 SQLite 结构化数据库 → ChemicalSubstanceDatabase 静态字典
+            // 确定性知识 100% 走数据库，RAG 仅在数据库完全未命中时作为补充信息源
+            var localResult = await CheckHazardCategoryFromDbAsync(substanceName);
+            if (localResult != null)
+            {
+                Console.WriteLine($"   [工具诊断] 数据库命中, 返回精确分类");
+                return localResult;
+            }
+
             if (!UseRag)
             {
                 Console.WriteLine("   [工具诊断] RAG 不可用，降级到硬编码字典");
                 return CheckHazardCategoryFallback(substanceName);
             }
 
+            // RAG 仅作为补充：检索法规原文供 LLM 参考解释
             var chunks = await GetCachedOrRetrieveAsync(
                 $"{substanceName} 危险类别 分类 规范",
                 regulationType: "国标", topK: 3);
@@ -229,12 +263,14 @@ namespace Agent1.Services
 
             if (chunks.Count == 0)
             {
-                Console.WriteLine("   [工具诊断] 检索为0条，降级到硬编码字典");
-                return CheckHazardCategoryFallback(substanceName);
+                Console.WriteLine("   [工具诊断] 检索为0条，返回标准化拒绝模板");
+                return MarkQuality(
+                    $"⚠️ 「{substanceName}」未收录于结构化危险化学品数据库，无法给出确定分类。\n建议查阅 GB 30000 系列标准全文或联系安环部门人工判定。\n【已检索法规】: GB 30000 系列\n【建议】: 将「{substanceName}」的SDS安全数据表上传至知识库以增强检索能力。\n[判定:is_compliant=无法判定]",
+                    QualityLevel.FALLBACK);
             }
 
             return MarkQuality(
-                FormatRagResult($"危化品「{substanceName}」危险类别检索结果", chunks),
+                FormatRagResult($"危化品「{substanceName}」危险类别检索结果（数据库未命中，以下为RAG检索参考）", chunks),
                 QualityLevel.RAG_HIT);
         }
 
@@ -246,15 +282,24 @@ namespace Agent1.Services
             substanceB = NormalizeSubstanceName(substanceB);
             Console.WriteLine($"   [工具诊断] CheckStorageCompatibility 被调用, A=\"{substanceA}\", B=\"{substanceB}\"");
 
+            // [Phase 3] 优先查结构化数据库（SQLite + 静态字典），命中直接返回精确结果
+            var dbResult = await CheckStorageCompatibilityFromDbAsync(substanceA, substanceB);
+            if (dbResult != null)
+            {
+                Console.WriteLine($"   [工具诊断] 数据库命中, 返回精确兼容性判定");
+                return dbResult;
+            }
+
             if (!UseRag)
             {
                 Console.WriteLine("   [工具诊断] RAG 不可用，降级到硬编码字典");
                 return CheckStorageCompatibilityFallback(substanceA, substanceB);
             }
 
-            var chunks = await GetCachedOrRetrieveAsync(
+            // RAG 仅作为补充信息源 —— [Phase 4.4] 启用 HyDE 检索增强提升召回率
+            var chunks = await HyDeRetrieveIfAvailableAsync(
                 $"{substanceA} {substanceB} 同库储存 配伍禁忌",
-                regulationType: "国标", topK: 3);
+                $"两种化学品{substanceA}和{substanceB}的储存兼容性", topK: 3);
 
             Console.WriteLine($"   [工具诊断] RAG 检索完成, 命中 {chunks.Count} 条结果");
 
@@ -265,7 +310,7 @@ namespace Agent1.Services
             }
 
             return MarkQuality(
-                FormatRagResult($"「{substanceA}」与「{substanceB}」储存兼容性检索结果", chunks),
+                FormatRagResult($"「{substanceA}」与「{substanceB}」储存兼容性检索结果（数据库未命中，以下为RAG检索参考）", chunks),
                 QualityLevel.RAG_HIT);
         }
 
@@ -274,12 +319,24 @@ namespace Agent1.Services
         {
             Console.WriteLine($"   [工具诊断] GetSafetyDistance 被调用, facilityType=\"{facilityType}\"");
 
-            if (!UseRag)
+            // [Phase 3] 优先查 SQLite 结构化数据库 → ChemicalSubstanceDatabase → 硬编码字典
+            // 安全距离是确定性数值，100% 走结构化查询，RAG 仅作为补充参考
+            var localResult = await GetSafetyDistanceFromDbAsync(facilityType);
+            if (localResult != null)
             {
-                Console.WriteLine("   [工具诊断] RAG 不可用，降级到硬编码字典");
-                return GetSafetyDistanceFallback(facilityType);
+                Console.WriteLine($"   [工具诊断] 数据库命中, 返回精确距离");
+                return localResult;
             }
 
+            if (!UseRag)
+            {
+                Console.WriteLine("   [工具诊断] RAG 不可用，返回标准化拒绝模板");
+                return MarkQuality(
+                    $"⚠️ 未找到「{facilityType}」的精确安全距离数据。\n【已检索法规】: GB 50160, GB 50016\n【建议】: 查阅 GB50160《石油化工企业设计防火规范》和 GB50016《建筑设计防火规范》全文，或联系安环部门人工判定。\n[判定:is_compliant=无法判定]",
+                    QualityLevel.FALLBACK);
+            }
+
+            // RAG 补充检索（仅作参考，不依赖其数值提取）
             var chunks = await GetCachedOrRetrieveAsync(
                 $"{facilityType} GB50160 防火间距 安全距离",
                 regulationType: "国标", topK: 5);
@@ -288,15 +345,12 @@ namespace Agent1.Services
 
             if (chunks.Count == 0)
             {
-                Console.WriteLine("   [工具诊断] 检索为0条，降级到硬编码字典");
-                return GetSafetyDistanceFallback(facilityType);
+                return MarkQuality(
+                    $"⚠️ 未找到「{facilityType}」的精确安全距离数据。\n【已检索法规】: GB 50160, GB 50016\n【建议】: 查阅 GB50160《石油化工企业设计防火规范》全文。\n[判定:is_compliant=无法判定]",
+                    QualityLevel.FALLBACK);
             }
 
-            // [P0-1] 从 RAG 原文中提取数值距离，增强可判读性
-            var allText = string.Join("\n", chunks.Select(c => c.Content));
-            var (distance, unit, source) = ExtractDistanceFromText(allText, facilityType);
-
-            // [P1-1] 从 chunk 中提取法规编号
+            // 从 RAG 原文中提取法规编号
             var regSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var c in chunks)
             {
@@ -305,26 +359,10 @@ namespace Agent1.Services
                 ExtractRegulationRefs(c.Content, regSet);
             }
 
-            // [P3 FIX] RAG 提取不到距离时，回退到硬编码字典/数据库，确保工具结果始终含 [DISTANCE: Xm]
-            if (!distance.HasValue)
-            {
-                Console.WriteLine($"   [工具诊断] RAG 未提取到距离，回退硬编码字典");
-                var fallback = GetSafetyDistanceFallback(facilityType);
-                if (regSet.Count > 0 && !fallback.Contains("[REGULATIONS:"))
-                    return MarkQuality(
-                        $"[REGULATIONS: {string.Join(", ", regSet.OrderBy(r => r))}]\n{fallback}",
-                        QualityLevel.RAG_HIT, regSet.ToArray());
-                return fallback; // fallback 内部已有 MarkQuality
-            }
-
             var sb = new StringBuilder();
             if (regSet.Count > 0)
                 sb.AppendLine($"[REGULATIONS: {string.Join(", ", regSet.OrderBy(r => r))}]");
-            sb.AppendLine($"[DISTANCE: {distance.Value}{unit}]");
-            sb.AppendLine($"📋 「{facilityType}」安全间距检索结果");
-            sb.AppendLine($"🔢 **提取数值**: {distance.Value} {unit} (来源: {source})");
-            sb.AppendLine($"⚠️  实际距离需对照 {facilityType} 场景具体判定");
-            sb.AppendLine($"[判定:is_compliant=待核实, 参考距离={distance.Value}{unit}]");
+            sb.AppendLine($"⚠️ 数据库未命中「{facilityType}」，以下为RAG检索参考（非精确数值）:");
             sb.AppendLine();
             for (int i = 0; i < chunks.Count; i++)
             {
@@ -336,6 +374,7 @@ namespace Agent1.Services
                 sb.AppendLine(TruncateChunk(chunk.Content));
                 sb.AppendLine();
             }
+            sb.AppendLine("[判定:is_compliant=无法判定,建议人工查阅GB50160原文]");
             return MarkQuality(sb.ToString().TrimEnd(), QualityLevel.RAG_HIT, regSet.ToArray());
         }
 
@@ -408,17 +447,23 @@ namespace Agent1.Services
         // ════════════════════════════════════════
 
         [KernelFunction, Description("查询指定危化品的完整基础属性，包括CAS号、UN编号、分子式、闪点、沸点、爆炸极限和适用国标。注意：如需查询危险类别/GHS分类，请使用 CheckHazardCategory。输入参数 substanceName: 危化品名称，如\"苯\"、\"甲醇\"。")]
-        public string LookupChemicalProperties(string substanceName)
+        public async Task<string> LookupChemicalProperties(string substanceName)
         {
             substanceName = NormalizeSubstanceName(substanceName);
             Console.WriteLine($"   [工具诊断] LookupChemicalProperties 被调用, substanceName=\"{substanceName}\"");
 
-            var sub = ChemicalSubstanceDatabase.Lookup(substanceName);
+            // [Phase 3] SQLite → ChemicalSubstanceDatabase 静态字典
+            ChemicalSubstance? sub = null;
+            if (_chemDb != null)
+                sub = await _chemDb.LookupAsync(substanceName);
+            if (sub == null)
+                sub = ChemicalSubstanceDatabase.Lookup(substanceName);
+
             if (sub == null)
             {
                 var searchResults = ChemicalSubstanceDatabase.Search(substanceName, 3);
                 if (searchResults.Count == 0)
-                    return $"未找到「{substanceName}」的化学品属性数据。建议在 knowledgebase/国标/ 目录下查阅 GB 30000 系列标准全文。";
+                    return $"⚠️ 未找到「{substanceName}」的化学品属性数据。\n【建议】: 查阅 GB 30000 系列标准全文，或联系安环部门人工判定。";
 
                 var altSb = new StringBuilder();
                 altSb.AppendLine($"未精确匹配「{substanceName}」，找到以下相近化学品：");
@@ -458,19 +503,25 @@ namespace Agent1.Services
             if (sub.IncompatibleWith.Count > 0)
                 sb.AppendLine($"   🚫 储存禁忌: {string.Join("、", sub.IncompatibleWith)}");
 
-            sb.AppendLine($"[判定:is_compliant=数据查询,来源:ChemicalSubstanceDatabase]");
+            sb.AppendLine($"[判定:is_compliant=数据查询,来源:ChemicalDatabaseService|ChemicalSubstanceDatabase]");
             return sb.ToString().TrimEnd();
         }
 
         [KernelFunction, Description("查询指定危化品在GB 18218《危险化学品重大危险源辨识》中的临界量（吨）。输入参数 substanceName: 危化品名称。")]
-        public string GetMajorHazardThreshold(string substanceName)
+        public async Task<string> GetMajorHazardThreshold(string substanceName)
         {
             substanceName = NormalizeSubstanceName(substanceName);
             Console.WriteLine($"   [工具诊断] GetMajorHazardThreshold 被调用, substanceName=\"{substanceName}\"");
 
-            var sub = ChemicalSubstanceDatabase.Lookup(substanceName);
+            // [Phase 3] SQLite → ChemicalSubstanceDatabase 静态字典
+            ChemicalSubstance? sub = null;
+            if (_chemDb != null)
+                sub = await _chemDb.LookupAsync(substanceName);
             if (sub == null)
-                return $"未找到「{substanceName}」的重大危险源临界量数据。请查阅 GB 18218-2018 表1/表2 获取完整名录。";
+                sub = ChemicalSubstanceDatabase.Lookup(substanceName);
+
+            if (sub == null)
+                return $"⚠️ 未找到「{substanceName}」的重大危险源临界量数据。\n【已检索法规】: GB 18218-2018\n【建议】: 查阅 GB 18218-2018 表1/表2 获取完整名录，或联系安环部门人工判定。";
 
             if (sub.MajorHazardThresholdTons <= 0)
                 return $"「{sub.Name}」不属于 GB 18218 明确列名的重大危险源物质 (CAS: {sub.CasNumber})。\n[REGULATIONS: GB 18218-2018]\n[判定:is_compliant=非列名物质]";
@@ -504,6 +555,44 @@ namespace Agent1.Services
         // ════════════════════════════════════════
 
         /// <summary>
+        /// [Phase 3] 从结构化数据库查询危险类别：SQLite → ChemicalSubstanceDatabase 静态字典
+        /// 命中即返回精确的 GHS分类 + GB30000.x 子编号，双重保障确保确定性。
+        /// </summary>
+        private async Task<string?> CheckHazardCategoryFromDbAsync(string substanceName)
+        {
+            // Level 1: SQLite 结构化数据库（权威数据源）
+            if (_chemDb != null)
+            {
+                var sub = await _chemDb.LookupAsync(substanceName);
+                if (sub != null && sub.HazardCategories.Count > 0)
+                {
+                    var gbNums = sub.HazardCategories.Select(h => h.GbStandard).Distinct().ToList();
+                    var catNames = sub.HazardCategories.Select(h =>
+                        string.IsNullOrEmpty(h.SubCategory) ? h.Category : $"{h.Category},{h.SubCategory}").ToList();
+                    return MarkQuality(
+                        $"[REGULATIONS: {string.Join(", ", gbNums)}]\n" +
+                        $"「{sub.Name}」危险类别: {string.Join("; ", catNames)} [判定:is_compliant=依据原文]",
+                        QualityLevel.DATABASE_HIT, gbNums.ToArray());
+                }
+            }
+
+            // Level 2: ChemicalSubstanceDatabase 静态内存字典（快路径兜底）
+            var staticSub = ChemicalSubstanceDatabase.Lookup(substanceName);
+            if (staticSub != null && staticSub.HazardCategories.Count > 0)
+            {
+                var gbNums = staticSub.HazardCategories.Select(h => h.GbStandard).Distinct().ToList();
+                var catNames = staticSub.HazardCategories.Select(h =>
+                    string.IsNullOrEmpty(h.SubCategory) ? h.Category : $"{h.Category},{h.SubCategory}").ToList();
+                return MarkQuality(
+                    $"[REGULATIONS: {string.Join(", ", gbNums)}]\n" +
+                    $"「{staticSub.Name}」危险类别: {string.Join("; ", catNames)} [判定:is_compliant=依据原文]",
+                    QualityLevel.DATABASE_HIT, gbNums.ToArray());
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// 降级方法：查询指定危化品的危险类别（RAG 检索失败 / 无 kbService 时兜底）。
         /// </summary>
         private string CheckHazardCategoryFallback(string substanceName)
@@ -530,6 +619,48 @@ namespace Agent1.Services
             return MarkQuality(
                 $"「{substanceName}」未在常见危化品类别中直接匹配，建议查阅 GB 30000 系列标准全文（knowledgebase/国标/ 目录下已收录完整标准文件） [判定:is_compliant=unknown]",
                 QualityLevel.FALLBACK);
+        }
+
+        /// <summary>
+        /// [Phase 3] 从结构化数据库查询储存兼容性：SQLite → ChemicalSubstanceDatabase 静态字典
+        /// 返回格式化的判定结果，或 null 表示数据库无法判定（需走 RAG 或硬编码字典）
+        /// </summary>
+        private async Task<string?> CheckStorageCompatibilityFromDbAsync(string substanceA, string substanceB)
+        {
+            // Level 1: SQLite 结构化数据库（20条精确规则 + 类别级推理）
+            if (_chemDb != null)
+            {
+                var dbResult = await _chemDb.CheckCompatibilityAsync(substanceA, substanceB);
+                if (dbResult != null)
+                {
+                    var regRef = !string.IsNullOrEmpty(dbResult.RegulationRef) ? $" [依据: {dbResult.RegulationRef}]" : "";
+                    var gb = string.IsNullOrEmpty(dbResult.RegulationRef) ? "GB 15603" : dbResult.RegulationRef;
+                    if (dbResult.IsCompatible)
+                        return MarkQuality(
+                            $"[REGULATIONS: {gb}]\n✅ {dbResult.Reason}{regRef} [判定:is_compliant=true]",
+                            QualityLevel.DATABASE_HIT, gb);
+                    return MarkQuality(
+                        $"[REGULATIONS: {gb}]\n⚠️ 禁用：{dbResult.Reason}{regRef} [判定:is_compliant=false]",
+                        QualityLevel.DATABASE_HIT, gb);
+                }
+            }
+
+            // Level 2: ChemicalSubstanceDatabase 静态内存字典
+            var staticResult = ChemicalSubstanceDatabase.CheckCompatibility(substanceA, substanceB);
+            if (staticResult != null)
+            {
+                var regRef = !string.IsNullOrEmpty(staticResult.RegulationRef) ? $" [依据: {staticResult.RegulationRef}]" : "";
+                var gb = string.IsNullOrEmpty(staticResult.RegulationRef) ? "GB 15603" : staticResult.RegulationRef;
+                if (staticResult.IsCompatible)
+                    return MarkQuality(
+                        $"[REGULATIONS: {gb}]\n✅ {staticResult.Reason}{regRef} [判定:is_compliant=true]",
+                        QualityLevel.DATABASE_HIT, gb);
+                return MarkQuality(
+                    $"[REGULATIONS: {gb}]\n⚠️ 禁用：{staticResult.Reason}{regRef} [判定:is_compliant=false]",
+                    QualityLevel.DATABASE_HIT, gb);
+            }
+
+            return null;
         }
 
         private string CheckStorageCompatibilityFallback(string substanceA, string substanceB)
@@ -560,6 +691,51 @@ namespace Agent1.Services
             return MarkQuality(
                 $"[REGULATIONS: GB15603]\n✅ 「{substanceA}」与「{substanceB}」在常见禁忌表中未发现直接冲突，但仍建议按照 GB15603 分类贮存原则进行核实（knowledgebase/国标/GB15603 已收录全文） [判定:is_compliant=true]",
                 QualityLevel.DICTIONARY_HIT, "GB15603");
+        }
+
+        /// <summary>
+        /// [Phase 3] 从结构化数据库查询安全距离：SQLite → ChemicalSubstanceDatabase → 硬编码字典
+        /// 安全距离是确定性数值，100% 走结构化查询。
+        /// </summary>
+        private async Task<string?> GetSafetyDistanceFromDbAsync(string facilityType)
+        {
+            var key = facilityType.Trim();
+
+            // Level 1: SQLite 结构化数据库（权威数据源，22条GB50160规则）
+            if (_chemDb != null)
+            {
+                var dbRule = await _chemDb.GetSafetyDistanceAsync(key);
+                if (dbRule != null)
+                {
+                    return MarkQuality(
+                        $"[REGULATIONS: {dbRule.RegulationRef}]\n[DISTANCE: {dbRule.MinDistanceMeters}m]\n「{dbRule.FacilityPair}」的最小安全间距为 {dbRule.MinDistanceMeters} 米 (依据: {dbRule.RegulationRef}) [判定:is_compliant=待核实]",
+                        QualityLevel.DATABASE_HIT, dbRule.RegulationRef ?? "GB 50160");
+                }
+            }
+
+            // Level 2: ChemicalSubstanceDatabase 静态内存字典
+            var staticRule = ChemicalSubstanceDatabase.GetSafetyDistance(key);
+            if (staticRule != null)
+            {
+                return MarkQuality(
+                    $"[REGULATIONS: {staticRule.RegulationRef}]\n[DISTANCE: {staticRule.MinDistanceMeters}m]\n「{staticRule.FacilityPair}」的最小安全间距为 {staticRule.MinDistanceMeters} 米 (依据: {staticRule.RegulationRef}) [判定:is_compliant=待核实]",
+                    QualityLevel.DATABASE_HIT, staticRule.RegulationRef ?? "GB 50160");
+            }
+
+            // Level 3: 硬编码字典（向后兼容）
+            if (SafetyDistances.TryGetValue(key, out int distance))
+                return MarkQuality(
+                    $"[REGULATIONS: GB50160]\n[DISTANCE: {distance}m]\n「{key}」的最小安全间距为 {distance} 米 [判定:is_compliant=待核实]",
+                    QualityLevel.DICTIONARY_HIT, "GB50160");
+
+            // 模糊匹配
+            var matched = SafetyDistances.Keys.Where(k => k.Contains(key) || key.Contains(k)).ToList();
+            if (matched.Count > 0)
+                return MarkQuality(
+                    $"[REGULATIONS: GB50160]\n[DISTANCE: {SafetyDistances[matched[0]]}m]\n已匹配「{matched[0]}」：最小安全间距为 {SafetyDistances[matched[0]]} 米 [判定:is_compliant=待核实]",
+                    QualityLevel.DICTIONARY_HIT, "GB50160");
+
+            return null;
         }
 
         private string GetSafetyDistanceFallback(string facilityType)

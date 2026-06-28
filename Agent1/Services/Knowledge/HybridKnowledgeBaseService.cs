@@ -176,8 +176,8 @@ namespace Agent1.Services
 
         public async Task<List<RetrievedChunk>> RetrieveAsync(string query, int topK = 5)
         {
-            // Sprint 5: 查询缓存
-            if (_queryCache.TryGet(query, out var cachedResults))
+            // Sprint 5: 查询缓存（评测模式下禁用，确保每条用例独立检索）
+            if (!EvalMode.IsActive && _queryCache.TryGet(query, out var cachedResults))
             {
                 if (!EvalMode.IsActive)
                     Console.WriteLine($"   💾 缓存命中: \"{query}\"");
@@ -319,11 +319,14 @@ namespace Agent1.Services
         /// <summary>
         /// 化工合规检索
         /// </summary>
-        public async Task<List<RetrievedChunk>> RetrieveChemicalRegulationAsync(string query, string? chemicalType = null, string? regulationType = null, int topK = 5)
+        public async Task<List<RetrievedChunk>> RetrieveChemicalRegulationAsync(string query, string? chemicalType = null, string? regulationType = null, int topK = 5, string? regulationNumber = null)
         {
-            // Step 1: BM25 检索
-            var allResults = await RetrieveAsync(query, topK * 2);
-            // Step 2: 过滤结果
+            // Step 1: BM25 检索（若指定 regulationNumber，在查询中追加以提高召回）
+            var searchQuery = query;
+            if (!string.IsNullOrEmpty(regulationNumber))
+                searchQuery = $"{query} {regulationNumber}";
+            var allResults = await RetrieveAsync(searchQuery, topK * 2);
+            // Step 2: 过滤结果（元数据精确匹配 + regulationNumber 模糊匹配）
             var filteredResults = allResults.Where(r =>
             {
                 var metadata = r.Metadata;
@@ -342,6 +345,19 @@ namespace Agent1.Services
                         return false;
                 }
 
+                // [Phase 4] regulationNumber 精确+模糊过滤：优先精确匹配，其次内容包含
+                if (!string.IsNullOrEmpty(regulationNumber) && metadata.ContainsKey("RegulationNumber"))
+                {
+                    var docRegNum = metadata["RegulationNumber"]?.ToString() ?? "";
+                    var normalizedQuery = KnowledgeBaseService.NormalizeGbNumbers(regulationNumber);
+                    var normalizedDoc = KnowledgeBaseService.NormalizeGbNumbers(docRegNum);
+                    // 精确匹配或互相包含
+                    if (!normalizedDoc.Equals(normalizedQuery, StringComparison.OrdinalIgnoreCase)
+                        && !normalizedDoc.Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase)
+                        && !normalizedQuery.Contains(normalizedDoc, StringComparison.OrdinalIgnoreCase))
+                        return false;
+                }
+
                 return true;
             }).ToList();
             // Step 3: 重排序结果
@@ -352,7 +368,7 @@ namespace Agent1.Services
                 .Select(x => x.Chunk)
                 .ToList();
             // Step 4: 输出结果
-            Console.WriteLine($"   🔬 化工合规检索: 查询='{query}', 危化品={chemicalType ?? "全部"}, 法规类型={regulationType ?? "全部"}, 召回={rerankedResults.Count}条");
+            Console.WriteLine($"   🔬 化工合规检索: 查询='{query}', 危化品={chemicalType ?? "全部"}, 法规类型={regulationType ?? "全部"}, 法规编号={regulationNumber ?? "全部"}, 召回={rerankedResults.Count}条");
             return rerankedResults;
         }
 
@@ -361,6 +377,165 @@ namespace Agent1.Services
             Console.WriteLine($"   📚 正在加载化工知识库: {knowledgeBasePath}");
             await _bm25Service.LoadChemicalKnowledgeBaseAsync(knowledgeBasePath);
             Console.WriteLine("   ℹ️ 向量存储与BM25同步完成");
+        }
+
+        /// <summary>
+        /// [Phase 4.5] 使用优化后的 GB 结构感知分块策略重建知识库索引。
+        /// 操作流程: 清空现有索引 → 按 GB 章节结构分块 → 批量嵌入写入 BM25 + 向量库。
+        /// 目标: 将 Precision@5 从 9.5% 提升到 ≥50%。
+        /// </summary>
+        public async Task RebuildIndexWithOptimizedChunksAsync(string knowledgeBasePath)
+        {
+            Console.WriteLine("   🔄 [Phase 4.5] 使用 GB 结构感知分块重建知识库索引...");
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+
+            // Step 1: 清空现有索引
+            await ClearAsync();
+            Console.WriteLine("   🧹 已清空现有 BM25 + 向量索引");
+
+            // Step 2: 扫描知识库目录，按 GB 章节结构分块
+            var baseDir = new DirectoryInfo(knowledgeBasePath);
+            if (!baseDir.Exists)
+            {
+                Console.WriteLine($"   ⚠️ 知识库目录不存在: {knowledgeBasePath}");
+                return;
+            }
+
+            var allChunks = new List<(string content, Dictionary<string, object> metadata)>();
+            var processedRegulations = new HashSet<string>();
+
+            // 处理国标文档
+            var gbDir = Path.Combine(knowledgeBasePath, "国标");
+            if (Directory.Exists(gbDir))
+            {
+                foreach (var file in Directory.GetFiles(gbDir, "*.txt"))
+                {
+                    var content = await File.ReadAllTextAsync(file, System.Text.Encoding.UTF8);
+                    var fileName = Path.GetFileNameWithoutExtension(file);
+                    var regNumber = ExtractRegulationNumber(fileName);
+
+                    // 使用 GB 结构感知分块
+                    var chunks = ChunkByGbStructure(content, regNumber, file);
+
+                    foreach (var (chunkContent, metadata) in chunks)
+                    {
+                        // 补充元数据
+                        metadata["RegulationType"] = "国标";
+                        metadata["Priority"] = "高";
+                        metadata["SourceFile"] = file;
+                        metadata["ChemicalType"] = "通用";
+                        if (!string.IsNullOrEmpty(regNumber))
+                            metadata["RegulationNumber"] = regNumber;
+                    }
+
+                    allChunks.AddRange(chunks);
+                    if (!string.IsNullOrEmpty(regNumber))
+                        processedRegulations.Add(regNumber);
+
+                    Console.WriteLine($"   📄 {fileName}: {chunks.Count} 个语义分块 (法规编号: {regNumber ?? "未识别"})");
+                }
+            }
+
+            // 处理园区规则
+            var parkDir = Path.Combine(knowledgeBasePath, "园区规则");
+            if (Directory.Exists(parkDir))
+            {
+                foreach (var file in Directory.GetFiles(parkDir, "*.txt"))
+                {
+                    var content = await File.ReadAllTextAsync(file, System.Text.Encoding.UTF8);
+                    var chunks = ChunkByGbStructure(content, null, file);
+                    foreach (var (chunkContent, metadata) in chunks)
+                    {
+                        metadata["RegulationType"] = "园区规则";
+                        metadata["Priority"] = "中";
+                        metadata["SourceFile"] = file;
+                        metadata["ChemicalType"] = "通用";
+                    }
+                    allChunks.AddRange(chunks);
+                }
+            }
+
+            // 处理历史案例
+            var caseDir = Path.Combine(knowledgeBasePath, "历史案例");
+            if (Directory.Exists(caseDir))
+            {
+                foreach (var file in Directory.GetFiles(caseDir, "*.txt"))
+                {
+                    var content = await File.ReadAllTextAsync(file, System.Text.Encoding.UTF8);
+                    var chunks = ChunkByGbStructure(content, null, file);
+                    foreach (var (chunkContent, metadata) in chunks)
+                    {
+                        metadata["RegulationType"] = "历史案例";
+                        metadata["Priority"] = "低";
+                        metadata["SourceFile"] = file;
+                        metadata["ChemicalType"] = "通用";
+                    }
+                    allChunks.AddRange(chunks);
+                }
+            }
+
+            Console.WriteLine($"   📊 共生成 {allChunks.Count} 个语义分块 (含 {processedRegulations.Count} 个法规编号)");
+
+            // Step 3: 批量写入 BM25 索引
+            var contents = allChunks.Select(c => c.content).ToList();
+            await _bm25Service.AddDocumentsAsync(contents);
+            Console.WriteLine($"   ✅ BM25 索引完成: {contents.Count} 条");
+
+            // Step 4: 批量嵌入写入向量库
+            try
+            {
+                var swEmbed = System.Diagnostics.Stopwatch.StartNew();
+                var llmSvc = _llmService as LlmService;
+                float[][]? embeddings;
+
+                if (llmSvc != null)
+                    embeddings = await llmSvc.GetEmbeddingsBatchAsync(contents);
+                else
+                    embeddings = await _llmService.GetEmbeddingsAsync(contents);
+
+                if (embeddings != null && embeddings.Length > 0)
+                {
+                    var records = new List<ChemicalDocumentRecord>();
+                    for (int i = 0; i < contents.Count && i < embeddings.Length; i++)
+                    {
+                        var metadata = allChunks[i].metadata;
+                        records.Add(new ChemicalDocumentRecord
+                        {
+                            Content = contents[i],
+                            RegulationType = metadata.TryGetValue("RegulationType", out var rt) ? rt?.ToString() ?? "通用" : "通用",
+                            Priority = metadata.TryGetValue("Priority", out var p) ? p?.ToString() ?? "中" : "中",
+                            ChemicalType = metadata.TryGetValue("ChemicalType", out var ct) ? ct?.ToString() : null,
+                            SourceFile = metadata.TryGetValue("SourceFile", out var sf) ? sf?.ToString() : null,
+                            RegulationNumber = metadata.TryGetValue("RegulationNumber", out var rn) ? rn?.ToString() : null,
+                            ChapterTitle = metadata.TryGetValue("chapter_title", out var ch) ? ch?.ToString() : null,
+                            Embedding = embeddings[i]
+                        });
+                    }
+
+                    await _databaseService.AddChemicalDocumentsBatchAsync(records);
+                    swEmbed.Stop();
+                    Console.WriteLine($"   ✅ 向量索引完成: {records.Count} 条, 耗时 {swEmbed.Elapsed.TotalSeconds:F1}s");
+                }
+                else
+                {
+                    Console.WriteLine($"   ⚠️ 嵌入生成失败，仅保留 BM25 索引");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ⚠️ 向量索引构建失败: {ex.Message}，BM25 索引已保留");
+            }
+
+            sw.Stop();
+            Console.WriteLine($"   ✅ [Phase 4.5] 索引重建完成: {allChunks.Count} 个分块, 总耗时 {sw.Elapsed.TotalSeconds:F1}s");
+        }
+
+        /// <summary>从文件名中提取法规编号</summary>
+        private static string? ExtractRegulationNumber(string fileName)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(fileName,
+                @"(GB\s*/?T?\s*\d{4,5}(?:[.\-]\d{2,4})?)");
+            return match.Success ? match.Groups[1].Value.Trim() : null;
         }
 
         /// <summary>
@@ -637,6 +812,299 @@ namespace Agent1.Services
                 return $"c:{chunk.Content.Trim().Substring(0, Math.Min(200, chunk.Content.Length))}";
             // 最后兜底：用 rank，至少保证同排名可以碰撞
             return $"rank:{rank}";
+        }
+
+        // ════════════════════════════════════════
+        // Phase 4.2: GB标准结构感知分块优化
+        // ════════════════════════════════════════
+
+        /// <summary>
+        /// [Phase 4.2] 基于GB标准结构的语义分块：按"第X章"、"X.X.X"条目号边界分割。
+        /// 目标: chunk 大小 200-500 字符，每个 chunk 带完整 regulation_number/chapter/clause 元数据。
+        /// </summary>
+        /// <param name="fullText">完整文档原文</param>
+        /// <param name="regulationNumber">法规编号（如 GB 30000.14）</param>
+        /// <param name="sourceFile">源文件名</param>
+        /// <returns>分块列表，每块含结构化元数据</returns>
+        public static List<(string content, Dictionary<string, object> metadata)> ChunkByGbStructure(
+            string fullText, string? regulationNumber = null, string? sourceFile = null)
+        {
+            var chunks = new List<(string content, Dictionary<string, object> metadata)>();
+            if (string.IsNullOrWhiteSpace(fullText))
+                return chunks;
+
+            // 按 GB 标准章节标题分割：匹配 "第X章" 或 "X.X.X" 条目编号
+            var chapterPattern = @"(?:^|\n)\s*(第[一二三四五六七八九十百零0-9]+[章节条]|\d+(?:\.\d+)*)\s+(.+?)(?=\n\s*(?:第[一二三四五六七八九十百零0-9]+[章节条]|\d+(?:\.\d+)*)\s+|$)";
+            var matches = System.Text.RegularExpressions.Regex.Matches(fullText, chapterPattern,
+                System.Text.RegularExpressions.RegexOptions.Singleline);
+
+            if (matches.Count == 0)
+            {
+                // 无法按章节分割，按固定大小分块
+                chunks.AddRange(ChunkByFixedSize(fullText, regulationNumber, sourceFile));
+                return chunks;
+            }
+
+            // 收集每个章节段
+            var sections = new List<(string chapterId, string chapterTitle, string content)>();
+
+            for (int i = 0; i < matches.Count; i++)
+            {
+                var match = matches[i];
+                var chapterId = match.Groups[1].Value.Trim();
+                var chapterTitle = match.Groups[2].Value.Trim();
+                var sectionStart = match.Index;
+                // 确定段落结束位置
+                var sectionEnd = (i + 1 < matches.Count) ? matches[i + 1].Index : fullText.Length;
+                var sectionContent = fullText.Substring(sectionStart, sectionEnd - sectionStart).Trim();
+
+                if (!string.IsNullOrWhiteSpace(sectionContent))
+                    sections.Add((chapterId, chapterTitle, sectionContent));
+            }
+
+            // 对每个章节按 200-500 字符分块
+            const int targetSize = 400;
+            const int minSize = 200;
+            const int maxSize = 600;
+            int chunkIndex = 0;
+
+            foreach (var (chapterId, chapterTitle, sectionContent) in sections)
+            {
+                if (sectionContent.Length <= maxSize)
+                {
+                    // 短章节直接作为一个 chunk
+                    var metadata = new Dictionary<string, object>
+                    {
+                        ["regulation_number"] = regulationNumber ?? "",
+                        ["chapter"] = chapterId,
+                        ["chapter_title"] = chapterTitle,
+                        ["chunk_index"] = chunkIndex++
+                    };
+                    if (sourceFile != null)
+                        metadata["source"] = sourceFile;
+                    chunks.Add((sectionContent, metadata));
+                }
+                else
+                {
+                    // 长章节按句子边界再分块
+                    var subChunks = SplitBySentenceBoundary(sectionContent, targetSize, minSize, maxSize);
+                    for (int j = 0; j < subChunks.Count; j++)
+                    {
+                        var metadata = new Dictionary<string, object>
+                        {
+                            ["regulation_number"] = regulationNumber ?? "",
+                            ["chapter"] = chapterId,
+                            ["chapter_title"] = chapterTitle,
+                            ["chunk_index"] = chunkIndex++,
+                            ["sub_chunk"] = j
+                        };
+                        if (sourceFile != null)
+                            metadata["source"] = sourceFile;
+                        chunks.Add((subChunks[j], metadata));
+                    }
+                }
+            }
+
+            return chunks;
+        }
+
+        /// <summary>按句子边界分块，避免在句子中间截断</summary>
+        private static List<string> SplitBySentenceBoundary(string text, int targetSize, int minSize, int maxSize)
+        {
+            var result = new List<string>();
+            if (string.IsNullOrWhiteSpace(text))
+                return result;
+
+            var sentences = System.Text.RegularExpressions.Regex.Split(text, @"(?<=[。；！？\n])");
+            var current = "";
+
+            foreach (var sentence in sentences)
+            {
+                if (string.IsNullOrWhiteSpace(sentence))
+                    continue;
+
+                if ((current + sentence).Length > maxSize && current.Length >= minSize)
+                {
+                    result.Add(current.Trim());
+                    current = sentence;
+                }
+                else
+                {
+                    current += sentence;
+                }
+            }
+
+            if (current.Trim().Length > 0)
+                result.Add(current.Trim());
+
+            return result;
+        }
+
+        /// <summary>降级方案：固定大小分块（无章节结构时使用）</summary>
+        private static List<(string content, Dictionary<string, object> metadata)> ChunkByFixedSize(
+            string text, string? regulationNumber, string? sourceFile)
+        {
+            var chunks = new List<(string content, Dictionary<string, object> metadata)>();
+            const int chunkSize = 400;
+            int start = 0;
+            int index = 0;
+
+            while (start < text.Length)
+            {
+                var end = Math.Min(start + chunkSize, text.Length);
+                // 尝试在句子末尾截断
+                if (end < text.Length)
+                {
+                    var sentenceEnd = text.LastIndexOfAny(new[] { '。', '；', '！', '？', '\n' }, end, end - start);
+                    if (sentenceEnd > start)
+                        end = sentenceEnd + 1;
+                }
+
+                var chunk = text.Substring(start, end - start).Trim();
+                if (!string.IsNullOrEmpty(chunk))
+                {
+                    var metadata = new Dictionary<string, object>
+                    {
+                        ["regulation_number"] = regulationNumber ?? "",
+                        ["chunk_index"] = index++
+                    };
+                    if (sourceFile != null)
+                        metadata["source"] = sourceFile;
+                    chunks.Add((chunk, metadata));
+                }
+                start = end;
+            }
+
+            return chunks;
+        }
+
+        // ════════════════════════════════════════
+        // Phase 4.4: HyDE (Hypothetical Document Embedding) 检索增强
+        // ════════════════════════════════════════
+
+        /// <summary>
+        /// [Phase 4.4] HyDE 检索增强：用 LLM 生成理想答案片段，再用该片段做向量检索。
+        /// 适用场景：储存兼容性判定、综合审核等需要法规解释的场景，数据库未命中时的兜底检索。
+        /// 预期效果：Recall 提升 20-30%。
+        /// 注意：仅在数据库未命中场景启用，避免对确定性查询引入额外延迟。
+        /// </summary>
+        /// <param name="query">原始查询</param>
+        /// <param name="context">查询上下文（如涉及化学品名称、场景描述）</param>
+        /// <param name="topK">返回数量</param>
+        /// <returns>增强后的检索结果</returns>
+        public async Task<List<RetrievedChunk>> HydeRetrieveAsync(string query, string? context = null, int topK = 5)
+        {
+            if (!_kbConfig.EnableQueryExpansion)
+                return await RetrieveAsync(query, topK);
+
+            Console.WriteLine($"   🧠 HyDE 检索增强: 生成假设文档...");
+
+            try
+            {
+                // Step 1: 用 LLM 生成"理想答案片段"
+                var hydePrompt = BuildHydePrompt(query, context);
+                string? hydeDocument;
+
+                try
+                {
+                    var llmSvc = _llmService as LlmService;
+                    if (llmSvc != null)
+                    {
+                        hydeDocument = await llmSvc.InvokeNonStreamingWithRetryAsync(hydePrompt, "HyDE生成");
+                    }
+                    else
+                    {
+                        // 无 LlmService 引用，降级为普通检索
+                        Console.WriteLine($"   ⚠️ HyDE 不可用 (无LlmService)，降级为普通检索");
+                        return await RetrieveAsync(query, topK);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"   ⚠️ HyDE 生成失败: {ex.Message}，降级为普通检索");
+                    return await RetrieveAsync(query, topK);
+                }
+
+                if (string.IsNullOrWhiteSpace(hydeDocument))
+                {
+                    Console.WriteLine($"   ⚠️ HyDE 生成空文档，降级为普通检索");
+                    return await RetrieveAsync(query, topK);
+                }
+
+                // 截断过长生成结果
+                if (hydeDocument.Length > 800)
+                    hydeDocument = hydeDocument.Substring(0, 800);
+
+                Console.WriteLine($"   📝 HyDE 生成文档: {hydeDocument.Substring(0, Math.Min(100, hydeDocument.Length))}...");
+
+                // Step 2: 用假设文档做向量检索（获取语义匹配的 chunk）
+                var embedding = await _llmService.GetEmbeddingAsync(hydeDocument);
+                if (embedding == null)
+                {
+                    Console.WriteLine($"   ⚠️ HyDE 嵌入失败，降级为普通检索");
+                    return await RetrieveAsync(query, topK);
+                }
+
+                // Step 3: 向量检索（纯语义匹配）
+                var hydeResults = await _databaseService.VectorSearchAsync(hydeDocument, embedding, topK * 2);
+
+                // Step 4: 结合原始查询的 BM25 结果做 RRF 融合
+                var bm25Results = await _bm25Service.RetrieveAsync(query, topK * 2);
+
+                const double rrfK = 60.0;
+                var rrfScores = new Dictionary<string, (RetrievedChunk chunk, double rrfScore)>();
+
+                for (int rank = 0; rank < hydeResults.Count; rank++)
+                {
+                    var key = GetDedupKey(hydeResults[rank], rank);
+                    rrfScores[key] = (hydeResults[rank], 1.0 / (rrfK + rank + 1));
+                }
+
+                for (int rank = 0; rank < bm25Results.Count; rank++)
+                {
+                    var key = GetDedupKey(bm25Results[rank], rank);
+                    var score = 1.0 / (rrfK + rank + 1);
+                    if (rrfScores.ContainsKey(key))
+                        rrfScores[key] = (rrfScores[key].chunk, rrfScores[key].rrfScore + score);
+                    else
+                        rrfScores[key] = (bm25Results[rank], score);
+                }
+
+                var finalResults = rrfScores.Values
+                    .OrderByDescending(x => x.rrfScore)
+                    .Take(topK)
+                    .Select((x, idx) => new RetrievedChunk
+                    {
+                        Content = x.chunk.Content,
+                        Score = x.rrfScore,
+                        Rank = idx,
+                        Metadata = x.chunk.Metadata,
+                        RetrievalMethod = "HyDE-RRF"
+                    })
+                    .ToList();
+
+                Console.WriteLine($"   ✅ HyDE-RRF 检索完成: {finalResults.Count} 条");
+                return finalResults;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ⚠️ HyDE 检索异常: {ex.Message}，降级为普通检索");
+                return await RetrieveAsync(query, topK);
+            }
+        }
+
+        /// <summary>构建 HyDE 提示词</summary>
+        private static string BuildHydePrompt(string query, string? context)
+        {
+            var contextPart = !string.IsNullOrWhiteSpace(context)
+                ? $"\n【上下文信息】{context}"
+                : "";
+
+            return $@"你是一名化工安全专家。请根据以下问题，生成一段理想的法规条文摘要（100-300字），这段摘要应包含回答问题所需的关键信息。
+
+【问题】{query}{contextPart}
+
+请生成一段包含关键法规编号、安全距离、分类信息的理想答案片段。只输出内容，不要任何解释或前缀。";
         }
     }
 }

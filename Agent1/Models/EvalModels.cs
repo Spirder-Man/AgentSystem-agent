@@ -58,6 +58,13 @@ public class EvalCase
     [JsonPropertyName("expected_faithfulness_checks")]
     public List<FaithfulnessCheck>? ExpectedFaithfulnessChecks { get; set; }
 
+    // ── Phase 6: 盲测集增强字段 ──
+    [JsonPropertyName("difficulty")]
+    public string? Difficulty { get; set; }
+
+    [JsonPropertyName("expected_behavior")]
+    public string? ExpectedBehavior { get; set; }
+
     [JsonIgnore] public string id { get => Id; set => Id = value; }
     [JsonIgnore] public string category { get => Category; set => Category = value; }
     [JsonIgnore] public string intent { get => Intent; set => Intent = value; }
@@ -65,6 +72,8 @@ public class EvalCase
     [JsonIgnore] public string expected_tool { get => ExpectedTool; set => ExpectedTool = value; }
     [JsonIgnore] public Dictionary<string, string>? expected_params { get => ExpectedParams; set => ExpectedParams = value; }
     [JsonIgnore] public EvalConclusion? expected_conclusion { get => ExpectedConclusion; set => ExpectedConclusion = value; }
+    [JsonIgnore] public string? difficulty { get => Difficulty; set => Difficulty = value; }
+    [JsonIgnore] public string? expected_behavior { get => ExpectedBehavior; set => ExpectedBehavior = value; }
 }
 
 public class EvalConclusion
@@ -183,6 +192,27 @@ public class EvalResult
     [JsonPropertyName("token_count")]
     public int TokenCount { get; set; }
 
+    // ── Phase 6: 新增评测指标 ──
+    /// <summary>系统是否正确拒绝了数据库未命中的查询</summary>
+    [JsonPropertyName("refusal_detected")]
+    public bool? RefusalDetected { get; set; }
+
+    /// <summary>系统标注的置信度是否与预期一致</summary>
+    [JsonPropertyName("confidence_level")]
+    public string? ConfidenceLevel { get; set; }
+
+    /// <summary>输出校验器是否检测到幻觉</summary>
+    [JsonPropertyName("hallucination_detected")]
+    public bool? HallucinationDetected { get; set; }
+
+    /// <summary>预期行为与实际行为匹配度 (DATABASE_HIT/DB_MISS_REFUSAL等)</summary>
+    [JsonPropertyName("expected_behavior")]
+    public string? ExpectedBehavior { get; set; }
+
+    /// <summary>行为匹配 (refusal正确/行为符合预期)</summary>
+    [JsonPropertyName("behavior_match")]
+    public bool? BehaviorMatch { get; set; }
+
     // 兼容旧代码
     [JsonIgnore] public string id { get => Id; set => Id = value; }
     [JsonIgnore] public string category { get => Category; set => Category = value; }
@@ -249,6 +279,19 @@ public class EvalReport
 
     [JsonPropertyName("total_hallucinated_claims")]
     public int TotalHallucinatedClaims { get; set; }
+
+    // ── Phase 6: 新增评测汇总指标 ──
+    /// <summary>拒绝率: 数据库未命中时正确拒绝的比例</summary>
+    [JsonPropertyName("refusal_rate")]
+    public double? RefusalRate { get; set; }
+
+    /// <summary>幻觉检测率: 输出校验器捕获的幻觉声明比例</summary>
+    [JsonPropertyName("hallucination_detection_rate")]
+    public double? HallucinationDetectionRate { get; set; }
+
+    /// <summary>行为匹配率: 实际行为与预期行为一致的用例比例</summary>
+    [JsonPropertyName("behavior_match_rate")]
+    public double? BehaviorMatchRate { get; set; }
 
     // ── 工程维度 ──
     [JsonPropertyName("engineering_metrics")]
@@ -364,6 +407,16 @@ public class CategoryMetric
 
     [JsonPropertyName("citation_accuracy")]
     public double? CitationAccuracy { get; set; }
+
+    // ── Phase 6 新增 ──
+    [JsonPropertyName("refusal_count")]
+    public int RefusalCount { get; set; }
+
+    [JsonPropertyName("hallucination_count")]
+    public int HallucinationCount { get; set; }
+
+    [JsonPropertyName("refusal_rate")]
+    public double? RefusalRate { get; set; }
 
     [JsonIgnore] public int total { get => Total; set => Total = value; }
     [JsonIgnore] public int tool_ok { get => ToolOk; set => ToolOk = value; }
