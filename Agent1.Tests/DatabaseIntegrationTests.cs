@@ -132,9 +132,9 @@ public class DatabaseIntegrationTests : IAsyncLifetime
     {
         var batch = new List<ChemicalDocumentRecord>
         {
-            new() { Content = "GB 30000.2-2013 爆炸物", RegulationType = "国标", Priority = "高", PageNumber = 1 },
-            new() { Content = "GB 30000.3-2013 易燃气体", RegulationType = "国标", Priority = "高", PageNumber = 1 },
-            new() { Content = "GB 30000.7-2013 易燃液体", RegulationType = "国标", Priority = "高", PageNumber = 1 }
+            new() { Content = "GB 30000.2-2013 爆炸物分类与标签规范", RegulationType = "国标", Priority = "高", PageNumber = 1 },
+            new() { Content = "GB 30000.3-2013 易燃气体储存安全要求", RegulationType = "国标", Priority = "高", PageNumber = 1 },
+            new() { Content = "GB 30000.7-2013 易燃液体运输管理规定", RegulationType = "国标", Priority = "高", PageNumber = 1 }
         };
 
         await _db.AddChemicalDocumentsBatchAsync(batch);
@@ -187,7 +187,7 @@ public class DatabaseIntegrationTests : IAsyncLifetime
         // P2-5 回归: 验证 PageNumber 正确写入数据库
         var record = new ChemicalDocumentRecord
         {
-            Content = "GB 50160 防火间距 第3章",
+            Content = "GB 50160-2008 石油化工企业设计防火标准 第3章 防火间距",
             RegulationType = "国标",
             Priority = "高",
             PageNumber = 42
@@ -241,7 +241,7 @@ public class DatabaseIntegrationTests : IAsyncLifetime
             {
                 await _db.AddChemicalDocumentAsync(new ChemicalDocumentRecord
                 {
-                    Content = $"并发测试文档 #{idx}",
+                    Content = $"并发测试文档数据 #{idx:D2} - 化工园区危化品合规审查",
                     RegulationType = "并发测试",
                     Priority = "低",
                     PageNumber = idx

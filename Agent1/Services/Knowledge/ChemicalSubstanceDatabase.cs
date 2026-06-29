@@ -47,7 +47,7 @@ public static class ChemicalSubstanceDatabase
         if (string.IsNullOrWhiteSpace(name)) return null;
         var trimmed = name.Trim();
 
-        // 先查别名
+        // 先查别名 查的是什么标准名
         if (_aliasToName.TryGetValue(trimmed, out var standardName))
             trimmed = standardName;
 
@@ -829,19 +829,19 @@ public static class ChemicalSubstanceDatabase
     {
         _substances[substance.Name] = substance;
     }
-
+    // 初始化别名字典
     private static void InitializeAliases()
     {
-        foreach (var sub in _substances.Values)
+        foreach (var sub in _substances.Values)// 遍历所有化学品
         {
-            foreach (var alias in sub.Aliases)
+            foreach (var alias in sub.Aliases)// 该化学品的别名列表
             {
                 if (!_aliasToName.ContainsKey(alias))
-                    _aliasToName[alias] = sub.Name;
+                    _aliasToName[alias] = sub.Name;// 别名 → 标准名
             }
         }
     }
-
+    // 初始化不相容性规则
     private static void InitializeIncompatibilities()
     {
         // 精确化学品配对 — 从评测集 D 系列提取，增强粒度
