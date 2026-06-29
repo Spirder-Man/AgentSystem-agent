@@ -453,16 +453,17 @@ namespace Agent1.Services
             return await ExecuteEvalInternalAsync(prompt, "评测(信息查询)");
         }
 
-        /// <summary>评测快速通道内部实现</summary>
+        /// <summary>评测快速通道内部实现（流式优先，GPU 3090环境；非流式仅作CPU低算力降级）</summary>
         private async Task<string> ExecuteEvalInternalAsync(string prompt, string stageName)
         {
-            Console.Write("   [非流式] 调用中... ");
+            Console.Write("   [流式] 调用中... ");
             var llmService = _llmService as LlmService;
             string answer;
 
             if (llmService != null)
             {
-                answer = await llmService.InvokeNonStreamingWithRetryAsync(prompt, stageName);
+                // 主力路径：流式调用（GPU 3090 环境优先）
+                answer = await llmService.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Blue, stageName);
 
                 // 同步工具调用记录供评测器检查
                 if (llmService.LastFunctionCalls.Count > 0)
@@ -483,10 +484,17 @@ namespace Agent1.Services
                     LastToolResults = new Dictionary<string, string>();
                     LastToolPlan = new ToolPlan { NeedsTools = false };
                 }
+
+                // 流式结果为空时降级到非流式
+                if (string.IsNullOrWhiteSpace(answer))
+                {
+                    Console.Write("   [流式空回退→非流式] 调用中... ");
+                    answer = await llmService.InvokeNonStreamingWithRetryAsync(prompt, stageName);
+                }
             }
             else
             {
-                // 降级到流式
+                // 无 LlmService 引用时直接流式调用
                 answer = await _llmService.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Blue, "化工合规");
             }
 

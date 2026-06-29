@@ -724,7 +724,11 @@ public class EvalEngine
             var llmSvc = _llmService as LlmService;
             if (llmSvc != null)
             {
-                var scoreText = await llmSvc.InvokeNonStreamingWithRetryAsync(scoringPrompt, "AnswerRelevance评分");
+                // [策略切换] 流式优先（GPU 3090环境），非流式仅作CPU低算力降级
+                var scoreText = await llmSvc.InvokeStreamWithRetryAsync(scoringPrompt, ConsoleColor.Gray, "AnswerRelevance评分");
+                // 流式空回退时降级到非流式
+                if (string.IsNullOrWhiteSpace(scoreText))
+                    scoreText = await llmSvc.InvokeNonStreamingWithRetryAsync(scoringPrompt, "AnswerRelevance评分(降级)");
                 if (!string.IsNullOrWhiteSpace(scoreText))
                 {
                     // 提取第一个数字
