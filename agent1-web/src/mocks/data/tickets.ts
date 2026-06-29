@@ -116,5 +116,10 @@ export function applyTicketStatusUpdate(
   ticket.logCount += 1;
   if (assignee) ticket.assignee = assignee;
 
+  // 终态工单关闭 isOpen
+  if (['VerifiedClosed', 'Closed', 'FalsePositive'].includes(newStatus)) {
+    ticket.isOpen = false;
+  }
+
   return ticket;
 }

@@ -38,11 +38,6 @@ async function simulateLlmDelay(): Promise<void> {
   await delay(baseDelay + jitter);
 }
 
-/** 生成 TraceId */
-function traceId(): string {
-  return `trace-mock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
 /** 模拟 5% 概率的服务器错误（测试错误处理） */
 function maybeSimulateError(): ApiError | null {
   if (Math.random() < 0.05) {
@@ -371,6 +366,16 @@ export const handlers = [
         llm_error_rate: '2.1%',
       },
     });
+  }),
+
+  // ── GET /health/ready ── (K8s readiness probe)
+  http.get('/health/ready', async () => {
+    return HttpResponse.json({ ready: true });
+  }),
+
+  // ── GET /health/live ── (K8s liveness probe)
+  http.get('/health/live', async () => {
+    return HttpResponse.json({ alive: true });
   }),
 
   // ── GET /metrics ──

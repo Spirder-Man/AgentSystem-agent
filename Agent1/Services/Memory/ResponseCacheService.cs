@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Agent1.Config;
 using Agent1.Models;
 
 namespace Agent1.Services;
@@ -9,7 +10,7 @@ namespace Agent1.Services;
 public class ResponseCacheService
 {
     private readonly ConcurrentDictionary<string, CacheEntry> _cache = new();
-    private readonly TimeSpan _ttl;
+    private readonly TimeSpan _defaultTtl;
     private DateTime _lastCleanup = DateTime.UtcNow;
     private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(5);
 
@@ -17,7 +18,7 @@ public class ResponseCacheService
 
     public ResponseCacheService(TimeSpan? ttl = null)
     {
-        _ttl = ttl ?? TimeSpan.FromMinutes(60);
+        _defaultTtl = ttl ?? TimeSpan.FromMinutes(60);
     }
 
     public CachedComplianceResponse? Get(string query)
@@ -27,7 +28,8 @@ public class ResponseCacheService
 
         if (_cache.TryGetValue(key, out var entry))
         {
-            if (DateTime.UtcNow - entry.CreatedAt < _ttl)
+            var effectiveTtl = GetEffectiveTtl(entry.Quality);
+            if (DateTime.UtcNow - entry.CreatedAt < effectiveTtl)
             {
                 entry.LastHitAt = DateTime.UtcNow;
                 entry.HitCount++;
@@ -42,15 +44,43 @@ public class ResponseCacheService
 
     public void Set(string query, CachedComplianceResponse response)
     {
+        Set(query, response, quality: null);
+    }
+
+    /// <summary>
+    /// [G4] 按质量等级设置缓存，低质量自动短 TTL。
+    /// </summary>
+    public void Set(string query, CachedComplianceResponse response, QualityLevel? quality)
+    {
         var key = NormalizeAndHash(query);
         response.FromCache = false;
         _cache[key] = new CacheEntry
         {
             Response = response,
+            Quality = quality,
             CreatedAt = DateTime.UtcNow,
             LastHitAt = DateTime.UtcNow,
             HitCount = 1
         };
+    }
+
+    /// <summary>
+    /// [G4] 根据质量等级获取有效 TTL。
+    /// 无质量标记时回退到构造函数设定的 _defaultTtl。
+    /// RAG_HIT/DATABASE_HIT: 10min | DICTIONARY_HIT: 5min | FALLBACK: 0min(不缓存)
+    /// 可通过 quality-rules.json 的 cache_ttl_strategy 章节调整。
+    /// </summary>
+    private TimeSpan GetEffectiveTtl(QualityLevel? quality)
+    {
+        if (quality == null)
+            return _defaultTtl;
+
+        var key = quality.ToString(); // "RAG_HIT", "DATABASE_HIT", etc.
+        var strategy = QualityRules.Instance.TtlStrategy;
+        if (strategy.QualityTtls.TryGetValue(key, out var minutes) && minutes > 0)
+            return TimeSpan.FromMinutes(minutes);
+
+        return _defaultTtl;
     }
 
     public void Clear() => _cache.Clear();
@@ -151,13 +181,17 @@ public class ResponseCacheService
         _lastCleanup = DateTime.UtcNow;
         var now = DateTime.UtcNow;
         foreach (var kv in _cache)
-            if (now - kv.Value.CreatedAt >= _ttl)
+        {
+            var effectiveTtl = GetEffectiveTtl(kv.Value.Quality);
+            if (now - kv.Value.CreatedAt >= effectiveTtl)
                 _cache.TryRemove(kv.Key, out _);
+        }
     }
 
     private class CacheEntry
     {
         public CachedComplianceResponse Response { get; init; } = null!;
+        public QualityLevel? Quality { get; init; }
         public DateTime CreatedAt { get; set; }
         public DateTime LastHitAt { get; set; }
         public int HitCount { get; set; }

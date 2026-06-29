@@ -409,10 +409,13 @@ namespace Agent1.Services
             return AddDocumentAsync(content, metadata);
         }
         
-        public async Task<List<RetrievedChunk>> RetrieveChemicalRegulationAsync(string query, string? chemicalType = null, string? regulationType = null, int topK = 5)
+        public async Task<List<RetrievedChunk>> RetrieveChemicalRegulationAsync(string query, string? chemicalType = null, string? regulationType = null, int topK = 5, string? regulationNumber = null)
         {
-            // 第一步：BM25检索
-            var allResults = await RetrieveAsync(query, topK * 2);
+            // 第一步：BM25检索（若指定 regulationNumber，在查询中追加以提高召回）
+            var searchQuery = query;
+            if (!string.IsNullOrEmpty(regulationNumber))
+                searchQuery = $"{query} {regulationNumber}";
+            var allResults = await RetrieveAsync(searchQuery, topK * 2);
             
             // 第二步：化工场景过滤
             var filteredResults = allResults.Where(r =>
@@ -434,6 +437,18 @@ namespace Agent1.Services
                     if (!docRegulationType.Equals(regulationType, StringComparison.OrdinalIgnoreCase))
                         return false;
                 }
+
+                // [Phase 4] regulationNumber 精确+模糊过滤
+                if (!string.IsNullOrEmpty(regulationNumber) && metadata.ContainsKey("RegulationNumber"))
+                {
+                    var docRegNum = metadata["RegulationNumber"]?.ToString() ?? "";
+                    var normalizedQuery = NormalizeGbNumbers(regulationNumber);
+                    var normalizedDoc = NormalizeGbNumbers(docRegNum);
+                    if (!normalizedDoc.Equals(normalizedQuery, StringComparison.OrdinalIgnoreCase)
+                        && !normalizedDoc.Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase)
+                        && !normalizedQuery.Contains(normalizedDoc, StringComparison.OrdinalIgnoreCase))
+                        return false;
+                }
                 
                 return true;
             }).ToList();
@@ -446,7 +461,7 @@ namespace Agent1.Services
                 .Select(x => x.Chunk)
                 .ToList();
             
-            Console.WriteLine($"   🔬 化工合规检索: 查询='{query}', 危化品={chemicalType ?? "全部"}, 法规类型={regulationType ?? "全部"}, 召回={rerankedResults.Count}条");
+            Console.WriteLine($"   🔬 化工合规检索: 查询='{query}', 危化品={chemicalType ?? "全部"}, 法规类型={regulationType ?? "全部"}, 法规编号={regulationNumber ?? "全部"}, 召回={rerankedResults.Count}条");
             
             return rerankedResults;
         }
