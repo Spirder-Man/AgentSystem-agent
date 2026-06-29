@@ -761,12 +761,33 @@ MIT License
 
 ---
 
-**文档版本**：v4.7  
-**最后更新**：2026年6月25日  
+**文档版本**：v4.8  
+**最后更新**：2026年6月29日  
 **分支**：`feature/partner-dev`  
-**状态**：P0-P2 清完 | Top-10 检索评估 | Mock v2.5 修复完成 | Task 11 集成测试 (22/25 PASS) | 双仓库同步 | 容器化 (llama.cpp)
+**状态**：P0-P2 清完 | 零失误架构 v2.0 交付 | 测试覆盖大幅扩展 (+9144行) | 双仓库同步 | 容器化 (llama.cpp)
 
 ## 📋 近期更新
+
+### 六阶段架构重构全部交付 + P1 格式修复（2026-06-29）
+- **零失误架构 v2.0**：`OutputValidator` (328行) + `ComplianceAuditLogger` (249行) + `ChemicalDatabaseService` (918行) + 化工盲评集 543 条
+- **混合检索增强**：`HybridKnowledgeBaseService` 大幅扩展 (+482/-1) + `KnowledgeBaseService` 优化
+- **合规工具升级**：`ChemicalComplianceTools` 增强 (+258/-1) + `ToolService` 修正 + 评测模型新增 10 项指标
+- **P1 格式修复**：`ReflectionVerifier` 百分号前多余空格消除 (100.0 % → 100.0%)
+- **文件**：14 files, +3413/-56 | 新增 `OutputValidator.cs` / `ComplianceAuditLogger.cs` / `ChemicalDatabaseService.cs` / `ComplianceBlindEvalSet.json` | 远程测试分析日志 (606行)
+
+### 记忆缓存质量反哺策略落地 + 测试覆盖大幅扩展（2026-06-27）
+- **质量规则系统**：新增 `QualityRules.cs` (161行) + `quality-rules.json` (59行) — 工具调用质量评分与过滤
+- **记忆协调器增强**：`MemoryCoordinator` 质量反哺闭环 (+79/-1) + `MemoryService` 扩展 (+48) + `ResponseCacheService` 优化
+- **可观测性升级**：新增 `MetricsCollectorService` (136行) — Prometheus 指标采集 + 数据库指标
+- **测试覆盖扩展**：新增/扩展 13 个测试文件 — `BusinessOrchestrationTests` (1652行) + `MemorySystemTests` (1543行) + `ApiAndMiddlewareTests` (1042行) + `ObservabilityTests` (913行) + `AiInferenceTests` (644行) + `KnowledgePipelineTests` (514行) + `AppConfigTests` (434行) + `InfrastructureServicesTests` (420行) + `KnowledgeBaseServiceTests` (+369) + `ChemicalDatabaseTests` (321行) + `ModelsCoreTests` (239行) + `QueryCacheServiceTests` (215行) + `ModelConfigTests` (98行)
+- **工具结果模型化**：新增 `ToolResult.cs` (55行)
+- **文件**：31 files, +9144/-152
+
+### 补充遗漏服务启动脚本 + 前端开发指南（2026-06-26~27）
+- **诊断脚本**：`scripts/zh-diag.sh` (275行) — 中文系统诊断一键脚本
+- **API 启动脚本**：`scripts/start-api.sh` (10行) — API 服务快速启动
+- **前端开发指南**：`docs/architecture/Agent1前端开发快速上手指南.md` (599行) — 完整交互架构 + 页面开发指南
+- **文件**：4 files, +884
 
 ### 前端 Mock v2.5 修复 — 与后端 API 结构对齐（2026-06-25）
 - **P0 修复**: `execute` 端点不再返回 `results`（对齐后端仅返回摘要）、`export` 端点响应结构重写为 `{meta,plan,summary,findings,tickets,audit}`

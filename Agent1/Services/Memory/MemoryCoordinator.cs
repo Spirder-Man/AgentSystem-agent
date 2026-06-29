@@ -1,4 +1,6 @@
+using Agent1.Config;
 using Agent1.Models;
+using Agent1.Services.Observability;
 
 namespace Agent1.Services
 {
@@ -23,6 +25,7 @@ namespace Agent1.Services
         private readonly ILongTermMemoryService? _longMemory;
         private readonly ResponseCacheService? _cache;
         private readonly IAuditService? _audit;
+        private readonly MetricsCollectorService? _metrics;
         private static readonly Dictionary<string, string> AliasMap = new(StringComparer.OrdinalIgnoreCase)
         {
             ["烧碱"] = "氢氧化钠", ["火碱"] = "氢氧化钠", ["苛性钠"] = "氢氧化钠",
@@ -34,12 +37,14 @@ namespace Agent1.Services
             IMemoryService shortMemory,
             ILongTermMemoryService? longMemory = null,
             ResponseCacheService? cache = null,
-            IAuditService? audit = null)
+            IAuditService? audit = null,
+            MetricsCollectorService? metrics = null)
         {
             _shortMemory = shortMemory;
             _longMemory = longMemory;
             _cache = cache;
             _audit = audit;
+            _metrics = metrics;
         }
 
         /// <summary>
@@ -57,17 +62,29 @@ namespace Agent1.Services
                 var cached = _cache.Get(query);
                 if (cached != null)
                 {
-                    Console.WriteLine("   ⚡ 缓存命中");
-                    return MemoryPreResult.CacheHit(cached.Response ?? "");
+                    // [BUG FIX] 仅当缓存附带工具调用结果时才允许跳过推理
+                    // 缓存可能存储了 LLM 兜底回答（如"建议查阅GB30000"），不能直接跳过
+                    var hasToolCalls = cached.ToolsUsed is { Count: > 0 };
+
+                    // [L4] 低质量缓存被返回给用户时记录指标
+                    if (_metrics != null && !hasToolCalls)
+                        _metrics.RecordCacheHit(isLowQuality: true);
+
+                    Console.WriteLine(hasToolCalls
+                        ? "   ⚡ 缓存命中（含工具调用）"
+                        : "   ⚠️ 缓存命中但无工具调用，不跳过推理");
+                    return MemoryPreResult.CacheHit(cached.Response ?? "", hasToolCalls);
                 }
             }
 
             // 3. 查询短期记忆（关键词匹配）
+            // [BUG FIX] 短期记忆 KeyFacts 可能存储了工具兜底文本（"未找到"），
+            // 标记为无工具调用，由 AgentDialog 决定是否跳过推理
             var memoryAnswer = _shortMemory.TryAnswerFromMemory(query);
             if (!string.IsNullOrWhiteSpace(memoryAnswer))
             {
-                Console.WriteLine("   🧠 短期记忆命中");
-                return MemoryPreResult.MemoryHit(memoryAnswer);
+                Console.WriteLine("   🧠 短期记忆命中（来源不可信，由调用方决策）");
+                return MemoryPreResult.MemoryHit(memoryAnswer, hasToolCalls: false);
             }
 
             // 4. 查询长期记忆（语义检索，含别名扩展）
@@ -115,6 +132,7 @@ namespace Agent1.Services
         public async Task PostInferenceAsync(
             string sessionId, string userId, string query, string response,
             IReadOnlyDictionary<string, string>? toolResults = null)
+            //IReadOnlyDictionary<string, string> 是只读的字符串字典，表示工具结果的键值对集合
         {
             _shortMemory.SetSession(sessionId);
 
@@ -144,18 +162,27 @@ namespace Agent1.Services
                 });
             }
 
-            // 4. 更新缓存
+            // 4. 更新缓存（[G4] 按质量等级分级 TTL）
             if (_cache != null)
             {
+                var quality = ToolQualityContext.Current?.Quality;
                 _cache.Set(query, new CachedComplianceResponse
                 {
                     Query = query,
                     Response = response,
                     ToolsUsed = toolResults?.Keys.ToList() ?? new List<string>()
-                });
+                }, quality);
             }
 
-            // 5. 审计
+            // 5. [L4] 记录缓存质量指标
+            if (_metrics != null)
+            {
+                var quality = ToolQualityContext.Current?.Quality;
+                var isValid = quality != null && quality != QualityLevel.FALLBACK && quality != QualityLevel.ERROR;
+                _metrics.RecordCacheWrite(isValid);
+            }
+
+            // 6. 审计
             if (_audit != null)
             {
                 try
@@ -200,7 +227,13 @@ namespace Agent1.Services
         }
     }
 
-    /// <summary>记忆协调器推理前结果</summary>
+    /// <summary>
+    /// 记忆协调器推理前结果。
+    /// 
+    /// [BUG FIX] 新增 IsCacheHit/IsMemoryHit/HasToolCallsForThisAnswer 三个字段，
+    /// 用于区分"高质量缓存（工具调用结果）"和"低质量缓存（兜底文本/LLM自由回答）"。
+    /// 只有来源为真实工具调用时，才允许跳过 LLM 推理。
+    /// </summary>
     public class MemoryPreResult
     {
         public bool HasDirectAnswer { get; private init; }
@@ -208,13 +241,33 @@ namespace Agent1.Services
         public List<string> LongTermContext { get; private init; } = new();
         public string ShortTermContext { get; private init; } = "";
 
+        // [BUG FIX] 缓存来源质量标记
+        /// <summary>此直接回答是否来自 ResponseCacheService（T=5min 查询缓存）</summary>
+        public bool IsCacheHit { get; private init; }
+        /// <summary>此直接回答是否来自 MemoryService.TryAnswerFromMemory（短期记忆关键词匹配）</summary>
+        public bool IsMemoryHit { get; private init; }
+        /// <summary>缓存/记忆命中的回答是否由工具调用产生（非 LLM 自由回答或兜底文本）</summary>
+        public bool HasToolCallsForThisAnswer { get; private init; }
+
         private MemoryPreResult() { }
 
-        public static MemoryPreResult CacheHit(string answer)
-            => new() { HasDirectAnswer = true, DirectAnswer = answer };
+        public static MemoryPreResult CacheHit(string answer, bool hasToolCalls = false)
+            => new()
+            {
+                HasDirectAnswer = true,
+                DirectAnswer = answer,
+                IsCacheHit = true,
+                HasToolCallsForThisAnswer = hasToolCalls
+            };
 
-        public static MemoryPreResult MemoryHit(string answer)
-            => new() { HasDirectAnswer = true, DirectAnswer = answer };
+        public static MemoryPreResult MemoryHit(string answer, bool hasToolCalls = false)
+            => new()
+            {
+                HasDirectAnswer = true,
+                DirectAnswer = answer,
+                IsMemoryHit = true,
+                HasToolCallsForThisAnswer = hasToolCalls
+            };
 
         public static MemoryPreResult ContextReady(List<string> longTermContext, string shortTermContext)
             => new()

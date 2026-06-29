@@ -18,6 +18,11 @@ using Agent1.Services.Logging.Enrichers;
 using Agent1.Services.Logging.Filters;
 using System.Text;
 
+namespace Agent1.Api;
+public partial class Program
+{
+    public static async Task<int> Main(string[] args)
+    {
 // ═══════════════════════════════════════════════════
 // Phase 1: 配置外部化 — appsettings.json + 环境变量
 // ═══════════════════════════════════════════════════
@@ -579,8 +584,6 @@ catch (Exception ex)
     Console.Error.WriteLine($"致命错误: {ex.Message}");
     return 1;
 }
+    }
+}
 
-/// <summary>
-/// 使 WebApplicationFactory&lt;Program&gt; 可访问此入口点（用于集成测试）。
-/// </summary>
-public partial class Program { }
