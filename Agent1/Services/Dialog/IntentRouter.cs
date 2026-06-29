@@ -4,13 +4,15 @@ using System.Linq;
 
 namespace Agent1.Services
 {
+    /// <summary>意图类型</summary>
     public enum IntentType
     {
-        Unknown = 0,
-        SimpleChat = 1,
-        ChemicalCompliance = 2
+        Unknown = 0,// 默认未知意图
+        SimpleChat = 1,// 纯闲聊
+        ChemicalCompliance = 2// 化工合规
     }
 
+    /// <summary>意图路由器</summary>
     public static class IntentRouter
     {
         /// <summary>最近一次路由决策匹配到的具体关键词（供审计追溯）</summary>
@@ -48,14 +50,15 @@ namespace Agent1.Services
         /// <returns>意图类型</returns>
         public static IntentType Route(string userInput)
         {
+            // 清空上次匹配到的关键词
             LastMatchedKeyword = null;
-
+            // 空输入直接判定为闲聊
             if (string.IsNullOrWhiteSpace(userInput))
             {
                 Serilog.Log.Information("[IntentRouter] 空输入 → SimpleChat");
                 return IntentType.SimpleChat;
             }
-
+            // 转换为小写
             var lower = userInput.ToLower();
 
             // 合规优先匹配：只要命中任一合规关键词就判定为合规查询
@@ -67,9 +70,10 @@ namespace Agent1.Services
                     matchedKeyword, userInput.Truncate(80));
                 return IntentType.ChemicalCompliance;
             }
-
+            // 闲聊关键词匹配
             Serilog.Log.Information("[IntentRouter] 无合规关键词命中 → SimpleChat | 输入: {Input}",
                 userInput.Truncate(80));
+            // 返回闲聊意图
             return IntentType.SimpleChat;
         }
     }

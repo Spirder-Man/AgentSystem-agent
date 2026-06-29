@@ -1,0 +1,543 @@
+{
+  "name": "化工合规AI Agent独立盲测集 — 零失误架构泛化能力基准",
+  "version": "1.0",
+  "created": "2026-06-27",
+  "description": "独立盲测集，设计原则: (1)50%化学品不在当前数据库覆盖范围内 (2)4级难度分层 (3)覆盖GB30000全系列 (4)验证系统泛化与拒绝能力",
+  "test_cases": [
+    {
+      "id": "BL01",
+      "category": "危险类别查询",
+      "difficulty": "L1",
+      "intent": "info_query",
+      "query": "甲苯属于什么危险类别？",
+      "expected_tool": "CheckHazardCategory",
+      "expected_params": { "chemicalName": "甲苯" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "GB 30000.7",
+        "regulation": "GB 30000.7 易燃液体,类别2"
+      },
+      "expected_relevant_docs": ["GB 30000.7", "甲苯"]
+    },
+    {
+      "id": "BL02",
+      "category": "危险类别查询",
+      "difficulty": "L1",
+      "intent": "info_query",
+      "query": "氢氧化钠的GHS分类是什么？",
+      "expected_tool": "CheckHazardCategory",
+      "expected_params": { "chemicalName": "氢氧化钠" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "GB 30000.17",
+        "regulation": "GB 30000.17 金属腐蚀物,类别1; GB 30000.19 皮肤腐蚀/刺激,类别1A"
+      },
+      "expected_relevant_docs": ["GB 30000.17", "GB 30000.19", "氢氧化钠"]
+    },
+    {
+      "id": "BL03",
+      "category": "安全距离",
+      "difficulty": "L1",
+      "intent": "info_query",
+      "query": "甲类仓库与明火点之间应保持多少米的安全间距？",
+      "expected_tool": "GetSafetyDistance",
+      "expected_params": { "facilityType": "甲类仓库-明火点" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "regulation": "GB50160 ≥30m",
+        "expected_regulation_number": "GB50160",
+        "expected_distance": 30,
+        "expected_distance_unit": "m"
+      },
+      "expected_relevant_docs": ["GB50160", "甲类仓库", "安全距离"]
+    },
+    {
+      "id": "BL04",
+      "category": "重大危险源查询",
+      "difficulty": "L1",
+      "intent": "info_query",
+      "query": "氯气的重大危险源临界量是多少吨？",
+      "expected_tool": "GetMajorHazardThreshold",
+      "expected_params": { "substanceName": "氯气" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "GB 18218",
+        "regulation": "临界量5吨"
+      },
+      "expected_relevant_docs": ["GB 18218", "氯", "临界量"]
+    },
+    {
+      "id": "BL05",
+      "category": "化学品属性查询",
+      "difficulty": "L1",
+      "intent": "info_query",
+      "query": "丙酮的CAS号是什么？闪点多少度？",
+      "expected_tool": "LookupChemicalProperties",
+      "expected_params": { "substanceName": "丙酮" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "",
+        "regulation": "CAS:67-64-1, 闪点:-18°C"
+      }
+    },
+    {
+      "id": "BL06",
+      "category": "法规版本查询",
+      "difficulty": "L1",
+      "intent": "info_query",
+      "query": "GB 50160的最新版本是哪一版？",
+      "expected_tool": "CheckRegulationVersion",
+      "expected_params": { "regulationNumber": "GB 50160" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "GB 50160",
+        "regulation": "GB 50160 石油化工企业设计防火规范"
+      }
+    },
+    {
+      "id": "BL07",
+      "category": "储存兼容性",
+      "difficulty": "L1",
+      "intent": "compliance_judgment",
+      "query": "甲醇和硝酸能否同库储存？",
+      "expected_tool": "CheckStorageCompatibility",
+      "expected_params": { "chemicalA": "甲醇", "chemicalB": "硝酸" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "is_compliant": false,
+        "expected_regulation_number": "GB15603",
+        "expected_clause": "氧化剂与易燃液体严禁同库"
+      }
+    },
+    {
+      "id": "BL08",
+      "category": "储存兼容性",
+      "difficulty": "L1",
+      "intent": "compliance_judgment",
+      "query": "乙醇和乙酸乙酯能放在同一仓库吗？",
+      "expected_tool": "CheckStorageCompatibility",
+      "expected_params": { "chemicalA": "乙醇", "chemicalB": "乙酸乙酯" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "is_compliant": true,
+        "expected_regulation_number": "GB15603",
+        "expected_clause": "同类易燃液体可同库分区储存"
+      }
+    },
+    {
+      "id": "BL09",
+      "category": "危险类别查询",
+      "difficulty": "L2",
+      "intent": "info_query",
+      "query": "环氧乙烷有哪些危险特性？都适用哪些GB标准？",
+      "expected_tool": "CheckHazardCategory",
+      "expected_params": { "chemicalName": "环氧乙烷" },
+      "expected_behavior": "DATABASE_HIT_MULTI_REG",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "GB 30000.3",
+        "regulation": "易燃气体(GB 30000.3)、加压气体(GB 30000.6)、致癌性(GB 30000.23)、急性毒性(GB 30000.18)"
+      },
+      "expected_relevant_docs": ["GB 30000.3", "GB 30000.6", "GB 30000.23", "GB 30000.18"]
+    },
+    {
+      "id": "BL10",
+      "category": "危险类别查询",
+      "difficulty": "L2",
+      "intent": "info_query",
+      "query": "硝酸铵属于哪些危险类别？涉及哪些法规？",
+      "expected_tool": "CheckHazardCategory",
+      "expected_params": { "chemicalName": "硝酸铵" },
+      "expected_behavior": "DATABASE_HIT_MULTI_REG",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "GB 30000.15",
+        "regulation": "氧化性固体(GB 30000.15)、爆炸物(GB 30000.2)"
+      },
+      "expected_relevant_docs": ["GB 30000.2", "GB 30000.15", "硝酸铵"]
+    },
+    {
+      "id": "BL11",
+      "category": "储存兼容性",
+      "difficulty": "L2",
+      "intent": "compliance_judgment",
+      "query": "过氧化氢和硝酸都是氧化剂，能否同库储存？",
+      "expected_tool": "CheckStorageCompatibility",
+      "expected_params": { "chemicalA": "过氧化氢", "chemicalB": "硝酸" },
+      "expected_behavior": "DATABASE_HIT_MULTI_REG",
+      "expected_conclusion": {
+        "is_compliant": true,
+        "expected_regulation_number": "",
+        "expected_clause": "同类别氧化剂可同库但需分区"
+      }
+    },
+    {
+      "id": "BL12",
+      "category": "综合审核",
+      "difficulty": "L2",
+      "intent": "compliance_judgment",
+      "query": "某企业将苯、甲苯、二甲苯三种易燃液体存放在同一库房的不同防火分区，合规吗？",
+      "expected_tool": "CheckStorageCompatibility",
+      "expected_params": { "chemicalA": "苯", "chemicalB": "甲苯" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "is_compliant": true,
+        "expected_regulation_number": "GB15603",
+        "expected_clause": "同类易燃液体可同库分区储存"
+      }
+    },
+    {
+      "id": "BL13",
+      "category": "危险类别查询",
+      "difficulty": "L2",
+      "intent": "info_query",
+      "query": "氰化钠的危险特性？属于GB30000哪个子标准？",
+      "expected_tool": "CheckHazardCategory",
+      "expected_params": { "chemicalName": "氰化钠" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "GB 30000.18",
+        "regulation": "GB 30000.18 急性毒性,类别1; GB 30000.28 对水生环境危害,类别1"
+      }
+    },
+    {
+      "id": "BL14",
+      "category": "安全距离",
+      "difficulty": "L2",
+      "intent": "info_query",
+      "query": "氨罐距离厂外道路至少多少米？依据哪个标准？",
+      "expected_tool": "GetSafetyDistance",
+      "expected_params": { "facilityType": "氨罐" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "regulation": "GB50160 ≥20m",
+        "expected_regulation_number": "GB50160",
+        "expected_distance": 20,
+        "expected_distance_unit": "m"
+      }
+    },
+    {
+      "id": "BL15",
+      "category": "危险类别查询",
+      "difficulty": "L2",
+      "intent": "info_query",
+      "query": "乙炔和环氧乙烷都属于易燃气体吗？有什么区别？",
+      "expected_tool": "CheckHazardCategory",
+      "expected_params": { "chemicalName": "乙炔" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "GB 30000.3",
+        "regulation": "GB 30000.3 易燃气体,类别1"
+      }
+    },
+    {
+      "id": "BL16",
+      "category": "重大危险源查询",
+      "difficulty": "L2",
+      "intent": "info_query",
+      "query": "某库房存放80吨苯，是否构成重大危险源？",
+      "expected_tool": "GetMajorHazardThreshold",
+      "expected_params": { "substanceName": "苯" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "GB 18218",
+        "regulation": "临界量50吨，80吨>50吨，构成重大危险源"
+      }
+    },
+    {
+      "id": "BL17",
+      "category": "综合审核",
+      "difficulty": "L2",
+      "intent": "compliance_judgment",
+      "query": "实验室柜中同时存放少量硝酸和少量乙醇，无隔离措施，是否合规？",
+      "expected_tool": "CheckStorageCompatibility",
+      "expected_params": { "chemicalA": "硝酸", "chemicalB": "乙醇" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "is_compliant": false,
+        "expected_regulation_number": "GB15603",
+        "expected_clause": "氧化剂与易燃液体严禁混存"
+      }
+    },
+    {
+      "id": "BL18",
+      "category": "安全距离",
+      "difficulty": "L2",
+      "intent": "info_query",
+      "query": "液化烃储罐与厂区围墙的安全间距是多少？符合GB50160哪一条？",
+      "expected_tool": "GetSafetyDistance",
+      "expected_params": { "facilityType": "液化烃储罐" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "regulation": "GB50160 ≥35m",
+        "expected_regulation_number": "GB50160",
+        "expected_distance": 35,
+        "expected_distance_unit": "m"
+      }
+    },
+    {
+      "id": "BL19",
+      "category": "危险类别查询",
+      "difficulty": "L3",
+      "intent": "info_query",
+      "query": "丙烯腈的危险分类是什么？适用哪些国标？",
+      "expected_tool": "CheckHazardCategory",
+      "expected_params": { "chemicalName": "丙烯腈" },
+      "expected_behavior": "PARTIAL_DB_MISS",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "",
+        "regulation": "丙烯腈不在主数据库中，应为RAG检索结果或拒绝"
+      }
+    },
+    {
+      "id": "BL20",
+      "category": "储存兼容性",
+      "difficulty": "L3",
+      "intent": "compliance_judgment",
+      "query": "苯酚和丙酮可以放在同一库房吗？",
+      "expected_tool": "CheckStorageCompatibility",
+      "expected_params": { "chemicalA": "苯酚", "chemicalB": "丙酮" },
+      "expected_behavior": "PARTIAL_DB_MISS",
+      "expected_conclusion": {
+        "is_compliant": false,
+        "expected_regulation_number": "",
+        "expected_clause": "苯酚未收录，应提示RAG检索结果或建议人工判定"
+      }
+    },
+    {
+      "id": "BL21",
+      "category": "化学品属性查询",
+      "difficulty": "L3",
+      "intent": "info_query",
+      "query": "查询二氯甲烷的沸点和爆炸极限",
+      "expected_tool": "LookupChemicalProperties",
+      "expected_params": { "substanceName": "二氯甲烷" },
+      "expected_behavior": "PARTIAL_DB_MISS",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "",
+        "regulation": "二氯甲烷不在主数据库，应提示搜索结果或建议查阅SDS"
+      }
+    },
+    {
+      "id": "BL22",
+      "category": "危险类别查询",
+      "difficulty": "L3",
+      "intent": "info_query",
+      "query": "硝基苯属于什么危险类别？",
+      "expected_tool": "CheckHazardCategory",
+      "expected_params": { "chemicalName": "硝基苯" },
+      "expected_behavior": "DB_MISS_RAG_FALLBACK",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "",
+        "regulation": "硝基苯不在数据库，期望RAG检索或拒绝"
+      }
+    },
+    {
+      "id": "BL23",
+      "category": "储存兼容性",
+      "difficulty": "L3",
+      "intent": "compliance_judgment",
+      "query": "环己烷和发烟硝酸能否共库？",
+      "expected_tool": "CheckStorageCompatibility",
+      "expected_params": { "chemicalA": "环己烷", "chemicalB": "硝酸" },
+      "expected_behavior": "DB_MISS_PARTIAL_HIT",
+      "expected_conclusion": {
+        "is_compliant": false,
+        "expected_regulation_number": "",
+        "expected_clause": "环己烷(易燃液体)与硝酸(氧化剂)原则上不应共库"
+      }
+    },
+    {
+      "id": "BL24",
+      "category": "重大危险源查询",
+      "difficulty": "L3",
+      "intent": "info_query",
+      "query": "乙酸乙酯的重大危险源临界量是多少？",
+      "expected_tool": "GetMajorHazardThreshold",
+      "expected_params": { "substanceName": "乙酸乙酯" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "GB 18218",
+        "regulation": "临界量500吨"
+      }
+    },
+    {
+      "id": "BL25",
+      "category": "综合审核",
+      "difficulty": "L3",
+      "intent": "compliance_judgment",
+      "query": "仓库内存放50吨苯和30吨苯乙烯，两类化学品是否兼容储存？是否构成重大危险源？",
+      "expected_tool": "CheckStorageCompatibility",
+      "expected_params": { "chemicalA": "苯", "chemicalB": "苯乙烯" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "is_compliant": true,
+        "expected_regulation_number": "GB15603",
+        "expected_clause": "同类易燃液体可同库分区; 应核查重大危险源阈值"
+      }
+    },
+    {
+      "id": "BL26",
+      "category": "危险类别查询",
+      "difficulty": "L4",
+      "intent": "info_query",
+      "query": "四氯化碳属于什么危险类别？适用什么GB标准？",
+      "expected_tool": "CheckHazardCategory",
+      "expected_params": { "chemicalName": "四氯化碳" },
+      "expected_behavior": "COMPLETE_DB_MISS_REFUSAL",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "",
+        "regulation": "期望返回标准化拒绝模板或提示数据库未收录"
+      }
+    },
+    {
+      "id": "BL27",
+      "category": "储存兼容性",
+      "difficulty": "L4",
+      "intent": "compliance_judgment",
+      "query": "丙烯酸和环氧丙烷是否可以同库储存？",
+      "expected_tool": "CheckStorageCompatibility",
+      "expected_params": { "chemicalA": "丙烯酸", "chemicalB": "环氧丙烷" },
+      "expected_behavior": "COMPLETE_DB_MISS_REFUSAL",
+      "expected_conclusion": {
+        "is_compliant": false,
+        "expected_regulation_number": "",
+        "expected_clause": "两种化学品均不在数据库，期望系统拒绝或建议人工判定"
+      }
+    },
+    {
+      "id": "BL28",
+      "category": "安全距离",
+      "difficulty": "L4",
+      "intent": "info_query",
+      "query": "氯乙烯储罐与居民区的安全距离要求是多少？",
+      "expected_tool": "GetSafetyDistance",
+      "expected_params": { "facilityType": "氯乙烯储罐" },
+      "expected_behavior": "DB_MISS_REFUSAL",
+      "expected_conclusion": {
+        "regulation": "期望返回拒绝或建议查阅GB50160全文",
+        "expected_regulation_number": "GB50160",
+        "expected_distance": null,
+        "expected_distance_unit": "m"
+      }
+    },
+    {
+      "id": "BL29",
+      "category": "重大危险源查询",
+      "difficulty": "L4",
+      "intent": "info_query",
+      "query": "吡啶的GB18218临界量是多少？",
+      "expected_tool": "GetMajorHazardThreshold",
+      "expected_params": { "substanceName": "吡啶" },
+      "expected_behavior": "DB_MISS_REFUSAL",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "",
+        "regulation": "期望返回提示未收录或建议查阅GB18218原文"
+      }
+    },
+    {
+      "id": "BL30",
+      "category": "化学品属性查询",
+      "difficulty": "L4",
+      "intent": "info_query",
+      "query": "查询正己烷的密度和爆炸下限",
+      "expected_tool": "LookupChemicalProperties",
+      "expected_params": { "substanceName": "正己烷" },
+      "expected_behavior": "DB_MISS_REFUSAL",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "",
+        "regulation": "期望系统提示数据库未收录正己烷"
+      }
+    },
+    {
+      "id": "BL31",
+      "category": "危险类别查询",
+      "difficulty": "L4",
+      "intent": "info_query",
+      "query": "1,4-二氧六环的危险分类？",
+      "expected_tool": "CheckHazardCategory",
+      "expected_params": { "chemicalName": "1,4-二氧六环" },
+      "expected_behavior": "COMPLETE_DB_MISS_REFUSAL",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "",
+        "regulation": "期望返回标准化拒绝模板"
+      }
+    },
+    {
+      "id": "BL32",
+      "category": "储存兼容性",
+      "difficulty": "L4",
+      "intent": "compliance_judgment",
+      "query": "苯胺和四氯化碳可以同库吗？",
+      "expected_tool": "CheckStorageCompatibility",
+      "expected_params": { "chemicalA": "苯胺", "chemicalB": "四氯化碳" },
+      "expected_behavior": "COMPLETE_DB_MISS_REFUSAL",
+      "expected_conclusion": {
+        "is_compliant": false,
+        "expected_regulation_number": "",
+        "expected_clause": "两种化学品均不在数据库，期望系统拒绝"
+      }
+    },
+    {
+      "id": "BL33",
+      "category": "危险类别查询",
+      "difficulty": "L2",
+      "intent": "info_query",
+      "query": "蓄电池里的稀硫酸算危险化学品吗？属于哪一类？",
+      "expected_tool": "CheckHazardCategory",
+      "expected_params": { "chemicalName": "硫酸" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "GB 30000.17",
+        "regulation": "GB 30000.17 金属腐蚀物; GB 30000.19 皮肤腐蚀/刺激"
+      }
+    },
+    {
+      "id": "BL34",
+      "category": "综合审核",
+      "difficulty": "L2",
+      "intent": "compliance_judgment",
+      "query": "甲类车间旁新建一栋3层办公楼，距离15米。这个规划合不合规？依据是什么？",
+      "expected_tool": "GetSafetyDistance",
+      "expected_params": { "facilityType": "甲类工艺装置" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "is_compliant": false,
+        "expected_regulation_number": "GB50160",
+        "expected_clause": "甲类装置与重要设施距离应≥30m，15m不足"
+      }
+    },
+    {
+      "id": "BL35",
+      "category": "危险类别查询",
+      "difficulty": "L1",
+      "intent": "info_query",
+      "query": "高锰酸钾的危险特性是什么？属于GB30000哪个子标准？",
+      "expected_tool": "CheckHazardCategory",
+      "expected_params": { "chemicalName": "高锰酸钾" },
+      "expected_behavior": "DATABASE_HIT",
+      "expected_conclusion": {
+        "is_compliant": null,
+        "expected_regulation_number": "GB 30000.15",
+        "regulation": "GB 30000.15 氧化性固体; GB 30000.18 急性毒性"
+      }
+    }
+  ]
+}

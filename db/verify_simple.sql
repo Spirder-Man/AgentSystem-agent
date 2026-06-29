@@ -41,14 +41,7 @@ FROM pg_indexes
 WHERE tablename = 'chemical_documents'
 ORDER BY indexname;
 
--- 5. 检查全文搜索配置
-SELECT '检查全文搜索配置' AS section;
-SELECT 
-    cfgname AS config_name
-FROM pg_ts_config
-WHERE cfgname IN ('simple', 'chinese');
-
--- 6. 测试向量类型
+-- 5. 测试向量类型
 SELECT '测试向量功能' AS section;
 SELECT 
     '[0.1, 0.2, 0.3]'::vector AS test_vector,

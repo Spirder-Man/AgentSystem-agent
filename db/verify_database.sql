@@ -31,14 +31,7 @@ FROM pg_indexes
 WHERE tablename = 'chemical_documents'
 ORDER BY indexname;
 
--- 5. 查看全文搜索配置
-SELECT 
-    cfgname AS config_name,
-    cfgnamespace AS namespace
-FROM pg_ts_config
-WHERE cfgname IN ('simple', 'chinese');
-
--- 6. 查看 HNSW 索引的详细信息
+-- 5. 查看 HNSW 索引的详细信息
 SELECT 
     idxrelid::regclass AS index_name,
     indrelid::regclass AS table_name,

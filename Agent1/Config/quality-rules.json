@@ -1,0 +1,59 @@
+{
+  "version": "1.0.0",
+  "description": "记忆缓存质量门禁规则库 — 声明式、版本化、可审计",
+  "generated_from": "QF-2026-001 StoreToolFacts质量缺陷",
+  "last_updated": "2026-06-27",
+  "rules": [
+    {
+      "id": "R001",
+      "name": "禁止缓存兜底文本",
+      "severity": "BLOCK",
+      "trigger": {
+        "method": "StoreToolFacts",
+        "file": "MemoryService.cs",
+        "phase": "PostInference"
+      },
+      "condition": "toolResult.Content 匹配 fallback_patterns 任一模式 或 Quality == FALLBACK",
+      "action": "REJECT",
+      "reason": "兜底文本（如'未在常见危化品类别中直接匹配，建议查阅 GB 30000 全文'）不可作为领域事实缓存，否则会在知识库更新后仍返回过期兜底回答",
+      "fallback_patterns": [
+        "未在常见.*中直接匹配",
+        "建议查阅.*全文",
+        "未找到.*数据",
+        "建议参考.*查询",
+        "在常见禁忌表中未发现直接冲突",
+        "无法确定.*请提供更多信息",
+        "暂未收录.*信息"
+      ],
+      "created": "2026-06-27",
+      "source_defect": "QF-2026-001"
+    },
+    {
+      "id": "R002",
+      "name": "缓存读取必须验证置信度",
+      "severity": "BLOCK",
+      "trigger": {
+        "method": "TryAnswerFromMemory",
+        "file": "MemoryService.cs",
+        "phase": "PreInference"
+      },
+      "condition": "cached.Quality < DICTIONARY_HIT 且 cached.ToolsUsed.Count == 0",
+      "action": "RETURN_NULL",
+      "reason": "无工具调用支撑的缓存回答（特别是来自 KeyFacts 关键词匹配的），不得作为直接回答跳过 LLM 推理。应降级为上下文注入供 LLM 参考而非盲信。",
+      "created": "2026-06-27",
+      "source_defect": "QF-2026-001"
+    }
+  ],
+  "quality_levels": {
+    "RAG_HIT": { "value": 4, "description": "RAG 检索命中，有原文支撑", "cache_ttl_minutes": 10 },
+    "DATABASE_HIT": { "value": 3, "description": "结构化数据库命中", "cache_ttl_minutes": 10 },
+    "DICTIONARY_HIT": { "value": 2, "description": "硬编码字典命中", "cache_ttl_minutes": 5 },
+    "FALLBACK": { "value": 0, "description": "兜底诚实声明", "cache_ttl_minutes": 0 },
+    "ERROR": { "value": -1, "description": "异常", "cache_ttl_minutes": 0 }
+  },
+  "cache_ttl_strategy": {
+    "description": "分级 TTL 策略：高质量缓存长保留，低质量缓存快速过期",
+    "default_ttl_minutes": 5,
+    "unknown_quality_ttl_minutes": 1
+  }
+}

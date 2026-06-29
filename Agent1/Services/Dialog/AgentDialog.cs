@@ -56,22 +56,31 @@ namespace Agent1.Services
         {
             _memoryService.ClearMemory();
         }
-
+        /// <summary>
+        /// 执行对话
+        /// </summary>
+        /// <param name="userInput">用户输入</param>
+        /// <param name="session">会话上下文</param>
+        /// <returns>对话执行结果</returns>
         public async Task<CliExecutionResult> ExecuteAsync(string userInput, SessionContext session)
         {
+            // 开始执行对话
             var sw = Stopwatch.StartNew();
+            // 生成跟踪 ID
             var traceId = Guid.NewGuid().ToString("N")[..8];
+            // 重置事件序列号和事件列表
             _eventSeq = 0;
             _currentEvents = new List<PipelineEvent>();
+            // 创建指标对象
             var metrics = new PipelineMetrics
             {
                 TraceId = traceId,
                 InputLength = userInput.Length
             };
-
+            // 记录流水线启动事件
             RecordEvent(traceId, "PipelineStart", $"流水线启动: {userInput.Truncate(60)}",
                 new Dictionary<string, object> { ["InputLength"] = userInput.Length });
-
+            // 记录流水线启动事件
             Serilog.Log.Information("[Pipeline] 开始 | TraceId={TraceId} | 输入长度={Len} | 输入={Input}",
                 traceId, userInput.Length, userInput.Truncate(80));
 
@@ -183,7 +192,7 @@ namespace Agent1.Services
 
             RecordEvent(traceId, "PipelineComplete", $"流水线完成: 总耗时={metrics.TotalMs}ms",
                 new Dictionary<string, object> { ["TotalMs"] = metrics.TotalMs, ["EventCount"] = _eventSeq });
-
+            // 返回结果
             return new CliExecutionResult
             {
                 Success = true,
@@ -239,10 +248,28 @@ namespace Agent1.Services
                 var userId = context.UserProfile.UserName ?? "default";
                 var preResult = await _memoryCoordinator.PreInferenceAsync(context.Session.SessionId, userId, input);
 
+                // [BUG FIX] 仅当缓存命中且来源为真实工具调用时才跳过推理
+                // 此前不检查 HasDirectAnswer 的来源质量，导致"未找到/建议查阅"等兜底文本被缓存后
+                // 直接返回，跳过 LLM。当知识库后续更新了数据后，用户仍会得到旧的兜底回答。
                 if (preResult.HasDirectAnswer)
                 {
-                    Console.WriteLine($"   → 记忆直接回答（跳过推理）");
-                    return (preResult.DirectAnswer, new List<FunctionCallRecord>(), new List<string>());
+                    if (!preResult.IsCacheHit && !preResult.IsMemoryHit)
+                    {
+                        // 非缓存/非记忆来源的直接回答（如长期记忆精确匹配），允许跳过
+                        Console.WriteLine($"   → 记忆直接回答（跳过推理）");
+                        return (preResult.DirectAnswer, new List<FunctionCallRecord>(), new List<string>());
+                    }
+                    else if (preResult.HasToolCallsForThisAnswer)
+                    {
+                        // 缓存/记忆命中了，且确认来源是工具调用结果（非兜底）
+                        Console.WriteLine($"   → 记忆直接回答（来源=工具调用，跳过推理）");
+                        return (preResult.DirectAnswer, new List<FunctionCallRecord>(), new List<string>());
+                    }
+                    else
+                    {
+                        // 缓存/记忆命中但无工具调用来源标记，不可信，继续走 LLM
+                        Console.WriteLine($"   ⚠️ 缓存命中但来源不可信（无工具调用），继续推理");
+                    }
                 }
 
                 // 将长期记忆上下文注入 context
@@ -253,18 +280,15 @@ namespace Agent1.Services
                 }
             }
 
-            // 兜底：原有短期记忆关键词匹配
+            // [BUG FIX] 原有短期记忆关键词匹配 — 不再作为跳过推理的依据
+            // 此前 TryAnswerFromMemory 直接返回 KeyFacts 缓存值而不检查其质量（可能是兜底文本），
+            // 现在降级为"上下文提示"：将匹配到的历史事实注入推理但不跳过 LLM
             var memoryAnswer = _memoryService.TryAnswerFromMemory(input);
             if (!string.IsNullOrWhiteSpace(memoryAnswer))
             {
-                Console.WriteLine("   → 使用记忆回答");
-                Console.WriteLine("\n🧠 从记忆中找到答案！");
-                Console.WriteLine();
-                Console.ForegroundColor = ConsoleColor.Blue;
-                Console.WriteLine(memoryAnswer);
-                Console.ResetColor();
-                _memoryService.ExtractAndStoreKeyFacts(input, memoryAnswer);
-                return (memoryAnswer, new List<FunctionCallRecord>(), new List<string>());
+                Console.WriteLine("   → 记忆上下文注入（不跳过推理）");
+                // 将历史记忆作为上下文前缀注入 context.History，让 LLM 参考而非盲信
+                context.History = $"【历史记忆（供参考，请结合当前知识库核实）】\n{memoryAnswer}\n\n" + context.History;
             }
 
             if (intent == IntentType.ChemicalCompliance)
@@ -275,8 +299,8 @@ namespace Agent1.Services
             else
             {
                 Console.WriteLine("   → 执行通用对话业务");
-                var answer = await ExecuteGeneralChatAsync(input, context);
-                return (answer, new List<FunctionCallRecord>(), new List<string>());
+                var (answer, toolCalls) = await ExecuteGeneralChatAsync(input, context);
+                return (answer, toolCalls, new List<string>());
             }
         }
 
@@ -291,24 +315,29 @@ namespace Agent1.Services
         /// </summary>
         private async Task<(string answer, List<FunctionCallRecord> toolCalls, List<string> warnings)> ExecuteChemicalComplianceAsync(string input, PipelineContext context)
         {
-            var t = AppConfig.Instance.PromptTemplates;
-            var history = t.HistoryTemplate.Replace("{History}", context.History ?? "");
-            var question = t.CurrentQuestionTemplate.Replace("{UserInput}", input);
-            var prompt = $"{t.SystemRole}\n\n{history}\n\n{question}\n\n{t.OutputTemplate}";
+            var t = AppConfig.Instance.PromptTemplates;// 获取提示模板
+            var history = t.HistoryTemplate.Replace("{History}", context.History ?? "");// 替换历史记录
+            var question = t.CurrentQuestionTemplate.Replace("{UserInput}", input);// 替换用户输入
+            var prompt = $"{t.SystemRole}\n\n{history}\n\n{question}\n\n{t.OutputTemplate}";// 组合成完整提示   
 
             Console.WriteLine("\n   【SK Auto Function Calling 模式】");
             Console.ForegroundColor = ConsoleColor.Blue;
+            // 提示用户输入化工合规问题
             var answer = await _llmService.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Blue, "化工合规");
             Console.ResetColor();
             Console.WriteLine();
 
             // Phase 2a 验证: 从 LlmService 诊断记录同步工具调用
             var llmService = _llmService as LlmService;
-            var toolCalls = new List<FunctionCallRecord>();
+            var toolCalls = new List<FunctionCallRecord>();// 工具调用记录
+            // 从 LlmService 诊断记录同步工具调用
             if (llmService != null && llmService.LastFunctionCalls.Count > 0)
             {
+                // 复制工具调用记录
                 toolCalls = new List<FunctionCallRecord>(llmService.LastFunctionCalls);
+                // 填充工具调用结果
                 LastToolResults = new Dictionary<string, string>();
+                // 遍历工具调用记录
                 foreach (var fc in llmService.LastFunctionCalls)
                 {
                     LastToolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
@@ -319,12 +348,13 @@ namespace Agent1.Services
                     ToolNames = llmService.LastFunctionCalls.Select(fc => fc.FunctionName).ToList()
                 };
             }
+            // 如果没有工具调用，则初始化工具调用结果和计划
             else
             {
                 LastToolResults = new Dictionary<string, string>();
                 LastToolPlan = new ToolPlan { NeedsTools = false };
             }
-
+            // 提取并存储关键事实 input 和 answer 是提示模板的输入和输出
             _memoryService.ExtractAndStoreKeyFacts(input, answer);
 
             // Phase 4.1: 记忆协调器后推理（异步，不阻塞响应）
@@ -333,11 +363,18 @@ namespace Agent1.Services
                 var userId = context.UserProfile.UserName ?? "default";
                 _ = _memoryCoordinator.PostInferenceAsync(context.Session.SessionId, userId, input, answer, LastToolResults);
             }
-
+            // 返回结果：回答文本, 工具调用记录, 安全警告
             return (answer, toolCalls, new List<string>());
         }
-
-        private async Task<string> ExecuteGeneralChatAsync(string input, PipelineContext context)
+        /// <summary>
+        /// Phase 2b: 通用对话业务
+        /// </summary>
+        /// <summary>
+        /// Phase 2b: 通用对话业务。
+        /// 返回值: (回答文本, 工具调用记录) — 即使 SimpleChat 意图下 SK 仍可能自动调用
+        /// GetCurrentTime/Calculate 等系统工具，必须收集工具调用记录以保持统计口径一致。
+        /// </summary>
+        private async Task<(string answer, List<FunctionCallRecord> toolCalls)> ExecuteGeneralChatAsync(string input, PipelineContext context)
         {
             var t = AppConfig.Instance.PromptTemplates;
             var assistantName = !string.IsNullOrWhiteSpace(context.UserProfile.AssistantName) 
@@ -356,6 +393,18 @@ namespace Agent1.Services
             Console.WriteLine("\n💬 正在生成回复...");
             var answer = await _llmService.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Blue, "简单对话");
             
+            // [BUG FIX] 收集 SK Auto FC 在 SimpleChat 路径中调用的系统工具（GetCurrentTime/Calculate）
+            // 此前硬编码返回空列表导致 metrics.ToolCallCount=0 与实际 [SK诊断] 输出矛盾
+            var toolCalls = new List<FunctionCallRecord>();
+            if (_llmService is LlmService llmService && llmService.LastFunctionCalls.Count > 0)
+            {
+                toolCalls = new List<FunctionCallRecord>(llmService.LastFunctionCalls);
+                // 同步到 LastToolResults 供后续 PostInferenceAsync 使用
+                var toolResults = new Dictionary<string, string>();
+                foreach (var fc in llmService.LastFunctionCalls)
+                    toolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
+            }
+
             _memoryService.ExtractAndStoreKeyFacts(input, answer);
 
             // Phase 4.1: 后推理
@@ -365,7 +414,7 @@ namespace Agent1.Services
                 _ = _memoryCoordinator.PostInferenceAsync(context.Session.SessionId, userId, input, answer);
             }
 
-            return answer;
+            return (answer, toolCalls);
         }
 
         /// <summary>
@@ -444,7 +493,9 @@ namespace Agent1.Services
             Console.WriteLine("完成");
             return answer;
         }
-
+        /// <summary>
+        /// 保存会话记录
+        /// </summary>
         private Task SaveSessionAsync(SessionContext session, string input, string result)
         {
             _sessionService.AddDialogTurn(session.SessionId, "User", input);

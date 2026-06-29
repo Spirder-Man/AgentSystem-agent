@@ -316,6 +316,11 @@ public class EvalEngine
         var meanRecall = retrievalEvalCount > 0 ? results.Where(r => r.RetrievalEvaluated).Average(r => r.RecallAtK ?? 0) : (double?)null;
         var meanMRR = retrievalEvalCount > 0 ? results.Where(r => r.RetrievalEvaluated).Average(r => r.MRR ?? 0) : (double?)null;
 
+        // [Task 11] Top-10 检索质量汇总
+        var retrieval10Count = results.Count(r => r.RetrievalEvaluated && r.PrecisionAt10.HasValue);
+        var meanPrec10 = retrieval10Count > 0 ? results.Where(r => r.RetrievalEvaluated && r.PrecisionAt10.HasValue).Average(r => r.PrecisionAt10!.Value) : (double?)null;
+        var meanRecall10 = retrieval10Count > 0 ? results.Where(r => r.RetrievalEvaluated && r.RecallAt10.HasValue).Average(r => r.RecallAt10!.Value) : (double?)null;
+
         // 忠实度汇总
         var totalClaims = results.Sum(r => r.TotalClaims);
         var totalVerified = results.Sum(r => r.VerifiedClaims);
@@ -349,7 +354,8 @@ public class EvalEngine
 
         PrintReport(total, toolOk, paramOk, conclusionOk, errors,
             fcTriggerCount, fcTotalCount, fcReady, categoryStats,
-            meanPrec, meanRecall, meanMRR, totalVerified, totalHallucinated, meanFaithfulness,
+            meanPrec, meanRecall, meanMRR, meanPrec10, meanRecall10,
+            totalVerified, totalHallucinated, meanFaithfulness,
             meanAnswerRelevance, meanCitationAccuracy, engMetrics);
 
         var report = new EvalReport
@@ -363,6 +369,8 @@ public class EvalEngine
             MeanPrecisionAtK = meanPrec,
             MeanRecallAtK = meanRecall,
             MeanMRR = meanMRR,
+            MeanPrecisionAt10 = meanPrec10,
+            MeanRecallAt10 = meanRecall10,
             MeanFaithfulness = meanFaithfulness,
             MeanAnswerRelevance = meanAnswerRelevance,
             MeanCitationAccuracy = meanCitationAccuracy,
@@ -422,6 +430,7 @@ public class EvalEngine
             int retrievalCount, double precSum, double recallSum, double mrrSum,
             int totalClaims, int verifiedClaims, int halClaims)> categoryStats,
         double? meanPrec, double? meanRecall, double? meanMRR,
+        double? meanPrec10, double? meanRecall10,
         int totalVerified, int totalHallucinated, double? meanFaithfulness,
         double? meanAnswerRelevance, double? meanCitationAccuracy, EngineeringMetrics? engMetrics)
     {
@@ -440,9 +449,12 @@ public class EvalEngine
         Console.WriteLine($"║  结论准确率:   {conclusionOk,3}/{total} = {conclusionOk * 100.0 / Math.Max(total, 1):F1}%               ║");
         Console.WriteLine("╠════════════════════════════════════════╣");
         Console.WriteLine("║  RAG 检索质量 (新增):                  ║");
-        Console.WriteLine($"║  Precision@K:  {(meanPrec.HasValue ? $"{meanPrec.Value:P1}" : "N/A"),-10}                    ║");
-        Console.WriteLine($"║  Recall@K:     {(meanRecall.HasValue ? $"{meanRecall.Value:P1}" : "N/A"),-10}                    ║");
-        Console.WriteLine($"║  MRR:          {(meanMRR.HasValue ? $"{meanMRR.Value:F3}" : "N/A"),-10}                    ║");
+        Console.WriteLine($"║  Precision@5: {(meanPrec.HasValue ? $"{meanPrec.Value:P1}" : "N/A"),-10}                    ║");
+        Console.WriteLine($"║  Recall@5:    {(meanRecall.HasValue ? $"{meanRecall.Value:P1}" : "N/A"),-10}                    ║");
+        Console.WriteLine($"║  MRR:         {(meanMRR.HasValue ? $"{meanMRR.Value:F3}" : "N/A"),-10}                    ║");
+        Console.WriteLine("║  [Task 11] Top-10 检索质量:             ║");
+        Console.WriteLine($"║  Precision@10:{(meanPrec10.HasValue ? $"{meanPrec10.Value:P1}" : "N/A"),-10}                    ║");
+        Console.WriteLine($"║  Recall@10:   {(meanRecall10.HasValue ? $"{meanRecall10.Value:P1}" : "N/A"),-10}                    ║");
         Console.WriteLine("╠════════════════════════════════════════╣");
         Console.WriteLine("║  生成维度 (新增):                      ║");
         Console.WriteLine($"║  已验证声明:   {totalVerified,3}                        ║");
@@ -580,7 +592,32 @@ public class EvalEngine
             result.MRR = firstRelevantRank > 0 ? 1.0 / firstRelevantRank : 0;
             result.RetrievalEvaluated = true;
 
-            Console.WriteLine($"      📊 检索质量: P@{K}={result.PrecisionAtK:P1} R@{K}={result.RecallAtK:P1} MRR={result.MRR:F3} (相关{relevantCount}/{K})");
+            Console.WriteLine($"      📊 检索质量: P@5={result.PrecisionAtK:P1} R@5={result.RecallAtK:P1} MRR={result.MRR:F3} (相关{relevantCount}/{K})");
+
+            // ── Top-10 检索评估 (Task 11) ──
+            try
+            {
+                var retrievedChunks10 = await _knowledgeBaseService.RetrieveChemicalRegulationAsync(
+                    retrievalQuery, regulationType: null, topK: 10);
+
+                int relevantCount10 = 0;
+                for (int i = 0; i < retrievedChunks10.Count; i++)
+                {
+                    var content10 = KnowledgeBaseService.NormalizeGbNumbers(retrievedChunks10[i].Content ?? "");
+                    bool isRelevant10 = normalizedIndicators.Any(indicator =>
+                        content10.Contains(indicator, StringComparison.OrdinalIgnoreCase));
+                    if (isRelevant10) relevantCount10++;
+                }
+
+                int K10 = retrievedChunks10.Count;
+                result.PrecisionAt10 = K10 > 0 ? (double)relevantCount10 / K10 : 0;
+                result.RecallAt10 = relevanceIndicators.Count > 0 ? (double)relevantCount10 / Math.Min(relevanceIndicators.Count, K10) : 0;
+                Console.WriteLine($"          检索质量: P@10={result.PrecisionAt10:P1} R@10={result.RecallAt10:P1} (相关{relevantCount10}/{K10})");
+            }
+            catch (Exception ex10)
+            {
+                Console.WriteLine($"      ⚠️ Top-10 检索评估跳过: {ex10.Message}");
+            }
         }
         catch (Exception ex)
         {

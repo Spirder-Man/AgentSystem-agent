@@ -26,7 +26,7 @@ namespace Agent1.Services
             _llmService = llmService;
             _kbService = kbService;
             _toolDefinitions = toolDefinitions ?? new List<ToolDefinition>();
-            _tools = new ChemicalComplianceTools(new Lazy<IKnowledgeBaseService>(kbService)); // Phase 2a: RAG-only 构造，不再需要 llmService
+            _tools = new ChemicalComplianceTools(new Lazy<IKnowledgeBaseService>(kbService), ChemicalDatabaseService.Instance); // Phase 3: SQLite结构化数据库注入
         }
 
         public async Task<ToolPlan> AnalyzeAndPlanToolsAsync(string userInput, string history)
