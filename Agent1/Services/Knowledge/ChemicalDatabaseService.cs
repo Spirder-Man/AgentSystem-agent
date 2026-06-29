@@ -531,7 +531,7 @@ CREATE TABLE IF NOT EXISTS regulation_versions (
     private async Task SeedSubstancesAsync(SqliteConnection conn, SqliteTransaction tx)
     {
         // ── 易燃液体类 ──
-        await InsertSubstance(conn, tx, tx, "苯", "Benzene", "71-43-2", "1114", "C6H6", "液体",
+        await InsertSubstance(conn, tx, "苯", "Benzene", "71-43-2", "1114", "C6H6", "液体",
             -11, 80.1, 1.2, 8.0, 560, 0.88, 2.77, 50,
             new[] { ("易燃液体", "GB 30000.7", "类别2", null), ("致癌性", "GB 30000.23", "类别1A", ""),
                     ("严重眼损伤/刺激", "GB 30000.20", "类别2", null), ("特异性靶器官毒性 反复接触", "GB 30000.26", "类别1", ""),
