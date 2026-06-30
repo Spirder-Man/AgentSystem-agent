@@ -1,6 +1,6 @@
 # Agent1 — 化工园区危化品合规审查 AI Agent
 
-> **项目版本**：v3.5（Task 11 集成测试补全 + Mock v2.5 修复 — 2026-06-25）
+> **项目版本**：v3.6（P0 死循环+GB幻觉修复 + UTF-8编码修复 + CPU降级模式 — 2026-06-30）
 > **核心修复文档**：[P0-P1修复详细技术文档](docs/troubleshooting/P0-P1修复详细技术文档.md) | [RAG工程Bug修复笔记](docs/troubleshooting/RAG工程Bug修复笔记_2026-05-26.md) | [故障排查文档](docs/troubleshooting/故障排查文档.md) | [代码自检清单](docs/工程skill/代码自检清单%20Skill.md)
 > **前端开发**：[前端开发快速上手指南](docs/architecture/Agent1前端开发快速上手指南.md) | [Mock 机制说明](agent1-web/src/mocks/README.md)
 
@@ -761,12 +761,21 @@ MIT License
 
 ---
 
-**文档版本**：v4.8  
-**最后更新**：2026年6月29日  
+**文档版本**：v4.9  
+**最后更新**：2026年6月30日  
 **分支**：`feature/partner-dev`  
-**状态**：P0-P2 清完 | 零失误架构 v2.0 交付 | 测试覆盖大幅扩展 (+9144行) | 双仓库同步 | 容器化 (llama.cpp)
+**状态**：P0-P2 清完 | 零失误架构 v2.0 交付 | LLM 流式死循环检测 + GB 编号幻觉后校验 | UTF-8 控制台编码修复 | CPU 降级模式 | 双仓库同步 | 容器化 (llama.cpp)
 
 ## 📋 近期更新
+
+### P0 紧急修复: LLM流式死循环检测 + GB编号幻觉后校验（2026-06-30）
+- **Bug1 (T5 Reflection 死循环)**: `LlmService.InvokeStreamAsync` 3维度通用死循环检测 — 连续相同行(>8次) / 字符级联(>12个) / 总长度硬截断(>5000字符)，替代旧版仅匹配"是否合规"的窄检测
+- **Bug2 (T6 RAG 校验死循环)**: 同上通用检测，拦截"不通过..."重复200+次 + 82.2s慢请求告警
+- **Bug3 (Qwen3:8b GB编号幻觉)**: `ReflectionVerifier.ValidateGbNumberHallucinations()` — GB编号格式纠错(GB3025→GB 30000.25 缺零 / GB300026→GB 30000.26 多余零) + ChemicalSubstanceDatabase权威映射交叉验证 + 集成到`EvalEngine`忠实度评分
+- **UTF-8 控制台编码修复**: `Program.cs` + `Agent1.Api/Program.cs` 启动时强制 `Console.OutputEncoding = UTF-8`，防止Windows GB2312误解码为"锟斤拷"乱码
+- **CPU 降级模式**: `appsettings.json` GPU开关关闭(GpuEmbeddingEnabled/RerankerEnabled=false) + GpuFallbackEnabled=true
+- **Mock 参数修复**: `BusinessOrchestrationTests` null参数类型修正 `null→(string?)null`
+- **文件**: 7 files, +240/-17 | 编译 0 errors
 
 ### 六阶段架构重构全部交付 + P1 格式修复（2026-06-29）
 - **零失误架构 v2.0**：`OutputValidator` (328行) + `ComplianceAuditLogger` (249行) + `ChemicalDatabaseService` (918行) + 化工盲评集 543 条
