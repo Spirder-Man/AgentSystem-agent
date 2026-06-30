@@ -91,9 +91,18 @@ namespace Agent1.Services
             bool isInThinkBlock = false;
             string buffer = "";
             int bufferFlushThreshold = 50;
-            int semanticRepeatCount = 0;         // P0 FIX v2: 语义标记重复计数
-            const int MaxSemanticRepeat = 5;      // P0 FIX v2: "是否合规"出现超过5次则截断
-            int totalOutputLines = 0;             // P0 FIX v2: 输出行数（辅助判断）
+
+            // P0 FIX: 通用 LLM 死循环检测 (替换旧版仅匹配"是否合规"的窄检测)
+            // Bug1(T5 Reflection): 修正文本重复数百次 + 括号级联 ")"))))..."
+            // Bug2(T6 RAG校验): 同一句话重复200+次  "不通过，回答中引用了..."
+            int duplicateLineCount = 0;          // 相同行连续出现次数
+            string? lastFlushedLine = null;      // 上一次 flush 的行内容
+            const int MaxDuplicateLines = 8;     // 连续相同行超过8次 → 死循环
+            int cascadeCount = 0;                // 字符级联计数 (如 ")"")....")
+            char? cascadeChar = null;            // 当前级联字符
+            const int MaxCascade = 12;           // 级联字符超过12个 → 死循环
+            int totalOutputChars = 0;            // 总输出字符数
+            const int MaxTotalChars = 5000;      // 硬截断上限
 
             // Phase 2a: 模型感知的 think 标签过滤 — 仅 DeepSeek-R1 需要
             bool filterThinkTags = ShouldFilterThinkTags();
@@ -170,16 +179,53 @@ namespace Agent1.Services
                         string cleaned = CleanChunk(buffer);
                         if (!string.IsNullOrWhiteSpace(cleaned))
                         {
-                            // P0 FIX v2: 语义标记匹配检测 LLM 死循环
-                            // Qwen3-8B 流式输出易陷入"是否合规:否 法规依据:..."的无限循环
-                            // 每行句式略有差异但语义相同，用标记词计数替代严格行匹配
-                            if (cleaned.Contains("是否合规"))
-                                semanticRepeatCount++;
-                            totalOutputLines++;
-
-                            if (semanticRepeatCount > MaxSemanticRepeat && totalOutputLines > MaxSemanticRepeat * 2)
+                            // ── P0 FIX: 通用 LLM 死循环检测 ──
+                            // 检测维度1: 连续相同行 (Bug2 RAG校验死循环: "不通过..." 重复200+次)
+                            if (lastFlushedLine != null && cleaned == lastFlushedLine)
                             {
-                                Console.WriteLine($"\n   ⚠️ [截断] 检测到语义重复({semanticRepeatCount}次合规语句)，停止流式接收");
+                                duplicateLineCount++;
+                                if (duplicateLineCount > MaxDuplicateLines)
+                                {
+                                    Console.WriteLine($"\n   ⚠️ [截断] 检测到连续重复输出({duplicateLineCount}次相同行)，停止流式接收");
+                                    break;
+                                }
+                            }
+                            else
+                            {
+                                duplicateLineCount = 0;
+                                lastFlushedLine = cleaned;
+                            }
+
+                            // 检测维度2: 字符级联 (Bug1 Reflection死循环: ")"))))...")
+                            foreach (char ch in cleaned)
+                            {
+                                if (ch == cascadeChar)
+                                {
+                                    cascadeCount++;
+                                    if (cascadeCount > MaxCascade)
+                                    {
+                                        Console.WriteLine($"\n   ⚠️ [截断] 检测到字符重复级联('{cascadeChar}'×{cascadeCount})，停止流式接收");
+                                        break;
+                                    }
+                                }
+                                else if (ch == ')' || ch == '）' || ch == '】' || ch == '}' || ch == '#' || ch == '*')
+                                {
+                                    cascadeChar = ch;
+                                    cascadeCount = 1;
+                                }
+                                else
+                                {
+                                    cascadeChar = null;
+                                    cascadeCount = 0;
+                                }
+                            }
+                            if (cascadeCount > MaxCascade) break;  // 内层break传递
+
+                            // 检测维度3: 总长度硬截断 (Bug1 Reflection死循环: 累计输出>5000字符)
+                            totalOutputChars += cleaned.Length;
+                            if (totalOutputChars > MaxTotalChars)
+                            {
+                                Console.WriteLine($"\n   ⚠️ [截断] 输出超过{MaxTotalChars}字符上限，停止流式接收");
                                 break;
                             }
 

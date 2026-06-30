@@ -647,6 +647,24 @@ public class EvalEngine
                 result.VerifiedClaims = regMatches.Count; // 无法验证，全部假定为真
                 result.HallucinatedClaims = 0;
                 result.FaithfulnessScore = 1.0;
+
+                // P0 FIX (Bug3): 即使无 ReflectionVerifier，也做 GB 格式校验
+                var gbValidationFallback = ReflectionVerifier.ValidateGbNumberHallucinations(
+                    extractedResponse, null);
+                if (!string.IsNullOrWhiteSpace(gbValidationFallback))
+                {
+                    var formatErrCount = System.Text.RegularExpressions.Regex.Matches(gbValidationFallback, @"→ GB").Count;
+                    var hallCount = System.Text.RegularExpressions.Regex.Matches(gbValidationFallback, @"✗ GB").Count;
+                    if (formatErrCount > 0 || hallCount > 0)
+                    {
+                        var issues = formatErrCount + hallCount;
+                        result.TotalClaims += issues;
+                        result.HallucinatedClaims += issues;
+                        result.FaithfulnessScore = result.TotalClaims > 0
+                            ? (double)result.VerifiedClaims / result.TotalClaims
+                            : 1.0;
+                    }
+                }
                 return;
             }
 
@@ -656,6 +674,32 @@ public class EvalEngine
             result.VerifiedClaims = bizReport.Claims.Count(c => c.FoundInSource);
             result.HallucinatedClaims = bizReport.HallucinatedClaims.Count;
             result.FaithfulnessScore = bizReport.FactualPrecision;
+
+            // P0 FIX (Bug3): GB 编号格式错误 + 数据库交叉验证
+            // Qwen3:8b 频繁产生格式错误（GB3025/GB300026）和映射错误（GB 30000.14→应为 GB 30000.15）
+            // substanceNames=null: 格式检测仍然生效，映射检测仅在提供物质名时启用
+            var gbValidation = ReflectionVerifier.ValidateGbNumberHallucinations(
+                extractedResponse, null);
+
+            if (!string.IsNullOrWhiteSpace(gbValidation))
+            {
+                // 统计格式错误数量
+                var formatErrorCount = System.Text.RegularExpressions.Regex.Matches(gbValidation, @"→ GB").Count;
+                var hallucinationCount = System.Text.RegularExpressions.Regex.Matches(gbValidation, @"✗ GB").Count;
+
+                if (formatErrorCount > 0 || hallucinationCount > 0)
+                {
+                    // 将 GB 格式/映射错误计入幻觉声明
+                    var totalGbIssues = formatErrorCount + hallucinationCount;
+                    result.TotalClaims += totalGbIssues;
+                    result.HallucinatedClaims += totalGbIssues;
+                    result.FaithfulnessScore = result.TotalClaims > 0
+                        ? (double)result.VerifiedClaims / result.TotalClaims
+                        : 1.0;
+
+                    Console.WriteLine($"      🔍 GB编号校验: {formatErrorCount} 格式错误 + {hallucinationCount} 疑似幻觉");
+                }
+            }
 
             if (bizReport.Claims.Count > 0)
             {
