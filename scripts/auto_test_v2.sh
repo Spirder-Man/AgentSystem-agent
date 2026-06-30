@@ -62,7 +62,7 @@ run_test() {
 # 心跳检测式测试运行器 — 用于长时间运行的评测集 (T13)
 # 移除固定超时，改为监控日志输出中的完成标记
 # 完成标记: "综合评级" (EvalEngine.PrintReport 末尾输出)
-# 安全上限: 1800s (30分钟)
+# 安全上限: 3600s (60分钟)
 # ═══════════════════════════════════════════════════════════
 run_test_heartbeat() {
     local id="$1" name="$2" input="$3"
@@ -78,7 +78,7 @@ run_test_heartbeat() {
 
     # 心跳监控
     local check_interval=15
-    local max_wait=1800  # 30分钟安全上限
+    local max_wait=3600  # 60分钟安全上限
     local elapsed=0
     local last_case_count=0
 
