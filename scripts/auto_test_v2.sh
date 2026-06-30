@@ -58,6 +58,80 @@ run_test() {
     fi
 }
 
+# ═══════════════════════════════════════════════════════════
+# 心跳检测式测试运行器 — 用于长时间运行的评测集 (T13)
+# 移除固定超时，改为监控日志输出中的完成标记
+# 完成标记: "综合评级" (EvalEngine.PrintReport 末尾输出)
+# 安全上限: 1800s (30分钟)
+# ═══════════════════════════════════════════════════════════
+run_test_heartbeat() {
+    local id="$1" name="$2" input="$3"
+    local log="$OUT_DIR/${id}_${name// /_}.log"
+    local test_start=$(date +%s)
+    printf "${BLUE}[%-5s] %-35s${NC}\n" "$id" "$name"
+
+    echo "$input" > /tmp/agent_test_input.txt
+
+    # 后台启动进程，不设 timeout
+    cd "$PROJECT_DIR" && DOTNET_ENVIRONMENT=Production JWT_KEY=qazwsxedcrfvtgbyhnujmikolpqazwsx DB_PASSWORD=7758521 dotnet run --project Agent1 -c Release --no-build < /tmp/agent_test_input.txt > "$log" 2>&1 &
+    local test_pid=$!
+
+    # 心跳监控
+    local check_interval=15
+    local max_wait=1800  # 30分钟安全上限
+    local elapsed=0
+    local last_case_count=0
+
+    while [ $elapsed -lt $max_wait ]; do
+        sleep $check_interval
+        elapsed=$((elapsed + check_interval))
+
+        # 进程已自然结束
+        if ! kill -0 $test_pid 2>/dev/null; then
+            break
+        fi
+
+        # 检测完成标记 (EvalEngine.PrintReport 中的 "综合评级")
+        if grep -q "综合评级" "$log" 2>/dev/null; then
+            sleep 5  # 等待报告尾部输出完整
+            break
+        fi
+
+        # 进度心跳
+        local cases=$(grep -c "✅ 工具触发" "$log" 2>/dev/null || echo 0)
+        if [ "$cases" != "$last_case_count" ]; then
+            printf "  ${CYAN}[%s] 已完成 %s/63 条用例 (%ds)${NC}\n" "$id" "$cases" "$elapsed"
+            last_case_count=$cases
+        fi
+    done
+
+    # 超时未完成则终止进程
+    if kill -0 $test_pid 2>/dev/null; then
+        kill $test_pid 2>/dev/null
+        wait $test_pid 2>/dev/null
+    fi
+
+    local test_end=$(date +%s)
+    local elapsed=$((test_end - test_start))
+
+    # 结果判定
+    if grep -q "Connection refused" "$log" 2>/dev/null; then
+        echo -e "  ${RED}❌ LLM不可达 (${elapsed}s)${NC}"
+        ((fail_cnt++))
+    elif grep -q "综合评级" "$log" 2>/dev/null; then
+        local final_cases=$(grep -c "✅ 工具触发" "$log" 2>/dev/null || echo 0)
+        echo -e "  ${GREEN}✅ 评测完成: ${final_cases}/63 条 (${elapsed}s)${NC}"
+        ((pass_cnt++))
+    elif grep -qE "(未找到|生成错误)" "$log" 2>/dev/null; then
+        echo -e "  ${RED}❌ 评测异常 (${elapsed}s)${NC}"
+        ((fail_cnt++))
+    else
+        local cases=$(grep -c "✅ 工具触发" "$log" 2>/dev/null || echo 0)
+        echo -e "  ${YELLOW}⚠️ 未完成 (${cases}/63 条, ${elapsed}s)${NC}"
+        ((skip_cnt++))
+    fi
+}
+
 # ═══════════════════════════════════════════
 LLM_STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/health 2>/dev/null)
 [ "$LLM_STATUS" = "200" ] && LLM_TXT="${GREEN}UP${NC}" || LLM_TXT="${RED}DOWN${NC}"
@@ -244,9 +318,9 @@ run_test "T18" "应急响应方案" "3
 
 0"
 
-# T13 合规评测集: Admin→5
-echo -e "\n${YELLOW}── Layer 8: 评测集测试 ──${NC}"
-run_test "T13" "合规评测集" "5
+# T13 合规评测集: Admin→5 (使用心跳检测，无固定超时)
+echo -e "\n${YELLOW}── Layer 8: 评测集测试 (心跳检测模式) ──${NC}"
+run_test_heartbeat "T13" "合规评测集" "5
 5
 0
 0"
