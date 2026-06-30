@@ -772,10 +772,10 @@ MIT License
 - **Bug1 (T5 Reflection 死循环)**: `LlmService.InvokeStreamAsync` 3维度通用死循环检测 — 连续相同行(>8次) / 字符级联(>12个) / 总长度硬截断(>5000字符)，替代旧版仅匹配"是否合规"的窄检测
 - **Bug2 (T6 RAG 校验死循环)**: 同上通用检测，拦截"不通过..."重复200+次 + 82.2s慢请求告警
 - **Bug3 (Qwen3:8b GB编号幻觉)**: `ReflectionVerifier.ValidateGbNumberHallucinations()` — GB编号格式纠错(GB3025→GB 30000.25 缺零 / GB300026→GB 30000.26 多余零) + ChemicalSubstanceDatabase权威映射交叉验证 + 集成到`EvalEngine`忠实度评分
-- **UTF-8 控制台编码修复**: `Program.cs` + `Agent1.Api/Program.cs` 启动时强制 `Console.OutputEncoding = UTF-8`，防止Windows GB2312误解码为"锟斤拷"乱码
+- **UTF-8 控制台编码修复**: `Program.cs` + `Agent1.Api/Program.cs` + `Agent1.Tests/ModuleInitializer.cs` 三层强制 `Console.OutputEncoding = UTF-8`，防止Windows GB2312误解码为"锟斤拷"乱码
 - **CPU 降级模式**: `appsettings.json` GPU开关关闭(GpuEmbeddingEnabled/RerankerEnabled=false) + GpuFallbackEnabled=true
 - **Mock 参数修复**: `BusinessOrchestrationTests` null参数类型修正 `null→(string?)null`
-- **文件**: 7 files, +240/-17 | 编译 0 errors
+- **文件**: 8 files, +281/-17 | 编译 0 errors
 
 ### 六阶段架构重构全部交付 + P1 格式修复（2026-06-29）
 - **零失误架构 v2.0**：`OutputValidator` (328行) + `ComplianceAuditLogger` (249行) + `ChemicalDatabaseService` (918行) + 化工盲评集 543 条
