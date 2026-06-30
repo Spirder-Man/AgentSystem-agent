@@ -726,7 +726,8 @@ docs/
 │   └── ...
 ├── troubleshooting/           # 故障排查文档 (5个文件)
 ├── learning-notes/            # 学习笔记 (4个文件)
-├── project/                   # 项目文档 (5个文件)
+├── project/                   # 项目文档 (6个文件)
+│   └── Bug知识库.md            # 结构化Bug知识库 + 系统弱点了然表
 └── README.md                  # 文档库索引
 ```
 
