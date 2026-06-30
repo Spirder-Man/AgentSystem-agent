@@ -141,9 +141,12 @@ namespace Agent1.Services
                         var chunks = await _kbService.RetrieveChemicalRegulationAsync(
                             normalized, regulationType: "国标", topK: 3);
 
+                        // [P2 FIX] 使用 NormalizeGbNumbers 标准化 KB chunk 内容，实现格式无关对比
+                        // 避免 GB30000.14(无空格) vs GB 30000.14(有空格) 的误判
+                        var normalizedGbNum = KnowledgeBaseService.NormalizeGbNumbers(normalized);
                         var found = chunks.Any(c =>
-                            (c.Content ?? "").Contains(normalized) ||
-                            (c.Content ?? "").Contains(rawText.Replace(" ", "")));
+                            KnowledgeBaseService.NormalizeGbNumbers(c.Content ?? "").Contains(normalizedGbNum) ||
+                            (c.Content ?? "").Replace(" ", "").Contains(rawText.Replace(" ", "")));
 
                         var evidence = chunks.FirstOrDefault()?.Content;
 

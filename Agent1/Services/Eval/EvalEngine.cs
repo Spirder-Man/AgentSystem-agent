@@ -724,11 +724,12 @@ public class EvalEngine
             var llmSvc = _llmService as LlmService;
             if (llmSvc != null)
             {
-                // [策略切换] 流式优先（GPU 3090环境），非流式仅作CPU低算力降级
-                var scoreText = await llmSvc.InvokeStreamWithRetryAsync(scoringPrompt, ConsoleColor.Gray, "AnswerRelevance评分");
-                // 流式空回退时降级到非流式
+                // [P1 FIX] 评分类短输出使用非流式优先，避免流式模式下 LLM 生成冗余重复内容
+                // 非流式只返回最终 1-2 token 评分，大幅减少延迟（~2s vs ~80s）
+                var scoreText = await llmSvc.InvokeNonStreamingWithRetryAsync(scoringPrompt, "AnswerRelevance评分");
+                // 非流式失败时降级到流式
                 if (string.IsNullOrWhiteSpace(scoreText))
-                    scoreText = await llmSvc.InvokeNonStreamingWithRetryAsync(scoringPrompt, "AnswerRelevance评分(降级)");
+                    scoreText = await llmSvc.InvokeStreamWithRetryAsync(scoringPrompt, ConsoleColor.Gray, "AnswerRelevance评分(降级)");
                 if (!string.IsNullOrWhiteSpace(scoreText))
                 {
                     // 提取第一个数字
