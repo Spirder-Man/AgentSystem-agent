@@ -1,20 +1,20 @@
-# ═══════════════════════════════════════════════════════════
-# monitor-test.ps1 — 远程测试实时监控看板
+﻿# ═══════════════════════════════════════════════════════════
+# monitor-test.ps1 — 远程测试实时流式监控看板
 #
-# 设计原则: 每次轮询只需一次 SSH 连接，读取一个小 JSON 文件
-# 不再多次调用 ps/ls/wc/tail，彻底消除 SSH 超时问题
+# 设计原则: 直接跟踪测试执行的日志输出，不再依赖 status.json 的
+# 滞后计数器。每次轮询一次 SSH，读取新增日志行并实时回显。
 #
 # 用法:
-#   .\scripts\monitor-test.ps1 -StatusPath "/root/autodl-tmp/test-results/20260701_095938/status.json"
-#   .\scripts\monitor-test.ps1 -StatusPath "..." -Interval 10  # 10秒轮询
+#   .\scripts\monitor-test.ps1 -LogPath "/root/autodl-tmp/test-nohup2.log"
+#   .\scripts\monitor-test.ps1 -LogPath "..." -SshPassword "..." -Interval 3
 # ═══════════════════════════════════════════════════════════
 param(
     [Parameter(Mandatory=$true)]
-    [string]$StatusPath,               # 远程 status.json 路径
-    
-    [int]$Interval = 10,               # 轮询间隔(秒)
-    
-    [string]$SshExe = "$PSScriptRoot\..\ssh-runner\bin\Release\net8.0\SshRunner.exe",
+    [string]$LogPath,
+
+    [int]$Interval = 3,
+
+    [string]$SshExe,
     [string]$SshHost = "connect.nmb2.seetacloud.com",
     [int]$SshPort = 37103,
     [string]$SshUser = "root",
@@ -23,126 +23,122 @@ param(
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-if ([string]::IsNullOrEmpty($SshPassword)) {
-    $SshPassword = Read-Host -Prompt "SSH 密码" -AsSecureString
-    $SshPassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SshPassword))
+# 自动检测 SshRunner 路径
+if (-not $SshExe) {
+    $candidates = @(
+        "$PSScriptRoot\..\ssh-runner\bin\Release\net8.0\SshRunner.exe",
+        "$PSScriptRoot\..\ssh-runner\bin\Debug\net8.0\SshRunner.exe"
+    )
+    foreach ($c in $candidates) {
+        if (Test-Path $c) { $SshExe = (Resolve-Path $c).Path; break }
+    }
+    if (-not $SshExe) {
+        Write-Host "ERROR: SshRunner.exe not found. Use -SshExe parameter." -ForegroundColor Red
+        exit 1
+    }
 }
 
-$prevLineCount = 0
-$startTime = Get-Date
+if ([string]::IsNullOrEmpty($SshPassword)) {
+    $secure = Read-Host -Prompt "SSH Password" -AsSecureString
+    $SshPassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
+}
 
 Write-Host "╔══════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║   Agent1 远程测试实时监控看板                      ║" -ForegroundColor Cyan
-Write-Host "║   状态文件: $StatusPath" -ForegroundColor Cyan
-Write-Host "║   轮询间隔: ${Interval}s | Ctrl+C 退出           ║" -ForegroundColor Cyan
+Write-Host "║   Agent1 Remote Test Stream Monitor              ║" -ForegroundColor Cyan
+Write-Host "║   Log: $LogPath" -ForegroundColor Cyan
+Write-Host "║   Poll: ${Interval}s | Ctrl+C to stop            ║" -ForegroundColor Cyan
 Write-Host "╚══════════════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
 
+$lastLine = 0
+$startTime = Get-Date
 $maxRetries = 2
+$passCount = 0
+$failCount = 0
+$skipCount = 0
+$currentLayer = ""
 
 while ($true) {
-    $jsonRaw = $null
-    
-    # 单次 SSH 调用获取状态（带重试）
+    $output = $null
+
     for ($retry = 0; $retry -lt $maxRetries; $retry++) {
         try {
-            $jsonRaw = & $SshExe $SshHost $SshPort $SshUser $SshPassword "cat $StatusPath 2>/dev/null; cat ${StatusPath}.lines 2>/dev/null" 2>$null
-            if ($LASTEXITCODE -eq 0 -and $jsonRaw) { break }
+            # 一次 SSH 获取: 文件行数 + 新行内容
+            $cmd = "lines=$(wc -l < '$LogPath' 2>/dev/null || echo 0); echo LINES:$lines; if [ $lines -gt $lastLine ]; then tail -n +$((lastLine+1)) '$LogPath' 2>/dev/null; fi"
+            $output = & $SshExe $SshHost $SshPort $SshUser $SshPassword $cmd 2>$null
+            if ($LASTEXITCODE -eq 0 -and $output) { break }
         } catch {}
         if ($retry -lt $maxRetries - 1) { Start-Sleep -Seconds 2 }
     }
-    
-    if (-not $jsonRaw) {
-        Write-Host "[$(Get-Date -Format HH:mm:ss)] ⚠️ 无法获取状态，等待重试..." -ForegroundColor Yellow
+
+    if (-not $output) {
+        $elapsed = [math]::Round(((Get-Date) - $startTime).TotalMinutes, 1)
+        Write-Host "[$(Get-Date -Format HH:mm:ss)] Waiting... (${elapsed}min)" -ForegroundColor DarkGray
         Start-Sleep -Seconds $Interval
         continue
     }
-    
-    # 尝试 JSON 解析
-    $status = $null
-    try {
-        # 分离 JSON 和 .lines 内容
-        $jsonPart, $linesPart = $jsonRaw -split "`n", 2 | Where-Object { $_ -match '^\s*\{' }
-        if (-not $jsonPart) { $jsonPart = ($jsonRaw -split "`n" | Select-Object -First 1) }
-        
-        $status = $jsonPart | ConvertFrom-Json -ErrorAction Stop
-    } catch {
-        # JSON 解析失败，尝试解析 .lines 格式
+
+    # 解析: 第一行是 LINES:N，后续是新增日志内容
+    $lines = $output -split "`n"
+    $headerLine = $lines[0]
+    $newLineCount = 0
+
+    if ($headerLine -match '^LINES:(\d+)') {
+        $newLineCount = [int]$Matches[1]
     }
-    
-    # 清屏刷新
-    Clear-Host
-    $elapsed = [math]::Round(((Get-Date) - $startTime).TotalMinutes, 1)
-    Write-Host "╔══════════════════════════════════════════════════╗" -ForegroundColor Cyan
-    Write-Host "║   Agent1 远程测试实时监控 | 已监控 ${elapsed}min       ║" -ForegroundColor Cyan
-    Write-Host "╚══════════════════════════════════════════════════╝" -ForegroundColor Cyan
-    
-    if ($status) {
-        # ── JSON 模式 ──
-        $totalElapsed = [math]::Round($status.elapsed_s / 60, 1)
-        
-        # 进度条
-        $pct = if ($status.total -gt 0) { [math]::Round($status.passed / [Math]::Max($status.total, 1) * 100) } else { 0 }
-        $barLen = 40
-        $filled = [math]::Round($pct / 100 * $barLen)
-        $bar = "█" * $filled + "░" * ($barLen - $filled)
-        
-        Write-Host ""
-        Write-Host "  状态: " -NoNewline
-        if ($status.status -eq "completed") {
-            Write-Host "✅ 已完成" -ForegroundColor Green
-        } elseif ($status.status -eq "running") {
-            Write-Host "🔄 运行中" -ForegroundColor Yellow
+
+    # 显示新增日志行
+    $newContent = $lines[1..($lines.Count - 1)]
+    foreach ($line in $newContent) {
+        $trimmed = $line.Trim()
+        if (-not $trimmed) { continue }
+
+        # 高亮通过/失败
+        if ($trimmed -match '✅ 通过|PASS') {
+            Write-Host "  $trimmed" -ForegroundColor Green
+            $passCount++
         }
-        
-        Write-Host "  进度: [$bar] ${pct}%" -ForegroundColor Cyan
-        Write-Host "  耗时: ${totalElapsed}min | 已完成: $($status.total) 项" -ForegroundColor White
-        Write-Host "  ✅ 通过: $($status.passed)  ❌ 失败: $($status.failed)  ⚠️ 跳过: $($status.skipped)" -ForegroundColor White
-        
-        # 当前测试
-        if ($status.current_test -and $status.current_test.id) {
+        elseif ($trimmed -match '❌ 失败|FAIL|评测异常|生成错误') {
+            Write-Host "  $trimmed" -ForegroundColor Red
+            $failCount++
+        }
+        elseif ($trimmed -match '⚠️|跳过|SKIP') {
+            Write-Host "  $trimmed" -ForegroundColor Yellow
+            $skipCount++
+        }
+        # 分层标题
+        elseif ($trimmed -match '^── .+ ──$') {
             Write-Host ""
-            Write-Host "  🔄 当前: [$($status.current_test.id)] $($status.current_test.name)" -ForegroundColor Yellow
+            Write-Host "  $trimmed" -ForegroundColor Magenta
+            $currentLayer = $trimmed
         }
-        
-        # 最近 8 项结果
-        if ($status.results -and $status.results.Count -gt 0) {
+        # 进度行
+        elseif ($trimmed -match '已完成.*条用例') {
+            Write-Host "  $trimmed" -ForegroundColor Cyan
+        }
+        # 汇总报告
+        elseif ($trimmed -match '════|测试汇总报告|总耗时|详细日志') {
             Write-Host ""
-            Write-Host "  ── 最近测试结果 ──" -ForegroundColor DarkGray
-            $recent = $status.results | Select-Object -Last 8
-            foreach ($r in $recent) {
-                $icon = switch ($r.result) {
-                    "pass"   { "✅" }
-                    "fail"   { "❌" }
-                    "skip"   { "⚠️" }
-                    default  { "  " }
-                }
-                $color = switch ($r.result) {
-                    "pass" { "Green" }
-                    "fail" { "Red" }
-                    default { "Yellow" }
-                }
-                $name = ($r.name.PadRight(30).Substring(0, 30))
-                Write-Host "    $icon [$($r.id.PadRight(5))] $name  $($r.elapsed_s)s" -ForegroundColor $color
-            }
+            Write-Host "  $trimmed" -ForegroundColor Cyan
         }
-    } else {
-        # ── 降级 .lines 模式 ──
-        Write-Host ""
-        Write-Host "  ⚠️ JSON 不可用，显示原始行:" -ForegroundColor Yellow
-        $lines = $jsonRaw -split "`n" | Where-Object { $_ -match '\|' }
-        $lines | Select-Object -Last 15 | ForEach-Object { Write-Host "    $_" }
+        # 普通日志
+        else {
+            Write-Host "  $trimmed" -ForegroundColor Gray
+        }
     }
-    
-    # 如果完成，退出
-    if ($status -and $status.status -eq "completed") {
+
+    $lastLine = $newLineCount
+
+    # 检测完成 (汇总报告已出现)
+    $combined = $newContent -join "`n"
+    if ($combined -match '测试汇总报告' -or $combined -match '总耗时') {
         Write-Host ""
         Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Green
-        Write-Host "  测试全部完成！✅ 通过: $($status.passed)  ❌ 失败: $($status.failed)" -ForegroundColor Green
+        Write-Host "  TEST COMPLETE!  PASS: $passCount  FAIL: $failCount  SKIP: $skipCount" -ForegroundColor Green
         Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Green
         break
     }
-    
+
     Start-Sleep -Seconds $Interval
 }

@@ -232,7 +232,7 @@ start_services() {
     echo "  启动 Embedding 服务 (8081)..."
     nohup "$LLAMA_DIR/llama-server" \
       -m "$EMB_MODEL" \
-      --host 0.0.0.0 --port 8081 --embeddings -c 2048 --batch-size 512 \
+      --host 0.0.0.0 --port 8081 --embeddings -c 2048 --batch-size 1024 \
       > /root/autodl-tmp/logs/llama-embed.log 2>&1 &
     echo "    PID: $!"
 

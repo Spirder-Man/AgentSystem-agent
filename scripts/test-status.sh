@@ -13,6 +13,9 @@
 
 STATUS_FILE=""
 TEST_COUNT=0
+PASS_COUNT=0
+FAIL_COUNT=0
+SKIP_COUNT=0
 START_TIME=""
 
 test_status_init() {
@@ -41,6 +44,13 @@ test_status_update() {
     local total_elapsed=$((now - START_TIME))
     TEST_COUNT=$((TEST_COUNT + 1))
 
+    # 根据结果递增计数器
+    case "$result" in
+        pass|PASS) PASS_COUNT=$((PASS_COUNT + 1)) ;;
+        fail|FAIL) FAIL_COUNT=$((FAIL_COUNT + 1)) ;;
+        skip|SKIP) SKIP_COUNT=$((SKIP_COUNT + 1)) ;;
+    esac
+
     # 用 jq 更新 JSON（如果 jq 不可用，用简单 sed）
     if command -v jq &>/dev/null; then
         jq --arg id "$id" \
@@ -48,15 +58,21 @@ test_status_update() {
            --arg result "$result" \
            --arg elapsed "$elapsed" \
            --argjson total "$TEST_COUNT" \
+           --argjson passed "$PASS_COUNT" \
+           --argjson failed "$FAIL_COUNT" \
+           --argjson skipped "$SKIP_COUNT" \
            --argjson elapsed_s "$total_elapsed" \
            '.total = $total |
+            .passed = $passed |
+            .failed = $failed |
+            .skipped = $skipped |
             .elapsed_s = $elapsed_s |
             .current_test = {"id": $id, "name": $name, "result": $result, "elapsed_s": $elapsed} |
             .results += [{"id": $id, "name": $name, "result": $result, "elapsed_s": $elapsed}]' \
             "$STATUS_FILE" > "${STATUS_FILE}.tmp" && mv "${STATUS_FILE}.tmp" "$STATUS_FILE"
     else
         # 无 jq 的降级方案：追加以行分隔的纯文本
-        echo "$id|$name|$result|${elapsed}s|${total_elapsed}s" >> "${STATUS_FILE}.lines"
+        echo "$result|$id|$name|${elapsed}s|${total_elapsed}s" >> "${STATUS_FILE}.lines"
     fi
 }
 
