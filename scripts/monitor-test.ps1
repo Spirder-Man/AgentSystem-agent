@@ -64,9 +64,9 @@ while ($true) {
 
     for ($retry = 0; $retry -lt $maxRetries; $retry++) {
         try {
-            # 一次 SSH 获取: 文件行数 + 新行内容
-            $cmd = "lines=$(wc -l < '$LogPath' 2>/dev/null || echo 0); echo LINES:$lines; if [ $lines -gt $lastLine ]; then tail -n +$((lastLine+1)) '$LogPath' 2>/dev/null; fi"
-            $output = & $SshExe $SshHost $SshPort $SshUser $SshPassword $cmd 2>$null
+            $nextLine = $lastLine + 1
+            $remoteCmd = "wc -l '$LogPath' 2>/dev/null; echo '---'; tail -n +$nextLine '$LogPath' 2>/dev/null"
+            $output = & $SshExe $SshHost $SshPort $SshUser $SshPassword $remoteCmd 2>$null
             if ($LASTEXITCODE -eq 0 -and $output) { break }
         } catch {}
         if ($retry -lt $maxRetries - 1) { Start-Sleep -Seconds 2 }
@@ -79,17 +79,22 @@ while ($true) {
         continue
     }
 
-    # 解析: 第一行是 LINES:N，后续是新增日志内容
-    $lines = $output -split "`n"
-    $headerLine = $lines[0]
+    # 解析: wc -l 行数 + --- 分隔符 + 新增日志内容
+    $contentLines = $output -split "`n"
+    $wcLine = $contentLines[0]  # e.g. "42 /path/to/log"
     $newLineCount = 0
+    if ($wcLine -match '^(\d+)') { $newLineCount = [int]$Matches[1] }
 
-    if ($headerLine -match '^LINES:(\d+)') {
-        $newLineCount = [int]$Matches[1]
+    # 跳过 wc 行和分隔符行
+    $newContent = @()
+    $skipHeader = $true
+    foreach ($l in $contentLines) {
+        if ($skipHeader) {
+            if ($l -eq '---' -or $l -match '^\d+\s') { continue }
+            $skipHeader = $false
+        }
+        $newContent += $l
     }
-
-    # 显示新增日志行
-    $newContent = $lines[1..($lines.Count - 1)]
     foreach ($line in $newContent) {
         $trimmed = $line.Trim()
         if (-not $trimmed) { continue }

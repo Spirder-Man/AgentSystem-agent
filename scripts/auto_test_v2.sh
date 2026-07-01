@@ -80,7 +80,14 @@ run_test() {
 # 心跳检测式测试运行器 — 用于长时间运行的评测集 (T13)
 # 移除固定超时，改为监控日志输出中的完成标记
 # 完成标记: "综合评级" (EvalEngine.PrintReport 末尾输出)
-# 安全上限: 3600s (60分钟)
+# 安全上限: 7200s (120分钟, 63条×~55s=58min, 留有充足余量)
+#
+# v2.1 修复:
+#   - max_wait 3600→7200 (60min不够63条)
+#   - grep -c 退出码1时 || echo 0 导致重复计数
+#   - 完成标记检测后等待不足(5s→30s+60s)
+#   - 超时误判为 skip 而非 fail
+#   - 新增卡死检测(10min无进展→终止)
 # ═══════════════════════════════════════════════════════════
 run_test_heartbeat() {
     local id="$1" name="$2" input="$3"
@@ -96,59 +103,107 @@ run_test_heartbeat() {
 
     # 心跳监控
     local check_interval=15
-    local max_wait=3600  # 60分钟安全上限
+    local max_wait=7200  # 120分钟安全上限 (63条×~55s=58min+余量)
     local elapsed=0
     local last_case_count=0
+    local stale_count=0
+    local max_stale=40    # 40次×15s = 600s(10min) 无进展视为卡死
+    local timed_out=false
 
     while [ $elapsed -lt $max_wait ]; do
         sleep $check_interval
         elapsed=$((elapsed + check_interval))
 
-        # 进程已自然结束
+        # 进程已自然结束 → 等待完全退出确保日志完整
         if ! kill -0 $test_pid 2>/dev/null; then
+            wait $test_pid 2>/dev/null
             break
         fi
 
         # 检测完成标记 (EvalEngine.PrintReport 中的 "综合评级")
         if grep -q "综合评级" "$log" 2>/dev/null; then
-            sleep 5  # 等待报告尾部输出完整
+            echo "  ${CYAN}[$id] 检测到「综合评级」完成标记，等待 PrintReport 完整输出...${NC}"
+            # Phase 1: 等待 30s
+            for i in $(seq 1 6); do
+                sleep 5
+                if ! kill -0 $test_pid 2>/dev/null; then
+                    wait $test_pid 2>/dev/null
+                    break
+                fi
+            done
+            # Phase 2: 若仍未退出，再等 60s
+            if kill -0 $test_pid 2>/dev/null; then
+                for i in $(seq 1 12); do
+                    sleep 5
+                    if ! kill -0 $test_pid 2>/dev/null; then
+                        wait $test_pid 2>/dev/null
+                        break
+                    fi
+                done
+            fi
             break
         fi
 
-        # 进度心跳
-        local cases=$(grep -c "✅ 工具触发" "$log" 2>/dev/null || echo 0)
+        # 进度心跳 (修复: grep -c 无匹配时退出码1 导致 || echo 0 重复)
+        local cases=0
+        cases=$(grep -c "✅ 工具触发" "$log" 2>/dev/null) || true
+        cases=${cases:-0}
         if [ "$cases" != "$last_case_count" ]; then
             printf "  ${CYAN}[%s] 已完成 %s/63 条用例 (%ds)${NC}\n" "$id" "$cases" "$elapsed"
             last_case_count=$cases
+            stale_count=0
+        else
+            stale_count=$((stale_count + 1))
+            if [ $stale_count -ge $max_stale ]; then
+                echo "  ${YELLOW}[$id] ⚠️ ${stale_count}次心跳无进展 (${elapsed}s)，疑似卡死${NC}"
+                break
+            fi
         fi
     done
 
-    # 超时未完成则终止进程
+    # 超时标记
+    if [ $elapsed -ge $max_wait ]; then
+        timed_out=true
+    fi
+
+    # 终止未退出的进程
     if kill -0 $test_pid 2>/dev/null; then
+        echo "  ${YELLOW}[$id] 终止未完成的进程 (PID=$test_pid, ${elapsed}s)${NC}"
         kill $test_pid 2>/dev/null
         wait $test_pid 2>/dev/null
     fi
 
     local test_end=$(date +%s)
-    local elapsed=$((test_end - test_start))
+    elapsed=$((test_end - test_start))
 
-    # 结果判定
+    # 结果判定 (修复: 超时→fail, 不再误判为 skip)
     local result="skip"
     if grep -q "Connection refused" "$log" 2>/dev/null; then
         echo -e "  ${RED}❌ LLM不可达 (${elapsed}s)${NC}"
         ((fail_cnt++))
         result="fail"
     elif grep -q "综合评级" "$log" 2>/dev/null; then
-        local final_cases=$(grep -c "✅ 工具触发" "$log" 2>/dev/null || echo 0)
+        local final_cases=0
+        final_cases=$(grep -c "✅ 工具触发" "$log" 2>/dev/null) || true
+        final_cases=${final_cases:-0}
         echo -e "  ${GREEN}✅ 评测完成: ${final_cases}/63 条 (${elapsed}s)${NC}"
         ((pass_cnt++))
         result="pass"
+    elif $timed_out; then
+        local cases=0
+        cases=$(grep -c "✅ 工具触发" "$log" 2>/dev/null) || true
+        cases=${cases:-0}
+        echo -e "  ${RED}❌ 评测超时 (${cases}/63 条, ${elapsed}s)${NC}"
+        ((fail_cnt++))
+        result="fail"
     elif grep -qE "(未找到|生成错误)" "$log" 2>/dev/null; then
         echo -e "  ${RED}❌ 评测异常 (${elapsed}s)${NC}"
         ((fail_cnt++))
         result="fail"
     else
-        local cases=$(grep -c "✅ 工具触发" "$log" 2>/dev/null || echo 0)
+        local cases=0
+        cases=$(grep -c "✅ 工具触发" "$log" 2>/dev/null) || true
+        cases=${cases:-0}
         echo -e "  ${YELLOW}⚠️ 未完成 (${cases}/63 条, ${elapsed}s)${NC}"
         ((skip_cnt++))
         result="skip"
