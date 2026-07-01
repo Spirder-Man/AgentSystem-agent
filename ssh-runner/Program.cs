@@ -25,16 +25,58 @@ var user = args[argOffset + 2];
 var password = args[argOffset + 3];
 var command = string.Join(" ", args.Skip(argOffset + 4));
 
+// ═══════════════════════════════════════════════════════════
+// 企业级 SSH 连接配置
+// L1: KeepAlive 15s — 防止 NAT 网关/防火墙空闲断连
+// L2: CommandTimeout 30s — 远程负载高时快速失败，避免无限阻塞
+// L3: 连接重试 3 次 (指数退避 2s/4s/8s) — 应对 sshd CPU 竞争
+// ═══════════════════════════════════════════════════════════
+const int CONNECTION_TIMEOUT_SEC = 30;
+const int KEEPALIVE_INTERVAL_SEC = 15;
+const int COMMAND_TIMEOUT_SEC = 30;
+const int MAX_CONNECTION_RETRIES = 3;
+
 try
 {
     var connInfo = new ConnectionInfo(host, port, user,
         new PasswordAuthenticationMethod(user, password))
     {
-        Timeout = TimeSpan.FromSeconds(30)
+        Timeout = TimeSpan.FromSeconds(CONNECTION_TIMEOUT_SEC),
+        MaxSessions = 2  // 限制并发会话，避免触发 sshd MaxSessions 上限
     };
 
     using var client = new SshClient(connInfo);
-    client.Connect();
+
+    // ── L3: 连接重试 (指数退避) ──
+    for (int attempt = 1; attempt <= MAX_CONNECTION_RETRIES; attempt++)
+    {
+        try
+        {
+            client.Connect();
+            break;
+        }
+        catch (SshConnectionException) when (attempt < MAX_CONNECTION_RETRIES)
+        {
+            var delaySec = (int)Math.Pow(2, attempt); // 2s, 4s, 8s
+            Console.Error.WriteLine($"[SSHRUNNER] 连接失败，{delaySec}s 后重试 ({attempt}/{MAX_CONNECTION_RETRIES})...");
+            Thread.Sleep(delaySec * 1000);
+        }
+        catch (SshOperationTimeoutException) when (attempt < MAX_CONNECTION_RETRIES)
+        {
+            var delaySec = (int)Math.Pow(2, attempt);
+            Console.Error.WriteLine($"[SSHRUNNER] 连接超时，{delaySec}s 后重试 ({attempt}/{MAX_CONNECTION_RETRIES})...");
+            Thread.Sleep(delaySec * 1000);
+        }
+    }
+
+    if (!client.IsConnected)
+    {
+        Console.Error.WriteLine("SSH_CONNECT_FAILED: 重试耗尽，无法建立连接");
+        return 4;
+    }
+
+    // ── L1: KeepAlive 心跳 ──
+    client.KeepAliveInterval = TimeSpan.FromSeconds(KEEPALIVE_INTERVAL_SEC);
 
     if (streamMode)
     {
@@ -44,9 +86,9 @@ try
         // ═══════════════════════════════════════════════════════════
         using var shell = client.CreateShellStream("xterm-256color", 200, 60, 800, 600, 4096);
 
-        // 注入哨兵命令 — 脚本执行完后回显退出码
-        var sentinel = $"__SSHRUNNER_EXIT_$(date +%s)__";
-        shell.WriteLine($"({command}); echo '{sentinel}:'$?':'");
+        // 注入哨兵命令 — 脚本执行完后回显退出码（固定前缀，C#侧直接匹配）
+        var sentinelPrefix = "__SSHRUNNER_EXIT__";
+        shell.WriteLine($"({command}); echo '{sentinelPrefix}'$?__");
         shell.Flush();
 
         var sb = new StringBuilder();
@@ -62,19 +104,18 @@ try
             {
                 lastActivity = DateTime.UtcNow;
 
-                // 检测哨兵行
-                if (line.StartsWith(sentinel))
+                // 检测哨兵行（格式: __SSHRUNNER_EXIT__0__）
+                if (line.StartsWith(sentinelPrefix))
                 {
-                    // 格式: __SSHRUNNER_EXIT_1719000000__:0:
-                    var parts = line.Split(':');
-                    if (parts.Length >= 2 && int.TryParse(parts[1], out var ec))
+                    var rest = line.Substring(sentinelPrefix.Length);
+                    var codePart = rest.Split('_')[0];
+                    if (int.TryParse(codePart, out var ec))
                         exitCode = ec;
                     break;
                 }
 
-                // 过滤掉 shell 自身的 echo 回显（哨兵命令本身的回显）
-                // 正常输出原样打印
-                if (!string.IsNullOrEmpty(line) && !line.Contains(sentinel.Split('_').Last().Split('_')[0]))
+                // 正常输出原样打印（跳过哨兵 echo 回显）
+                if (!string.IsNullOrEmpty(line) && !line.StartsWith(sentinelPrefix))
                 {
                     Console.WriteLine(line);
                 }
@@ -96,12 +137,29 @@ try
     {
         // ═══════════════════════════════════════════════════════════
         // 普通模式：阻塞执行，等命令结束后一次性返回全部输出
+        // L2: CommandTimeout 30s — 远程负载高时不无限等待
         // ═══════════════════════════════════════════════════════════
         using var cmd = client.CreateCommand(command);
-        var result = cmd.Execute();
+        cmd.CommandTimeout = TimeSpan.FromSeconds(COMMAND_TIMEOUT_SEC);
 
-        Console.Write(result);
-        Console.Error.Write(cmd.Error);
+        string result;
+        try
+        {
+            result = cmd.Execute();
+            Console.Write(result);
+            Console.Error.Write(cmd.Error);
+        }
+        catch (SshOperationTimeoutException)
+        {
+            // 命令超时：仍然尝试获取已输出的部分内容
+            Console.Error.WriteLine($"[SSHRUNNER] 命令执行超时 ({COMMAND_TIMEOUT_SEC}s)，已输出部分结果");
+            if (!string.IsNullOrEmpty(cmd.Result))
+                Console.Write(cmd.Result);
+            if (!string.IsNullOrEmpty(cmd.Error))
+                Console.Error.Write(cmd.Error);
+            client.Disconnect();
+            return 124; // 同 timeout 命令的退出码
+        }
 
         client.Disconnect();
         return cmd.ExitStatus ?? 0;

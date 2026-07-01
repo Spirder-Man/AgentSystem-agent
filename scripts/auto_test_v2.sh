@@ -17,6 +17,13 @@ echo "⏱️  单测试超时: ${TIMEOUT}s"
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; CYAN='\033[0;36m'; NC='\033[0m'
 pass_cnt=0; fail_cnt=0; skip_cnt=0
 
+# ── 测试状态跟踪（供本地监控看板读取）──
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/test-status.sh" ]; then
+    source "$SCRIPT_DIR/test-status.sh"
+    test_status_init "$OUT_DIR"
+fi
+
 if [ ! -f "$PROJECT_DIR/Agent1/bin/Release/net8.0/Agent1.dll" ]; then
     echo -e "${YELLOW}⚠️ 未找到 Release 编译，正在编译...${NC}"
     (cd "$PROJECT_DIR" && dotnet build Agent1/Agent1.csproj -c Release -q) || true
@@ -36,25 +43,36 @@ run_test() {
     local test_end=$(date +%s)
     local elapsed=$((test_end - test_start))
 
+    local result="skip"
     if [ $exit_code -eq 124 ]; then
         echo -e "${YELLOW}⏱️ 超时(${elapsed}s)${NC}"
         ((skip_cnt++))
+        result="skip"
     elif grep -q "Connection refused" "$log" 2>/dev/null; then
         echo -e "${RED}❌ LLM不可达 (${elapsed}s)${NC}"
         ((fail_cnt++))
+        result="fail"
     elif grep -qE "✅.*(成功|完成|合规|已发送|正常|已注册|Ready|已切换|切换)" "$log" 2>/dev/null; then
         echo -e "${GREEN}✅ 通过 (${elapsed}s)${NC}"
         ((pass_cnt++))
+        result="pass"
     elif grep -qE "(未找到|生成错误|失败|❌|异常)" "$log" 2>/dev/null; then
         local reason=$(grep -oP '(⚠️|❌|失败|错误|异常).*' "$log" | head -1 | tr -d '\n' | cut -c1-60)
         echo -e "${RED}❌ ${reason:-未通过} (${elapsed}s)${NC}"
         ((fail_cnt++))
+        result="fail"
     elif [ $exit_code -ne 0 ]; then
         echo -e "${YELLOW}⚠️ 退出码${exit_code} (${elapsed}s)${NC}"
         ((skip_cnt++))
+        result="skip"
     else
         echo -e "${YELLOW}⚠️ 未匹配判定 (${elapsed}s)${NC}"
         ((skip_cnt++))
+        result="skip"
+    fi
+    # 更新状态文件（供本地监控看板读取）
+    if [ -n "${STATUS_FILE:-}" ] && [ -f "$SCRIPT_DIR/test-status.sh" ]; then
+        test_status_update "$id" "$name" "$result" "$elapsed"
     fi
 }
 
@@ -115,20 +133,29 @@ run_test_heartbeat() {
     local elapsed=$((test_end - test_start))
 
     # 结果判定
+    local result="skip"
     if grep -q "Connection refused" "$log" 2>/dev/null; then
         echo -e "  ${RED}❌ LLM不可达 (${elapsed}s)${NC}"
         ((fail_cnt++))
+        result="fail"
     elif grep -q "综合评级" "$log" 2>/dev/null; then
         local final_cases=$(grep -c "✅ 工具触发" "$log" 2>/dev/null || echo 0)
         echo -e "  ${GREEN}✅ 评测完成: ${final_cases}/63 条 (${elapsed}s)${NC}"
         ((pass_cnt++))
+        result="pass"
     elif grep -qE "(未找到|生成错误)" "$log" 2>/dev/null; then
         echo -e "  ${RED}❌ 评测异常 (${elapsed}s)${NC}"
         ((fail_cnt++))
+        result="fail"
     else
         local cases=$(grep -c "✅ 工具触发" "$log" 2>/dev/null || echo 0)
         echo -e "  ${YELLOW}⚠️ 未完成 (${cases}/63 条, ${elapsed}s)${NC}"
         ((skip_cnt++))
+        result="skip"
+    fi
+    # 更新状态文件
+    if [ -n "${STATUS_FILE:-}" ] && [ -f "$SCRIPT_DIR/test-status.sh" ]; then
+        test_status_update "$id" "$name" "$result" "$elapsed"
     fi
 }
 
@@ -329,6 +356,11 @@ run_test_heartbeat "T13" "合规评测集" "5
 END_TIME=$(date +%s)
 TOTAL_ELAPSED=$((END_TIME - START_TIME))
 TOTAL_TESTS=$((pass_cnt + fail_cnt + skip_cnt))
+
+# ── 标记测试完成（状态文件）──
+if [ -n "${STATUS_FILE:-}" ] && [ -f "$SCRIPT_DIR/test-status.sh" ]; then
+    test_status_finish "$pass_cnt" "$fail_cnt" "$skip_cnt"
+fi
 
 echo -e "\n${BLUE}════════════════════════════════════════${NC}"
 echo -e "${BLUE}           测试汇总报告${NC}"

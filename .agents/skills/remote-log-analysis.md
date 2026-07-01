@@ -39,7 +39,10 @@ $PROJECT_ROOT = Resolve-Path "$PSScriptRoot\..\.."
 | SSH 入口 | **需每次向用户确认**（端口/地址/密码均为临时分配） |
 | 认证 | 密码认证 (`root` / **需每次向用户确认**，禁止假定旧密码有效) |
 | SSH 工具 | `ssh-runner/bin/Release/net8.0/SshRunner.exe` (C# / Renci.SshNet) |
+| **SSH 企业级特性** | KeepAlive 15s 心跳防断连 + CommandTimeout 30s 快速失败 + 连接重试 3次 (指数退避 2s/4s/8s) |
 | **流式模式** | **`SshRunner --stream`** — 创建伪终端，本地实时看远程输出（**跑全量测试首选**） |
+| **监控看板** | **`scripts/monitor-test.ps1`** — 单次 SSH 读取 status.json，实时进度条刷新 (10s轮询) |
+| **状态跟踪** | **`scripts/test-status.sh`** — 集成于 auto_test_v2.sh，每项测试后写入 JSON 状态文件 |
 | LLM 服务 | `localhost:8080` (llama.cpp / Qwen3-8B-Q4_K_M) |
 | Embedding 服务 | `localhost:8081` (llama.cpp / nomic-embed-text-v1.5, **必须带 `--embeddings`**) |
 | PostgreSQL | 本地实例 (端口 5432) |
@@ -287,7 +290,48 @@ $sshExe = "$PROJECT_ROOT\ssh-runner\bin\Release\net8.0\SshRunner.exe"
 >
 > **Ctrl+C 可以直接中断**（信号通过伪终端传递给远程进程）。
 
-### 2.1b 备选：nohup 后台模式（旧方式，SSH 断开后继续跑）
+### 2.1b 推荐：nohup + 监控看板模式（⭐ 最稳定 — SSH 超时免疫）
+
+> **架构优势**：测试进程与 SSH 监控通道完全解耦，即使 SSH 断开也不影响测试执行。只需 1 次 SSH 连接读取一个小 JSON 文件，彻底消除 SSH 超时问题。
+
+**步骤 1：远程启动测试**
+
+```bash
+# (SSH) setsid 分离进程，SSH 断开后继续跑
+cd /root/autodl-tmp/agent-system && \
+(setsid bash scripts/auto_test_v2.sh > /root/autodl-tmp/test-nohup.log 2>&1 &)
+```
+
+> `auto_test_v2.sh` 已集成 `test-status.sh`，每项测试完成后自动更新 `status.json`（包含当前测试、通过/失败/跳过计数、耗时等）。
+
+**步骤 2：本地启动监控看板**
+
+```powershell
+# 本地 PowerShell — 实时进度条 + 最近 8 项结果
+$resultDir = "20260701_095938"  # ← 替换为实际目录名
+. $PROJECT_ROOT\scripts\monitor-test.ps1 `
+  -StatusPath "/root/autodl-tmp/test-results/$resultDir/status.json" `
+  -Interval 10 `
+  -SshPassword "{PASSWORD}"
+
+# 看板效果：
+# ╔══════════════════════════════════════════════════╗
+# ║   Agent1 远程测试实时监控 | 已监控 3.5min       ║
+# ╚══════════════════════════════════════════════════╝
+#   状态: 🔄 运行中
+#   进度: [████████████░░░░░░░░░░░░░░░░░░░░░░] 30%
+#   耗时: 4.2min | 已完成: 12 项
+#   ✅ 通过: 11  ❌ 失败: 0  ⚠️ 跳过: 1
+#   🔄 当前: [T5   ] Reflection反思
+#   ── 最近测试结果 ──
+#     ✅ [T4   ] ReAct流式推理                 9s
+#     ✅ [T3   ] ReAct标准推理                  9s
+#     ...
+```
+
+> **关键设计**：`monitor-test.ps1` 每次轮询只做 1 次 SSH 调用读取 `status.json`（<1KB），不再多次执行 `ps/ls/wc/tail/cat`。KeepAlive 保持 SSH 连接存活，CommandTimeout 30s 防止单次调用阻塞。
+
+### 2.1c 传统 nohup（无状态文件时使用）
 
 ```bash
 # 必须使用 nohup，防止 SSH 断开后脚本被 kill (SSH)
@@ -298,7 +342,7 @@ echo "Test PID: $!"
 
 > 后台模式无法实时看进度，建议配合 `scripts/watch-remote-test.ps1` 轮询监控。
 
-### 2.1c 脚本版本确认
+### 2.1d 脚本版本确认
 
 ```bash
 # (SSH) 必须确认使用 v2 脚本
@@ -306,19 +350,23 @@ head -3 /root/autodl-tmp/agent-system/scripts/auto_test_v2.sh
 # 期望输出：包含 "v2 (适配 June 29 菜单收敛)"
 ```
 
-### 2.2 启动测试
+### 2.2 启动测试（推荐 2.1b 方案）
+
+> ⚠️ 以下旧式 nohup 方案仍可用，但推荐使用 2.1b 的 `setsid` + `monitor-test.ps1` 组合（进度可视化 + SSH 超时免疫）。
 
 ```bash
-# 必须使用 nohup，防止 SSH 断开后脚本被 kill (SSH)
+# 旧式 nohup (SSH)
 cd /root/autodl-tmp/agent-system && \
 nohup bash scripts/auto_test_v2.sh > /tmp/auto_test_nohup.log 2>&1 &
 echo "Test PID: $!"
 ```
 
-### 2.3 测试进度监控
+### 2.3 测试进度监控（推荐 2.1b 的 `monitor-test.ps1`）
+
+> ⚠️ 以下旧式轮询方案（多次 SSH 调用 `tail/ls/wc`）在远程负载高时会超时。使用 2.1b 的 `monitor-test.ps1` 单次 SSH 读取 status.json 可彻底解决。
 
 ```bash
-# 每 30 秒查看进度 (SSH)
+# 旧式轮询 (SSH) — 仅当 monitor-test.ps1 不可用时使用
 tail -5 /tmp/auto_test_nohup.log
 
 # 或直接查看最新结果文件
@@ -609,8 +657,10 @@ $pass   = "rs8cVIxBSeUE"                   # ← 每次向用户确认
 | `scripts/zh-diag.sh log` | 常见报错中文解释 | `bash scripts/zh-diag.sh log` |
 | `scripts/zh-diag.sh fix` | 自动修复（安全操作） | `bash scripts/zh-diag.sh fix` |
 | `scripts/start-api.sh` | 启动 API 服务（含环境变量） | `bash scripts/start-api.sh` |
-| `scripts/auto_test_v2.sh` | **全量测试（v2 新菜单）** | `nohup bash scripts/auto_test_v2.sh > /tmp/auto_test_nohup.log 2>&1 &` |
-| `scripts/download_logs.ps1` | 批量下载日志（本地执行） | `powershell -File scripts/download_logs.ps1` |
+| `scripts/auto_test_v2.sh` | **全量测试（v2 新菜单 + 状态跟踪）** | `setsid bash scripts/auto_test_v2.sh > ... &` |
+| `scripts/test-status.sh` | 测试状态 JSON 更新器（被 auto_test_v2.sh 调用） | (自动调用) |
+| `scripts/monitor-test.ps1` | **本地实时监控看板**（单次 SSH 读 status.json） | `powershell -File scripts/monitor-test.ps1 -StatusPath ...` |
+| `scripts/download_logs.ps1` | 批量下载日志（base64 传输） | `powershell -File scripts/download_logs.ps1` |
 | `scripts/docker-up.sh` | 一键容器化部署 | `bash scripts/docker-up.sh` |
 
 ### 7.3 常用 grep 分析命令
