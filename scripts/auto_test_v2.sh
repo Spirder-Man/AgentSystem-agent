@@ -107,7 +107,8 @@ run_test_heartbeat() {
     local elapsed=0
     local last_case_count=0
     local stale_count=0
-    local max_stale=40    # 40次×15s = 600s(10min) 无进展视为卡死
+    local max_stale=120   # 120次×15s = 1800s(30min) 无进展视为卡死
+    local last_log_size=0
     local timed_out=false
 
     while [ $elapsed -lt $max_wait ]; do
@@ -152,11 +153,20 @@ run_test_heartbeat() {
             printf "  ${CYAN}[%s] 已完成 %s/63 条用例 (%ds)${NC}\n" "$id" "$cases" "$elapsed"
             last_case_count=$cases
             stale_count=0
+            last_log_size=$(wc -c < "$log" 2>/dev/null || echo 0)
         else
-            stale_count=$((stale_count + 1))
-            if [ $stale_count -ge $max_stale ]; then
-                echo "  ${YELLOW}[$id] ⚠️ ${stale_count}次心跳无进展 (${elapsed}s)，疑似卡死${NC}"
-                break
+            # 检查日志文件是否仍在增长（判断是否真的卡死）
+            local cur_size=$(wc -c < "$log" 2>/dev/null || echo 0)
+            if [ "$cur_size" != "$last_log_size" ]; then
+                # 日志在增长，进程仍在活动，重置卡死计数
+                stale_count=0
+                last_log_size=$cur_size
+            else
+                stale_count=$((stale_count + 1))
+                if [ $stale_count -ge $max_stale ]; then
+                    echo "  ${YELLOW}[$id] ⚠️ 日志${stale_count}次心跳无增长 (${elapsed}s)，疑似卡死${NC}"
+                    break
+                fi
             fi
         fi
     done
