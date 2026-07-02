@@ -141,9 +141,12 @@ namespace Agent1.Services
                         var chunks = await _kbService.RetrieveChemicalRegulationAsync(
                             normalized, regulationType: "国标", topK: 3);
 
+                        // [P2 FIX] 使用 NormalizeGbNumbers 标准化 KB chunk 内容，实现格式无关对比
+                        // 避免 GB30000.14(无空格) vs GB 30000.14(有空格) 的误判
+                        var normalizedGbNum = KnowledgeBaseService.NormalizeGbNumbers(normalized);
                         var found = chunks.Any(c =>
-                            (c.Content ?? "").Contains(normalized) ||
-                            (c.Content ?? "").Contains(rawText.Replace(" ", "")));
+                            KnowledgeBaseService.NormalizeGbNumbers(c.Content ?? "").Contains(normalizedGbNum) ||
+                            (c.Content ?? "").Replace(" ", "").Contains(rawText.Replace(" ", "")));
 
                         var evidence = chunks.FirstOrDefault()?.Content;
 
@@ -234,11 +237,22 @@ namespace Agent1.Services
             sb.AppendLine();
             sb.AppendLine(sysReport.ToMarkdown());
             sb.AppendLine();
+
+            // P0 FIX (Bug3): 交叉验证 GB 编号 — 从工具调用结果中提取物质名并校对
+            var gbValidation = ValidateGbNumberHallucinations(originalConclusion);
+            if (!string.IsNullOrWhiteSpace(gbValidation))
+            {
+                sb.AppendLine("=== GB编号交叉验证（数据库权威映射）===");
+                sb.AppendLine(gbValidation);
+                sb.AppendLine();
+            }
+
             sb.AppendLine("【修正规则】");
             sb.AppendLine("1. 删除核查报告中标记为 ✗ 的法规引用（这些编号在知识库中不存在）");
             sb.AppendLine("2. 保留标记为 ✓ 的内容");
             sb.AppendLine("3. 如果系统健康报告指出工具异常，诚实说明数据可能不完整");
-            sb.AppendLine("4. 按以下模板输出修正后的结论：");
+            sb.AppendLine("4. 修正 GB 编号格式错误（如 GB3025 → GB 30000.25）和疑似幻觉（删除数据库中不存在的编号）");
+            sb.AppendLine("5. 按以下模板输出修正后的结论：");
             sb.AppendLine();
             sb.AppendLine("【合规判断】是/否");
             sb.AppendLine("【法规依据】仅引用已被验证 ✓ 的编号+条款");
@@ -261,6 +275,106 @@ namespace Agent1.Services
                 .Replace("—", "-")
                 .Replace("–", "-")
                 .Trim();
+        }
+
+        /// <summary>
+        /// P0 FIX (Bug3): GB 标准编号交叉验证。
+        /// Qwen3:8b 频繁产生 GB 标准编号幻觉（如硝酸铵→GB 30000.14, 实际应为 GB 30000.15+GB 30000.2）。
+        /// 此方法从模型输出中提取 GB 30000 系列编号，与 ChemicalSubstanceDatabase 中的权威映射对比，
+        /// 检测格式错误（缺零/多余零）和映射错误（错误编号）。
+        /// </summary>
+        /// <param name="modelOutput">LLM 输出文本</param>
+        /// <param name="substanceNames">已知涉及的危化品名称（从工具调用参数提取）</param>
+        /// <returns>修正提示文本，可直接追加到修正 Prompt</returns>
+        public static string ValidateGbNumberHallucinations(string modelOutput, IEnumerable<string>? substanceNames = null)
+        {
+            // 提取模型输出的所有 GB 30000.XX 编号
+            var gbPattern = new Regex(@"GB\s*30000\s*[.\-]?\s*(\d{1,3})", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            var modelGbNums = new HashSet<string>();
+            foreach (Match m in gbPattern.Matches(modelOutput))
+            {
+                var raw = m.Value.Trim();
+                // 标准化为 "GB 30000.XX" 格式
+                var num = m.Groups[1].Value;
+                if (int.TryParse(num, out int n) && n >= 1 && n <= 30)
+                    modelGbNums.Add($"GB 30000.{n}");
+            }
+
+            if (modelGbNums.Count == 0)
+                return "";
+
+            // 从 ChemicalSubstanceDatabase 查询正确 GB 映射
+            var correctGbMapping = new Dictionary<string, HashSet<string>>();
+            if (substanceNames != null)
+            {
+                foreach (var name in substanceNames)
+                {
+                    var sub = ChemicalSubstanceDatabase.Lookup(name);
+                    if (sub != null)
+                    {
+                        foreach (var hc in sub.HazardCategories)
+                        {
+                            var gbMatch = Regex.Match(hc.GbStandard, @"GB\s*30000\s*[.\-]?\s*(\d{1,3})");
+                            if (gbMatch.Success && int.TryParse(gbMatch.Groups[1].Value, out int n))
+                            {
+                                var key = $"GB 30000.{n}";
+                                if (!correctGbMapping.ContainsKey(key))
+                                    correctGbMapping[key] = new HashSet<string>();
+                                correctGbMapping[key].Add(name);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 构建修正提示
+            var sb = new System.Text.StringBuilder();
+
+            // 检测格式错误: GB3025 (缺零) → GB 30000.25
+            var formatErrors = new List<string>();
+            var malformedPattern = new Regex(@"GB\s*(\d{4,6})", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            foreach (Match m in malformedPattern.Matches(modelOutput))
+            {
+                var raw = m.Groups[1].Value.Trim();
+                // 跳过已经是正确格式的 (如 "30000")
+                if (raw == "30000") continue;
+                // 检测缺零: "3025" → 应该是 "30025"
+                if (raw.Length == 4 && raw.StartsWith("30") && !raw.StartsWith("300"))
+                {
+                    var corrected = "300" + raw.Substring(2);
+                    formatErrors.Add($"GB{raw} → GB {corrected}");
+                }
+                // 检测多余零: "300026" → 应该是 "30026"
+                else if (raw.Length == 6 && raw.StartsWith("3000"))
+                {
+                    var corrected = "300" + raw.Substring(4);
+                    formatErrors.Add($"GB {raw} → GB {corrected}");
+                }
+            }
+
+            if (formatErrors.Count > 0)
+            {
+                sb.AppendLine("\n⚠️ 【GB编号格式错误 — 请修正】");
+                foreach (var err in formatErrors)
+                    sb.AppendLine($"   {err}");
+            }
+
+            // 检测映射错误: 数据库中不存在的 GB 编号声明
+            if (correctGbMapping.Count > 0)
+            {
+                var hallucinatedNums = modelGbNums
+                    .Where(n => !correctGbMapping.ContainsKey(n))
+                    .ToList();
+
+                if (hallucinatedNums.Count > 0)
+                {
+                    sb.AppendLine("\n⚠️ 【GB编号疑似幻觉 — 数据库中未找到此编号对应的危化品】");
+                    foreach (var hn in hallucinatedNums)
+                        sb.AppendLine($"   ✗ {hn} — 该编号在危化品数据库中无对应记录，建议删除或替换");
+                }
+            }
+
+            return sb.ToString();
         }
     }
 

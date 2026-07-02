@@ -1010,7 +1010,11 @@ namespace Agent1.Services
                     var llmSvc = _llmService as LlmService;
                     if (llmSvc != null)
                     {
-                        hydeDocument = await llmSvc.InvokeNonStreamingWithRetryAsync(hydePrompt, "HyDE生成");
+                        // [策略切换] 流式优先（GPU 3090环境），非流式仅作CPU低算力降级
+                        hydeDocument = await llmSvc.InvokeStreamWithRetryAsync(hydePrompt, ConsoleColor.Gray, "HyDE生成");
+                        // 流式空回退时降级到非流式
+                        if (string.IsNullOrWhiteSpace(hydeDocument))
+                            hydeDocument = await llmSvc.InvokeNonStreamingWithRetryAsync(hydePrompt, "HyDE生成(降级)");
                     }
                     else
                     {
