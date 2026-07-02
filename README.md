@@ -643,10 +643,20 @@ Prometheus 录制规则位于 `prometheus/` 目录，Grafana 仪表盘 JSON 位�
 
 ## 🔄 CI/CD
 
-GitHub Actions 工作流（`.github/workflows/ci.yml`）：
+GitHub Actions 工作流（`.github/workflows/ci.yml`），4 个 Job 串联：
+
 ```
-Push → Restore → Build (.NET 8) → Test (148 tests) → Docker (仅main分支)
+Push → build-and-test (编译+单元测试+架构收敛) → integration-test (PostgreSQL集成测试)
+                                                    → docker (Docker构建推送GHCR, 仅main分支)
+                                                    → notify (失败时QQ邮箱SMTP告警)
 ```
+
+| Job | 触发条件 | 说明 |
+|-----|----------|------|
+| `build-and-test` | 所有 push/PR | 编译 + 148 单元测试 + 架构收敛 + 性能基准 |
+| `integration-test` | 所有 push/PR | PostgreSQL + pgvector 集成测试 |
+| `docker` | 仅 main 分支 | Docker 构建 → 推送 `ghcr.io/spirder-man/agentsystem-agent:latest` |
+| `notify` | 任意 job 失败 | QQ 邮箱 SMTP 告警（需配置 `QQ_EMAIL` / `QQ_SMTP_CODE` Secrets） |
 
 ## 📁 文档结构
 
@@ -709,12 +719,20 @@ MIT License
 
 ---
 
-**文档版本**：v4.10  
-**最后更新**：2026年6月30日  
-**分支**：`feature/partner-dev`  
-**状态**：P0-P2 清完 | T13 无状态评测架构交付 | 零失误架构 v2.0 | LLM 流式死循环检测 + GB 编号幻觉后校验 | UTF-8 控制台编码修复 | CPU 降级模式 | 双仓库同步 | 容器化 (llama.cpp)
+**文档版本**：v4.11  
+**最后更新**：2026年7月2日  
+**分支**：`main`  
+**状态**：CI/CD 全线通过 | Docker 镜像推送 GHCR | T13 无状态评测架构交付 | 零失误架构 v2.0 | 容器化 (llama.cpp)
 
 ## 📋 近期更新
+
+### CI Docker 构建三阶段修复 — GHCR 镜像推送全线通过（2026-07-02）
+- **Bug1 (.dockerignore)**: `.dockerignore` 排除了 `Dockerfile` 自身，buildx 在构建上下文中找不到 Dockerfile，docker job 16s 秒挂
+- **Bug2 (global.json SDK冲突)**: Dockerfile COPY 了 `global.json`（SDK 8.0.417 + rollForward: latestFeature），Docker 镜像 `mcr.microsoft.com/dotnet/sdk:8.0` 自带不同 feature band SDK，`dotnet restore` 秒挂
+- **Bug3 (GHCR tag大写)**: `ghcr.io/Spirder-Man/AgentSystem-agent:latest` 含大写字母，GHCR 要求仓库名全小写 → 构建成功但推送失败
+- **修复方案**: `.dockerignore` 移除 Dockerfile 排除项 | Dockerfile 移除 global.json COPY（容器镜像自带SDK） | CI 新增 `REPO_LOWER=${GITHUB_REPOSITORY,,}` bash 转小写步骤 | `build-push-action` v5→v6 + `provenance: false`
+- **notify job**: 新增 Secrets 检查步骤（缺 `QQ_EMAIL`/`QQ_SMTP_CODE` 时输出 warning 跳过而非报 FAIL）；已配置 QQ 邮箱 SMTP 告警
+- **文件**: 3 files, +28/-7 | CI #67 全线通过 ✅ | 镜像: `ghcr.io/spirder-man/agentsystem-agent:latest`
 
 ### T13 无状态评测架构 — 三层防御根治 KV Cache 跨请求累积（2026-06-30）
 - **根因发现**: llama-server 默认 `-sps 0.5` (LCP slot 复用) 导致 63 条评测 case 共享同一 Slot → KV Cache 跨请求累积 → 第 8 条溢出 → FC 退化 + 死亡螺旋
