@@ -21,8 +21,6 @@ logs/
 *.log
 
 # Docker
-Dockerfile
-Dockerfile.llama
 .dockerignore
 
 # Data
