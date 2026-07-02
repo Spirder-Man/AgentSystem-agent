@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Agent1.Config;
 using Agent1.Models;
+using Agent1.Services.AI;
 
 namespace Agent1.Services;
 
@@ -132,6 +133,10 @@ public class EvalEngine
             int retrievalCount, double precSum, double recallSum, double mrrSum,
             int totalClaims, int verifiedClaims, int halClaims)>();
 
+        // [T13 无状态架构] Token 预算管理器 + 按意图裁剪工具集
+        var budgetManager = new TokenBudgetManager();
+        var systemRole = AppConfig.Instance.PromptTemplates.SystemRole;
+
         for (int i = 0; i < cases.Count; i++)
         {
             var tc = cases[i];
@@ -159,11 +164,38 @@ public class EvalEngine
                 var isInfoQuery = (tc.Intent ?? "").Equals("info_query", StringComparison.OrdinalIgnoreCase);
                 Console.WriteLine($"   意图: {(isInfoQuery ? "信息查询" : "合规判断")}");
 
+                // [T13 无状态架构] Step 1: 按意图裁剪工具定义
+                // info_query: 仅查询工具（3个, ~500 tokens） vs 全量（7个, ~1200 tokens）
+                // compliance_judgment: 合规判断工具（5个, ~800 tokens）
+                var toolNames = isInfoQuery
+                    ? new[] { "CheckHazardCategory", "GetSafetyDistance", "GetCurrentTime" }
+                    : new[] { "CheckStorageCompatibility", "CheckHazardCategory",
+                               "GetSafetyDistance", "CheckRegulation", "GetCurrentTime" };
+
+                // [T13 无状态架构] Step 2: Token 预算检查
+                var template = isInfoQuery
+                    ? AppConfig.Instance.PromptTemplates.EvalFastQueryPrompt
+                    : AppConfig.Instance.PromptTemplates.EvalFastPrompt;
+                var promptWithoutQuery = template
+                    .Replace("{SystemRole}", systemRole)
+                    .Replace("{UserInput}", "");
+                var estimatedTokens = budgetManager.EstimateTokens(systemRole)
+                    + budgetManager.EstimateTokens(promptWithoutQuery)
+                    + budgetManager.EstimateTokens(tc.Query)
+                    + toolNames.Sum(n => budgetManager.EstimateToolTokens(n, "", 1));
+
+                if (budgetManager.WouldExceedBudget(estimatedTokens + 500)) // +500 = 预期工具结果
+                {
+                    Console.WriteLine($"   ⚠️ [Token预算] 预估 {estimatedTokens + 500} tokens 接近上限 {budgetManager.EffectiveBudget}，跳过本 case");
+                    result.error = $"Token 预算超限: {estimatedTokens + 500} > {budgetManager.EffectiveBudget}";
+                    results.Add(result);
+                    continue;
+                }
+
+                // [T13 无状态架构] Step 3: 独立 Kernel + 裁剪工具集 + cache_prompt=false
                 // [Sprint 1] 延迟计时
                 var caseSw = System.Diagnostics.Stopwatch.StartNew();
-                var response = isInfoQuery
-                    ? await _agentDialog.ExecuteEvalFastQueryAsync(tc.Query)
-                    : await _agentDialog.ExecuteEvalFastAsync(tc.Query);
+                var response = await _agentDialog.ExecuteEvalPerCaseAsync(tc.Query, toolNames, isInfoQuery);
                 caseSw.Stop();
                 result.LatencyMs = caseSw.ElapsedMilliseconds;
                 // [Sprint 1] Token 估算 (中文: ~字符数/2, 英文: ~字符数/4)

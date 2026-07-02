@@ -223,13 +223,20 @@ start_services() {
     mkdir -p /root/autodl-tmp/logs
 
     echo "  启动 LLM 推理服务 (8080)..."
+    # KV Cache: -c 32768 = 32K 上下文窗口，支持 63 条连续评测不溢出
+    # --cache-type-k q8_0 + --cache-type-v q8_0 = KV Cache 量化，VRAM 降至 ~2GB
+    # -fa = Flash Attention，进一步减少显存占用
+    # -sps 0.0 = 禁用 LCP 自动 slot 匹配，每个请求独立 KV Cache（防止跨请求累积）
     nohup "$LLAMA_DIR/llama-server" \
       -m "$LLM_MODEL" \
-      --host 0.0.0.0 --port 8080 -ngl 99 -c 8192 \
+      --host 0.0.0.0 --port 8080 -ngl 99 -c 32768 \
+      --cache-type-k q8_0 --cache-type-v q8_0 -fa \
+      -sps 0.0 \
       > /root/autodl-tmp/logs/llama-server.log 2>&1 &
     echo "    PID: $!"
 
     echo "  启动 Embedding 服务 (8081)..."
+    # Embedding 模型只需小上下文，保留 -c 2048
     nohup "$LLAMA_DIR/llama-server" \
       -m "$EMB_MODEL" \
       --host 0.0.0.0 --port 8081 --embeddings -c 2048 --batch-size 1024 \
