@@ -1323,7 +1323,7 @@ public class EmergencyResponseServiceTests
         var mockAudit = new Mock<IAuditService>();
 
         mockKb.Setup(k => k.RetrieveChemicalRegulationAsync(
-                It.IsAny<string>(), null, null, It.IsAny<int>()))
+                It.IsAny<string>(), (string?)null, (string?)null, It.IsAny<int>(), (string?)null))
             .ReturnsAsync(new List<RetrievedChunk>());
 
         mockAudit.Setup(a => a.LogOperationAsync(
