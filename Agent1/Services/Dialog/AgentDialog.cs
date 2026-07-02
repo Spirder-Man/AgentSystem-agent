@@ -516,7 +516,7 @@ namespace Agent1.Services
         public async Task<string> ExecuteEvalPerCaseAsync(string userInput, IReadOnlyList<string> toolNames, bool isInfoQuery)
         {
             // Phase 1.1: 评测通道使用独立会话（含 GUID 确保完全无状态）
-            var evalSessionId = $"eval_{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid():N[..6]}";
+            var evalSessionId = $"eval_{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid().ToString("N")[..6]}";
             _memoryService.SetSession(evalSessionId);
 
             var t = AppConfig.Instance.PromptTemplates;
