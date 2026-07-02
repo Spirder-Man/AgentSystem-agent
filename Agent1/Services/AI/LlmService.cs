@@ -91,22 +91,42 @@ namespace Agent1.Services
             bool isInThinkBlock = false;
             string buffer = "";
             int bufferFlushThreshold = 50;
-            int semanticRepeatCount = 0;         // P0 FIX v2: 语义标记重复计数
-            const int MaxSemanticRepeat = 5;      // P0 FIX v2: "是否合规"出现超过5次则截断
-            int totalOutputLines = 0;             // P0 FIX v2: 输出行数（辅助判断）
+
+            // P0 FIX: 通用 LLM 死循环检测 (替换旧版仅匹配"是否合规"的窄检测)
+            // Bug1(T5 Reflection): 修正文本重复数百次 + 括号级联 ")"))))..."
+            // Bug2(T6 RAG校验): 同一句话重复200+次  "不通过，回答中引用了..."
+            int duplicateLineCount = 0;          // 相同行连续出现次数
+            string? lastFlushedLine = null;      // 上一次 flush 的行内容
+            const int MaxDuplicateLines = 8;     // 连续相同行超过8次 → 死循环
+            int cascadeCount = 0;                // 字符级联计数 (如 ")"")....")
+            char? cascadeChar = null;            // 当前级联字符
+            const int MaxCascade = 12;           // 级联字符超过12个 → 死循环
+            int totalOutputChars = 0;            // 总输出字符数
+            const int MaxTotalChars = 5000;      // 硬截断上限
 
             // Phase 2a: 模型感知的 think 标签过滤 — 仅 DeepSeek-R1 需要
             bool filterThinkTags = ShouldFilterThinkTags();
 
+            // [Bug-015/Bug-016 根因位点] 2分钟超时 + FC Required 组合在 KV Cache 不足时
+            // 触发死亡螺旋：模型无法生成有效 FC JSON → 超时 → 重试 → 上下文更满 → 更大超时
+            // 前提条件：llama-server -c >= 32768 可根治（见 zh-diag.sh 修复）
             using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2)); // 对齐 HttpClient.Timeout
 
             try
             {
                 // Phase 2a: 启用 SK Auto Function Calling — LLM 自主决定调用工具
+                // [Bug-015 根因位点] FunctionChoiceBehavior.Required() 强制每次必有工具调用。
+                // 当 llama-server -c 8192 KV Cache 不足时，模型无法在受限上下文中生成正确 FC JSON，
+                // 导致 SK 一直等待工具调用 → 2min 超时 → 重试循环 → 上下文进一步被工具结果填充 → 死循环
+                // [T13 无状态架构] cache_prompt=false 禁用服务端 KV Cache 复用，配合 -sps 0.0 确保每个请求独立
                 var settings = new OpenAIPromptExecutionSettings
                 {
                     FunctionChoiceBehavior = FunctionChoiceBehavior.Required(),
                     Temperature = 0.3,
+                };
+                settings.ExtensionData = new Dictionary<string, object>
+                {
+                    ["cache_prompt"] = false
                 };
 
                 // Phase 2a 验证: 清空上一轮工具调用记录
@@ -114,6 +134,9 @@ namespace Agent1.Services
 
                 Console.WriteLine($"   [SK诊断] 模型={ModelConfig.ModelId}, FC=AutoInvokeKernelFunctions");
 
+                // [Bug-016 根因位点] _kernel.InvokePromptStreamingAsync 每次发送完整 prompt（system + tools 定义 + user query）
+                // 到 llama-server。当 tools 定义 + prompt > -c 设定值时，llama.cpp 截断最旧 tokens（含 system prompt 中的 FC 格式说明），
+                // 导致模型无法正确生成 Function Calling JSON，陷入「不调用工具 → SK 重试 → 工具结果注入 Prompt → 上下文进一步膨胀」死亡螺旋。
                 await foreach (var chunk in _kernel.InvokePromptStreamingAsync<string>(
                     prompt, new KernelArguments(settings), cancellationToken: cts.Token))
                 {
@@ -170,16 +193,53 @@ namespace Agent1.Services
                         string cleaned = CleanChunk(buffer);
                         if (!string.IsNullOrWhiteSpace(cleaned))
                         {
-                            // P0 FIX v2: 语义标记匹配检测 LLM 死循环
-                            // Qwen3-8B 流式输出易陷入"是否合规:否 法规依据:..."的无限循环
-                            // 每行句式略有差异但语义相同，用标记词计数替代严格行匹配
-                            if (cleaned.Contains("是否合规"))
-                                semanticRepeatCount++;
-                            totalOutputLines++;
-
-                            if (semanticRepeatCount > MaxSemanticRepeat && totalOutputLines > MaxSemanticRepeat * 2)
+                            // ── P0 FIX: 通用 LLM 死循环检测 ──
+                            // 检测维度1: 连续相同行 (Bug2 RAG校验死循环: "不通过..." 重复200+次)
+                            if (lastFlushedLine != null && cleaned == lastFlushedLine)
                             {
-                                Console.WriteLine($"\n   ⚠️ [截断] 检测到语义重复({semanticRepeatCount}次合规语句)，停止流式接收");
+                                duplicateLineCount++;
+                                if (duplicateLineCount > MaxDuplicateLines)
+                                {
+                                    Console.WriteLine($"\n   ⚠️ [截断] 检测到连续重复输出({duplicateLineCount}次相同行)，停止流式接收");
+                                    break;
+                                }
+                            }
+                            else
+                            {
+                                duplicateLineCount = 0;
+                                lastFlushedLine = cleaned;
+                            }
+
+                            // 检测维度2: 字符级联 (Bug1 Reflection死循环: ")"))))...")
+                            foreach (char ch in cleaned)
+                            {
+                                if (ch == cascadeChar)
+                                {
+                                    cascadeCount++;
+                                    if (cascadeCount > MaxCascade)
+                                    {
+                                        Console.WriteLine($"\n   ⚠️ [截断] 检测到字符重复级联('{cascadeChar}'×{cascadeCount})，停止流式接收");
+                                        break;
+                                    }
+                                }
+                                else if (ch == ')' || ch == '）' || ch == '】' || ch == '}' || ch == '#' || ch == '*')
+                                {
+                                    cascadeChar = ch;
+                                    cascadeCount = 1;
+                                }
+                                else
+                                {
+                                    cascadeChar = null;
+                                    cascadeCount = 0;
+                                }
+                            }
+                            if (cascadeCount > MaxCascade) break;  // 内层break传递
+
+                            // 检测维度3: 总长度硬截断 (Bug1 Reflection死循环: 累计输出>5000字符)
+                            totalOutputChars += cleaned.Length;
+                            if (totalOutputChars > MaxTotalChars)
+                            {
+                                Console.WriteLine($"\n   ⚠️ [截断] 输出超过{MaxTotalChars}字符上限，停止流式接收");
                                 break;
                             }
 
@@ -305,7 +365,9 @@ namespace Agent1.Services
             // Task 7: 熔断器检查 — 电路打开时快速失败
             CheckCircuitBreaker();
 
-            // [Thinking控制] ReAct/Reflection/CoT 深度推理场景启用思考模式
+            // [Bug-016 关联位点] 重试机制在 KV Cache 不足时加剧问题：每次重试用同一个 prompt，
+            // 但 SK 内部可能将前次失败的 Function Calling 结果注入对话上下文，使 prompt 越来越长，
+            // 导致后续重试更慢、更易超时。根治需 zh-diag.sh -c 32768。
             var previousThinking = EnableThinking;
             EnableThinking = true;
             var sw = Stopwatch.StartNew();
@@ -406,6 +468,10 @@ namespace Agent1.Services
                             Temperature = 0.0,
                             MaxTokens = 512,
                         };
+                        settings.ExtensionData = new Dictionary<string, object>
+                        {
+                            ["cache_prompt"] = false
+                        };
 
                         LastFunctionCalls.Clear();
 
@@ -450,6 +516,10 @@ namespace Agent1.Services
                             FunctionChoiceBehavior = null,
                             Temperature = 0.3,
                             MaxTokens = 512,
+                        };
+                        retrySettings.ExtensionData = new Dictionary<string, object>
+                        {
+                            ["cache_prompt"] = false
                         };
 
                         var kernelResult = await _kernel.InvokePromptAsync(
@@ -497,6 +567,170 @@ namespace Agent1.Services
             MetricsCollector.RecordLlmCall(sw.ElapsedMilliseconds, false, retries);
             Console.WriteLine($"   ❌ 所有重试失败: {lastException?.Message}");
             return $"生成失败: {lastException?.Message}";
+        }
+
+        /// <summary>
+        /// [T13 无状态架构] 评测专用流式调用：支持按工具名称过滤 Function Calling，
+        /// 避免无关工具定义污染上下文（info_query 类 case 减少 40% prompt 体积）。
+        /// 内置死循环检测 + cache_prompt=false 双重保护，配合 -sps 0.0 实现完全无状态评测。
+        /// </summary>
+        public async Task<string> InvokeEvalWithToolsAsync(string prompt, IReadOnlyList<string> allowedToolNames)
+        {
+            var result = new StringBuilder();
+
+            // 获取过滤后的 KernelFunction 列表
+            var plugin = _kernel.Plugins["ChemicalCompliance"];
+            var functions = allowedToolNames
+                .Select(name => plugin.FirstOrDefault(f => f.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                .Where(f => f != null)
+                .Cast<KernelFunction>()
+                .ToList();
+
+            Console.WriteLine($"   [SK诊断] 工具裁剪: {functions.Count}/{plugin.Count()} → {string.Join(", ", functions.Select(f => f.Name))}");
+
+            // [T13 无状态架构] 创建临时 Kernel，仅注册当前 case 需要的工具
+            // SK 1.74.0 的 FunctionChoiceBehaviorOptions 不支持 Functions 过滤，
+            // 改用 Kernel 级别隔离：创建轻量 Kernel，只注册指定插件子集
+            var evalKernelBuilder = Kernel.CreateBuilder();
+            evalKernelBuilder.AddOpenAIChatCompletion(ModelConfig.ModelId, ModelConfig.Endpoint, "not-needed");
+            var filteredPlugin = Microsoft.SemanticKernel.KernelPluginFactory.CreateFromFunctions("ChemicalCompliance", functions);
+            evalKernelBuilder.Plugins.Add(filteredPlugin);
+            var evalKernel = evalKernelBuilder.Build();
+            // 复用诊断过滤器
+            evalKernel.FunctionInvocationFilters.Add(new FunctionCallDiagnosticsFilter(this));
+
+            // 死循环检测变量
+            int duplicateLineCount = 0;
+            string? lastFlushedLine = null;
+            const int MaxDuplicateLines = 8;
+            int cascadeCount = 0;
+            char? cascadeChar = null;
+            const int MaxCascade = 12;
+            int totalOutputChars = 0;
+            const int MaxTotalChars = 5000;
+
+            // [T13 无状态架构] cache_prompt=false 禁用服务端 KV Cache 复用
+            var settings = new OpenAIPromptExecutionSettings
+            {
+                FunctionChoiceBehavior = FunctionChoiceBehavior.Required(),
+                Temperature = 0.3,
+            };
+            settings.ExtensionData = new Dictionary<string, object>
+            {
+                ["cache_prompt"] = false
+            };
+
+            LastFunctionCalls.Clear();
+
+            string buffer = "";
+            int bufferFlushThreshold = 50;
+
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+
+                await foreach (var chunk in evalKernel.InvokePromptStreamingAsync<string>(
+                    prompt, new KernelArguments(settings), cancellationToken: cts.Token))
+                {
+                    buffer += chunk;
+
+                    if (buffer.Length > bufferFlushThreshold)
+                    {
+                        string cleaned = CleanChunk(buffer);
+                        if (!string.IsNullOrWhiteSpace(cleaned))
+                        {
+                            // 死循环检测维度1: 连续相同行
+                            if (lastFlushedLine != null && cleaned == lastFlushedLine)
+                            {
+                                duplicateLineCount++;
+                                if (duplicateLineCount > MaxDuplicateLines)
+                                {
+                                    Console.WriteLine($"\n   ⚠️ [截断] 检测到连续重复输出({duplicateLineCount}次)，停止流式接收");
+                                    break;
+                                }
+                            }
+                            else
+                            {
+                                duplicateLineCount = 0;
+                                lastFlushedLine = cleaned;
+                            }
+
+                            // 死循环检测维度2: 字符级联
+                            foreach (char ch in cleaned)
+                            {
+                                if (ch == cascadeChar)
+                                {
+                                    cascadeCount++;
+                                    if (cascadeCount > MaxCascade)
+                                    {
+                                        Console.WriteLine($"\n   ⚠️ [截断] 检测到字符重复级联('{cascadeChar}'×{cascadeCount})，停止流式接收");
+                                        break;
+                                    }
+                                }
+                                else if (ch == ')' || ch == '）' || ch == '】' || ch == '}' || ch == '#' || ch == '*')
+                                {
+                                    cascadeChar = ch;
+                                    cascadeCount = 1;
+                                }
+                                else
+                                {
+                                    cascadeChar = null;
+                                    cascadeCount = 0;
+                                }
+                            }
+                            if (cascadeCount > MaxCascade) break;
+
+                            // 死循环检测维度3: 总长度硬截断
+                            totalOutputChars += cleaned.Length;
+                            if (totalOutputChars > MaxTotalChars)
+                            {
+                                Console.WriteLine($"\n   ⚠️ [截断] 输出超过{MaxTotalChars}字符上限，停止流式接收");
+                                break;
+                            }
+
+                            result.Append(cleaned);
+                            Console.Write(cleaned);
+                        }
+                        buffer = "";
+                    }
+
+                    await Task.Delay(10);
+                }
+
+                // 输出剩余内容
+                if (buffer.Length > 0)
+                {
+                    string cleaned = CleanChunk(buffer);
+                    if (!string.IsNullOrWhiteSpace(cleaned))
+                    {
+                        result.Append(cleaned);
+                        Console.Write(cleaned);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"\n⚠️ 生成错误: {ex.Message}");
+            }
+
+            // 输出工具调用诊断
+            if (LastFunctionCalls.Count > 0)
+            {
+                Console.WriteLine($"   [SK诊断] 本轮共调用 {LastFunctionCalls.Count} 个工具:");
+                foreach (var fc in LastFunctionCalls)
+                {
+                    var resultPreview = (fc.Result ?? "").Length > 150
+                        ? (fc.Result ?? "").Substring(0, 150) + "..."
+                        : fc.Result;
+                    Console.WriteLine($"     🔧 {fc.FunctionName}({fc.Arguments}) → {(fc.Success ? "✓" : "✗")} {resultPreview}");
+                }
+            }
+            else
+            {
+                Console.WriteLine("   [SK诊断] ⚠️ 本轮未调用任何工具");
+            }
+
+            return CleanFinalOutput(result.ToString());
         }
 
         /// <summary>
