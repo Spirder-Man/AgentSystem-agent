@@ -1,6 +1,6 @@
 # Agent1 — 化工园区危化品合规审查 AI Agent
 
-> **项目版本**：v3.6（P0 死循环+GB幻觉修复 + UTF-8编码修复 + CPU降级模式 — 2026-06-30）
+> **项目版本**：v3.7（T13 无状态评测架构 — 三层防御根治 KV Cache 跨请求累积 — 2026-06-30）
 > **核心修复文档**：[P0-P1修复详细技术文档](docs/troubleshooting/P0-P1修复详细技术文档.md) | [RAG工程Bug修复笔记](docs/troubleshooting/RAG工程Bug修复笔记_2026-05-26.md) | [故障排查文档](docs/troubleshooting/故障排查文档.md) | [代码自检清单](docs/工程skill/代码自检清单%20Skill.md)
 > **前端开发**：[前端开发快速上手指南](docs/architecture/Agent1前端开发快速上手指南.md) | [Mock 机制说明](agent1-web/src/mocks/README.md)
 
@@ -165,8 +165,11 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 │ Qwen3-8B      │ nomic-embed   │ Python        │             │
 │ Q4_K_M        │ F16 GGUF      │ sidecar       │             │
 │ -ngl 99       │ --embeddings  │ (可选)        │             │
-│ -c 8192       │ --batch 512   │               │             │
-│ ~5.0 GB VRAM  │ ~1.0 GB VRAM  │ ~1.5 GB VRAM  │             │
+│ -c 32768      │ --batch 1024  │               │             │
+│ -sps 0.0      │               │               │             │
+│ --cache q8_0  │               │               │             │
+│ -fa           │               │               │             │
+│ ~7.0 GB VRAM  │ ~1.0 GB VRAM  │ ~1.5 GB VRAM  │             │
 ├───────────────┴───────────────┴───────────────┴─────────────┤
 │                   Agent1.Api :5000                           │
 │              .NET 8 + Semantic Kernel + JWT                  │
@@ -339,14 +342,16 @@ mkdir -p /root/autodl-tmp/logs
 # LLM 推理服务（端口 8080）
 nohup /root/autodl-tmp/llama.cpp/build/bin/llama-server \
   -m /root/autodl-tmp/models/Qwen_Qwen3-8B-Q4_K_M.gguf \
-  --host 0.0.0.0 --port 8080 -ngl 99 -c 8192 \
+  --host 0.0.0.0 --port 8080 -ngl 99 -c 32768 \
+  --cache-type-k q8_0 --cache-type-v q8_0 -fa \
+  -sps 0.0 \
   > /root/autodl-tmp/logs/llama-server.log 2>&1 &
 
 # Embedding 嵌入服务（端口 8081）
 nohup /root/autodl-tmp/llama.cpp/build/bin/llama-server \
   -m /root/autodl-tmp/models/nomic-embed-text-v1.5.f16.gguf \
   --host 0.0.0.0 --port 8081 --embeddings \
-  -ngl 99 -c 2048 --batch-size 512 \
+  -ngl 99 -c 2048 --batch-size 1024 \
   > /root/autodl-tmp/logs/llama-embed.log 2>&1 &
 
 sleep 5
@@ -762,12 +767,22 @@ MIT License
 
 ---
 
-**文档版本**：v4.9  
+**文档版本**：v4.10  
 **最后更新**：2026年6月30日  
 **分支**：`feature/partner-dev`  
-**状态**：P0-P2 清完 | 零失误架构 v2.0 交付 | LLM 流式死循环检测 + GB 编号幻觉后校验 | UTF-8 控制台编码修复 | CPU 降级模式 | 双仓库同步 | 容器化 (llama.cpp)
+**状态**：P0-P2 清完 | T13 无状态评测架构交付 | 零失误架构 v2.0 | LLM 流式死循环检测 + GB 编号幻觉后校验 | UTF-8 控制台编码修复 | CPU 降级模式 | 双仓库同步 | 容器化 (llama.cpp)
 
 ## 📋 近期更新
+
+### T13 无状态评测架构 — 三层防御根治 KV Cache 跨请求累积（2026-06-30）
+- **根因发现**: llama-server 默认 `-sps 0.5` (LCP slot 复用) 导致 63 条评测 case 共享同一 Slot → KV Cache 跨请求累积 → 第 8 条溢出 → FC 退化 + 死亡螺旋
+- **Layer 1 (服务端)**: `scripts/zh-diag.sh` — `-sps 0.0` 禁用 LCP slot 匹配 + `-c 32768` (4倍扩容) + `--cache-type-k q8_0 --cache-type-v q8_0 -fa` (KV Cache 量化 + Flash Attention)
+- **Layer 2 (客户端)**: `Agent1/Services/AI/TokenBudgetManager.cs` (234行, 新建) — 混合中英文 token 估算 (中文 1.5 字符/token, 英文 3.5 字符/token) + 80% 安全预算 (26214/32768) + 按优先级 Prompt 裁剪 (输出格式→反幻觉→FC指令)
+- **Layer 3 (评测层)**: `EvalEngine` 按意图裁剪工具集 (info_query 3工具 ~500 tokens vs compliance 5工具 ~800 tokens vs 全量 7工具 ~1200 tokens); `AgentDialog.ExecuteEvalPerCaseAsync` 独立 Session + GUID; `LlmService.InvokeEvalWithToolsAsync` 临时 Kernel 隔离 (KernelPluginFactory.CreateFromFunctions) + 所有路径 `cache_prompt: false`
+- **三层防御冗余**: `-sps 0.0` (主防线) + `cache_prompt: false` (副防线) + `TokenBudgetManager` (预警), 任一失效不影响结果
+- **架构对齐**: 参考 Qoder/Cursor/豆包 的无状态服务端设计 — 客户端管理所有上下文, 服务端只负责 "给定 prompt → 返回 completion"
+- **Bug知识库 v1.2**: 根因从 "`-c 8192` 太小" 修正为 "LCP slot 复用导致 KV Cache 跨请求累积"; Bug-015/Bug-016 修复方案更新为三层防御架构
+- **文件**: 6 files, +576/-8 | 新建 `TokenBudgetManager.cs` | 编译 0 errors, 0 warnings
 
 ### P0 紧急修复: LLM流式死循环检测 + GB编号幻觉后校验（2026-06-30）
 - **Bug1 (T5 Reflection 死循环)**: `LlmService.InvokeStreamAsync` 3维度通用死循环检测 — 连续相同行(>8次) / 字符级联(>12个) / 总长度硬截断(>5000字符)，替代旧版仅匹配"是否合规"的窄检测
