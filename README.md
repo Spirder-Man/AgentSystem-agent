@@ -9,14 +9,14 @@
 支持 20 个控制台菜单、12 个 ModuleType、REST API、JWT 认证、PostgreSQL+pgvector 混合检索、
 OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对 NVIDIA GPU (RTX 3090/3080 Ti) Linux 环境实现 RAG 全链路 GPU 加速**。
 
-> 整体完成度：~95% | 编译：0 错误 | C# 文件：~105 个 / ~15,500 行 | 测试：148 通过 | 自动化测试：25 条 CLI 全功能
+> 整体完成度：~95% | 编译：0 错误 | C# 文件：~110 个 / ~16,500 行 | 测试：148 通过 | 自动化测试：25 条 CLI 全功能 | T13 无状态评测架构已交付
 
 ## 功能全景
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  AI 推理引擎        │  SK Auto FC + 断路器 + GPU嵌入    │
-│  化工合规工具        │  8 个 [KernelFunction] + 三层降级  │
+│  AI 推理引擎        │  SK Auto FC + 三层防御 + GPU嵌入   │
+│  化工合规工具        │  8 个 [KernelFunction] + Token预算 │
 │  知识库              │  BM25+Vector+RRF+增量更新        │
 │  化工业务模块        │  合规自查/工单/监管/应急/图谱     │
 │  基础设施            │  Sha256审计链/安全双防线/健康检查  │
@@ -54,9 +54,18 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 │   │   └── KnowledgeGraphModule.cs   # [P3] 知识图谱查询
 │   ├── Services/
 │   │   ├── AI/                   # LLM 服务
-│   │   │   └── LlmService.cs     # llama.cpp 集成/Thinking控制/熔断器/重试
+│   │   │   ├── LlmService.cs     # llama.cpp 集成/Thinking控制/熔断器/死循环检测
+│   │   │   ├── TokenBudgetManager.cs  # Token 预算管理 (T13 无状态架构 Layer 2)
+│   │   │   ├── ReflectionVerifier.cs  # 代码级反思验证(GB编号幻觉检测)
+│   │   │   ├── ToolService.cs    # 工具服务接口
+│   │   │   ├── MultimodalService.cs   # [P2] 多模态 GHS 标签识别
+│   │   │   └── ILlmService.cs / IToolService.cs  # 服务接口
 │   │   ├── Compliance/           # 化工合规
 │   │   │   ├── ChemicalComplianceTools.cs  # 8 个 SK Plugin 工具
+│   │   │   ├── ChemicalDatabaseService.cs  # 918行 化工数据库服务 (零失误架构核心)
+│   │   │   ├── OutputValidator.cs          # 328行 输出校验器 (安全围栏)
+│   │   │   ├── ComplianceAuditLogger.cs    # 249行 合规审计日志
+│   │   │   ├── ConclusionVerifier.cs       # Post-hoc 结论验证
 │   │   │   ├── EmergencyResponseService.cs # [P3] 应急响应引擎
 │   │   │   ├── KnowledgeGraphService.cs    # [P3] 知识图谱 (BFS遍历)
 │   │   │   ├── SafetyGuardService.cs       # [P3] Prompt注入+输出检测
@@ -87,9 +96,7 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 │   │   │   ├── MetricsCollector.cs # Prometheus 指标
 │   │   │   └── SensitiveDataMasker.cs # 数据脱敏
 │   │   └── Eval/                 # 评测引擎
-│   │       ├── EvalEngine.cs
-│   │       ├── ConclusionVerifier.cs  # Post-hoc 结论验证
-│   │       └── ReflectionVerifier.cs  # 代码级反思验证
+│   │       └── EvalEngine.cs     # T13 无状态评测 (按意图裁剪工具+Token预算)
 │   ├── Config/
 │   │   ├── AppConfig.cs          # 配置中心（外部化）
 │   │   └── ModelConfig.cs        # 模型配置入口
@@ -97,7 +104,9 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 ├── Agent1.Api/                   # Web API 层
 │   ├── Controllers/
 │   │   ├── AuthController.cs     # JWT 登录/刷新（BCrypt + RefreshToken 轮转）
-│   │   └── ComplianceController.cs # 合规检查/Hazard查询/储存兼容性
+│   │   ├── ComplianceController.cs # 合规检查/Hazard查询/储存兼容性
+│   │   ├── InspectionController.cs  # 巡检计划管理
+│   │   └── TicketsController.cs     # 整改工单管理
 │   ├── Middleware/
 │   │   ├── GlobalExceptionMiddleware.cs    # 全局异常处理
 │   │   ├── RateLimitingMiddleware.cs       # 速率限制(100次/分钟/IP)
@@ -105,11 +114,14 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 │   │   └── RequestMetricsMiddleware.cs     # 请求指标
 │   └── Program.cs                # API 启动（DI/Serilog/JWT/OTel/健康检查）
 ├── Agent1.Tests/                 # xUnit 测试（148 tests, 含架构收敛+熔断器验证）
+├── ArchitectureTest/             # 架构收敛测试
 ├── Benchmark/                    # C# HTTP 压测工具
+├── SshRunner/                    # SSH 远程执行工具 (流式模式)
 ├── prometheus/                   # Prometheus 录制规则
 ├── grafana/                      # Grafana 仪表盘 JSON
 ├── .github/workflows/            # CI/CD（构建→测试）
 ├── Data/ComplianceEvalSet.json   # 64 条化工合规评测集
+├── Data/ComplianceBlindEvalSet.json  # 543 条化工盲评集
 ├── knowledgebase/                # 化工合规知识库
 │   ├── 国标/ 园区规则/ 历史案例/ 化工专业条例/
 │   └── H166-危险化学品化工企业安全生产三级标准化/
@@ -120,12 +132,20 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 │   ├── testing/                  # 测试文档
 │   ├── troubleshooting/          # 故障排查文档
 │   └── project/                  # 项目文档
-├── scripts/                      # 测试脚本
+├── scripts/                      # 测试与运维脚本
 │   ├── auto_test.sh              # CLI 全功能自动化测试 (25条, bash)
+│   ├── auto_test_v2.sh           # 自动化测试 v2 (含监控看板)
 │   ├── int-test-task11.sh        # Task 11 集成测试脚本 (592行, bash)
-│   └── *.py                      # Python 测试脚本 (历史)
-├── docker-compose.yml            # Docker 部署（Windows 开发环境）
-├── Dockerfile                    # 多阶段构建
+│   ├── zh-diag.sh                # 中文系统诊断 + llama-server 一键启动
+│   ├── test-status.sh            # 测试状态文件生成
+│   ├── monitor-test.ps1          # 远程测试实时监控看板
+│   ├── run_t13_heartbeat.sh      # T13 心跳检测
+│   └── download_logs.ps1         # 远程日志下载
+├── docker-compose.yml            # Docker 容器化部署
+├── Dockerfile / Dockerfile.llama # 多阶段构建 (CPU/CUDA)
+├── .env / .env.example           # 环境变量配置
+├── cache-monitor/                # DeepSeek Cache 监控 MCP 服务
+├── agent1-web/                   # Vue 3 前端 (详见下方前端项目)
 └── Agent1.sln                    # 解决方案文件
 ```
 
@@ -389,97 +409,19 @@ nohup dotnet run --project Agent1.Api \
 curl http://localhost:5000/health/live
 ```
 
-### 🐳 Docker 容器化部署（Windows 亲测通过）
+### 🐳 Docker 容器化部署
 
-#### 准备工作
+> 完整部署文档：[Docker 容器化一键部署](docs/deploy/Docker容器化一键部署.md) | [Linux 快速启动指南](docs/deploy/Linux快速启动指南.md)
 
+核心命令（开发环境）：
 ```powershell
-# ① 进入项目目录
-cd d:\桌面\agent\项目\Agent1
-
-# ② 确认 Docker 在运行（如果没反应，手动打开 Docker Desktop 再执行）
-docker version
-
-# ③ 确认 .env 存在
-ls .env
-
-# ④ 如果不存在，创建一个
-copy .env.example .env
+docker compose pull postgres prometheus grafana    # 拉取基础镜像
+docker compose build llama-server llama-embed api   # 构建服务镜像（首次 10~30 分钟）
+docker compose up -d                                 # 启动全部服务
+docker compose logs -f                               # 实时查看日志
 ```
 
-#### 第一步：拉取基础镜像（不需要 GPU 编译的）
-
-```powershell
-docker compose pull postgres
-docker compose pull prometheus
-docker compose pull grafana
-```
-
-#### 第二步：构建 llama.cpp CUDA 编译镜像（首次约 10~30 分钟）
-
-```powershell
-docker compose build llama-server llama-embed
-```
-
-> 这一步会克隆 llama.cpp 源码 + CUDA 编译，完整日志可见。Windows 上 GPU 不可用但镜像兼容 Linux。
-
-#### 第三步：构建 API 镜像
-
-```powershell
-docker compose build api
-```
-
-> 这一步会 `dotnet restore` → `dotnet publish`，约 2~3 分钟。
-
-#### 第四步：启动全部服务
-
-```powershell
-docker compose up -d
-```
-
-#### 第五步：实时看日志
-
-```powershell
-docker compose logs -f
-```
-
-`Ctrl+C` 退出日志。
-
-#### 第六步：验证
-
-```powershell
-# 服务状态
-docker compose ps
-
-# API 健康检查
-curl http://localhost:8080/health
-
-# Swagger 文档
-start http://localhost:8080/swagger
-
-# Prometheus
-start http://localhost:9090
-
-# Grafana（admin / agent1-admin）
-start http://localhost:3000
-```
-
-#### 常用后续命令
-
-```powershell
-docker compose logs -f api            # 只看 API 日志
-docker compose restart api            # 重启 API
-docker compose down                   # 停止全部（保留数据卷）
-docker compose down -v                # 停止 + 清除所有数据
-```
-
-#### Windows 注意事项
-
-| 问题                | 说明                                                         |
-| ------------------- | ------------------------------------------------------------ |
-| llama-server 启动慢 | 首次需要编译 CUDA 镜像，CPU 推理模式（Windows 无 GPU 直通），启动后日志会显示 `llama_model_load: loaded meta data` |
-| 模型需要手动放      | `models/` 目录下放 `qwen3-8b-q4_k_m.gguf` 和 `nomic-embed-text-v1.5.Q8_0.gguf`，否则 llama-server 启动失败 |
-| 没有模型文件        | 可以先跳过 llama-server/llama-embed，只启动 `docker compose up -d postgres api prometheus grafana`，API Mock 测试仍可用 |
+> **Windows 注意**：无 GPU 直通，模型文件需手动放入 `models/` 目录。无模型时仍可启动 `postgres api prometheus grafana` 做 Mock 测试。详见部署文档。
 
 ### API 端点
 
@@ -490,7 +432,7 @@ docker compose down -v                # 停止 + 清除所有数据
 | `POST` | `/api/compliance/hazard/query` | 危化品危险类别查询 | Bearer |
 | `POST` | `/api/compliance/storage/check` | 储存兼容性检查 | Bearer |
 | `POST` | `/api/compliance/check` | 合规综合检查 | Bearer |
-| `GET` | `/health` | 全量健康检查（DB + Ollama + KB） | 否 |
+| `GET` | `/health` | 全量健康检查（DB + LLM + KB） | 否 |
 | `GET` | `/health/live` | 存活检查 | 否 |
 | `GET` | `/health/ready` | 就绪检查 | 否 |
 | `GET` | `/metrics` | Prometheus 指标 | 否 |
