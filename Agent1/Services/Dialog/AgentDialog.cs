@@ -453,16 +453,17 @@ namespace Agent1.Services
             return await ExecuteEvalInternalAsync(prompt, "评测(信息查询)");
         }
 
-        /// <summary>评测快速通道内部实现</summary>
+        /// <summary>评测快速通道内部实现（流式优先，GPU 3090环境；非流式仅作CPU低算力降级）</summary>
         private async Task<string> ExecuteEvalInternalAsync(string prompt, string stageName)
         {
-            Console.Write("   [非流式] 调用中... ");
+            Console.Write("   [流式] 调用中... ");
             var llmService = _llmService as LlmService;
             string answer;
 
             if (llmService != null)
             {
-                answer = await llmService.InvokeNonStreamingWithRetryAsync(prompt, stageName);
+                // 主力路径：流式调用（GPU 3090 环境优先）
+                answer = await llmService.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Blue, stageName);
 
                 // 同步工具调用记录供评测器检查
                 if (llmService.LastFunctionCalls.Count > 0)
@@ -483,16 +484,93 @@ namespace Agent1.Services
                     LastToolResults = new Dictionary<string, string>();
                     LastToolPlan = new ToolPlan { NeedsTools = false };
                 }
+
+                // 流式结果为空时降级到非流式
+                if (string.IsNullOrWhiteSpace(answer))
+                {
+                    Console.Write("   [流式空回退→非流式] 调用中... ");
+                    answer = await llmService.InvokeNonStreamingWithRetryAsync(prompt, stageName);
+                }
             }
             else
             {
-                // 降级到流式
+                // 无 LlmService 引用时直接流式调用
                 answer = await _llmService.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Blue, "化工合规");
             }
 
             Console.WriteLine("完成");
             return answer;
         }
+
+        /// <summary>
+        /// [T13 无状态架构] 评测 Per-Case 独立调用：每次创建独立 Session + 按意图裁剪工具集。
+        /// 与 ExecuteEvalFastAsync 的区别：
+        ///   1. 接受 toolNames 参数，仅发送当前 case 需要的工具定义（减少 30-50% prompt 体积）
+        ///   2. 通过 LlmService.InvokeEvalWithToolsAsync 使用 FunctionChoiceBehaviorOptions.Functions 过滤
+        ///   3. cache_prompt=false 确保服务端不跨请求复用 KV Cache
+        ///   4. 与 zh-diag.sh -sps 0.0 配合实现完全无状态评测
+        /// </summary>
+        /// <param name="userInput">用户查询</param>
+        /// <param name="toolNames">当前 case 允许的工具名称列表</param>
+        /// <param name="isInfoQuery">是否为信息查询意图（决定使用哪个 Prompt 模板）</param>
+        public async Task<string> ExecuteEvalPerCaseAsync(string userInput, IReadOnlyList<string> toolNames, bool isInfoQuery)
+        {
+            // Phase 1.1: 评测通道使用独立会话（含 GUID 确保完全无状态）
+            var evalSessionId = $"eval_{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid():N[..6]}";
+            _memoryService.SetSession(evalSessionId);
+
+            var t = AppConfig.Instance.PromptTemplates;
+            var template = isInfoQuery ? t.EvalFastQueryPrompt : t.EvalFastPrompt;
+            var prompt = template
+                .Replace("{SystemRole}", t.SystemRole)
+                .Replace("{UserInput}", userInput);
+
+            Console.Write($"   [流式+裁剪{toolNames.Count}工具] 调用中... ");
+            var llmService = _llmService as LlmService;
+            string answer;
+
+            if (llmService != null)
+            {
+                // 主力路径：流式调用 + 工具过滤（GPU 3090 环境优先）
+                answer = await llmService.InvokeEvalWithToolsAsync(prompt, toolNames);
+
+                // 同步工具调用记录供评测器检查
+                if (llmService.LastFunctionCalls.Count > 0)
+                {
+                    LastToolResults = new Dictionary<string, string>();
+                    foreach (var fc in llmService.LastFunctionCalls)
+                    {
+                        LastToolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
+                    }
+                    LastToolPlan = new ToolPlan
+                    {
+                        NeedsTools = true,
+                        ToolNames = llmService.LastFunctionCalls.Select(fc => fc.FunctionName).ToList()
+                    };
+                }
+                else
+                {
+                    LastToolResults = new Dictionary<string, string>();
+                    LastToolPlan = new ToolPlan { NeedsTools = false };
+                }
+
+                // 流式结果为空时降级到非流式（保留全量工具作为兜底）
+                if (string.IsNullOrWhiteSpace(answer))
+                {
+                    Console.Write("   [流式空回退→非流式] 调用中... ");
+                    answer = await llmService.InvokeNonStreamingWithRetryAsync(prompt, "评测(裁剪工具)");
+                }
+            }
+            else
+            {
+                // 无 LlmService 引用时直接流式调用
+                answer = await _llmService.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Blue, "评测");
+            }
+
+            Console.WriteLine("完成");
+            return answer;
+        }
+
         /// <summary>
         /// 保存会话记录
         /// </summary>

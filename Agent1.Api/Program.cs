@@ -24,6 +24,16 @@ public partial class Program
     public static async Task<int> Main(string[] args)
     {
 // ═══════════════════════════════════════════════════
+// P0: 强制 UTF-8 控制台编码 — 防止中文输出乱码
+// Windows 中文版默认 GB2312(CP936) 会导致所有 UTF-8 输出
+// 被误解码为"锟斤拷"乱码。影响 Console.WriteLine、Serilog
+// Console Sink、以及 docker logs / K8s kubectl logs 采集。
+// 必须在任何 Console 或 Serilog 调用之前执行。
+// ═══════════════════════════════════════════════════
+Console.OutputEncoding = System.Text.Encoding.UTF8;
+Console.InputEncoding  = System.Text.Encoding.UTF8;
+
+// ═══════════════════════════════════════════════════
 // Phase 1: 配置外部化 — appsettings.json + 环境变量
 // ═══════════════════════════════════════════════════
 var builder = WebApplication.CreateBuilder(args);
