@@ -11,7 +11,8 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 # 还原 NuGet 包（分层缓存）
-COPY nuget.config global.json ./
+# 注意：不 COPY global.json，Docker 镜像自带 SDK，版本约束会导致不兼容
+COPY nuget.config ./
 COPY Agent1/Agent1.csproj Agent1/
 COPY Agent1.Api/Agent1.Api.csproj Agent1.Api/
 RUN dotnet restore Agent1.Api/Agent1.Api.csproj
