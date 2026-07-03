@@ -243,20 +243,36 @@ start_services() {
       > /root/autodl-tmp/logs/llama-embed.log 2>&1 &
     echo "    PID: $!"
 
-    echo "  等待模型加载 (约20秒)..."
-    sleep 20
+    echo "  等待模型加载 (心跳检测，最多60秒)..."
 
-    # 验证
-    if curl -s --max-time 3 http://localhost:8080/health | grep -q "ok"; then
-        OK "8080 (LLM推理) 启动成功"
-    else
-        FAIL "8080 启动失败，查看日志: tail -50 /root/autodl-tmp/logs/llama-server.log"
+    # 8080 心跳轮询
+    LOADED_8080=0
+    for i in $(seq 1 20); do
+        if curl -s --max-time 2 http://localhost:8080/health 2>/dev/null | grep -q "ok"; then
+            OK "8080 (LLM推理) 启动成功 (耗时 ${i}s)"
+            LOADED_8080=1
+            break
+        fi
+        printf "  ."
+        sleep 3
+    done
+    if [ "$LOADED_8080" = "0" ]; then
+        echo ""
+        FAIL "8080 启动超时 (60s)，查看日志: tail -50 /root/autodl-tmp/logs/llama-server.log"
     fi
 
-    if curl -s --max-time 3 http://localhost:8081/health | grep -q "ok"; then
-        OK "8081 (Embedding) 启动成功"
-    else
-        FAIL "8081 启动失败，查看日志: tail -50 /root/autodl-tmp/logs/llama-embed.log"
+    # 8081 心跳轮询 (embedding 模型小，10次即可)
+    LOADED_8081=0
+    for i in $(seq 1 10); do
+        if curl -s --max-time 2 http://localhost:8081/health 2>/dev/null | grep -q "ok"; then
+            OK "8081 (Embedding) 启动成功 (耗时 ${i}s)"
+            LOADED_8081=1
+            break
+        fi
+        sleep 3
+    done
+    if [ "$LOADED_8081" = "0" ]; then
+        FAIL "8081 启动超时 (30s)，查看日志: tail -50 /root/autodl-tmp/logs/llama-embed.log"
     fi
 
     echo ""
