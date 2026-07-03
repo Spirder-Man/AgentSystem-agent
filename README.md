@@ -746,10 +746,10 @@ MIT License
 
 ---
 
-**文档版本**：v4.12  
+**文档版本**：v4.13  
 **最后更新**：2026年7月3日  
 **分支**：`linux原生编译模型llama.cpp`  
-**状态**：双通道解耦架构 v4.0 交付 | CI/CD 全线通过 | Docker 镜像推送 GHCR | T13 无状态评测架构 | 零失误架构 v2.0 | 容器化 (llama.cpp)
+**状态**：双通道解耦架构 v4.0 (对话+评测双路径) | E023 评测路径补全 T13 验证通过 | CI/CD 全线通过 | Docker 镜像推送 GHCR | T13 无状态评测架构 | 零失误架构 v2.0 | 容器化 (llama.cpp)
 
 ## 📋 近期更新
 
@@ -762,6 +762,16 @@ MIT License
 - **配置开关**：`UseDecoupledArchitecture = true`（默认启用），可灰度切换回传统单通道
 - **新增文件**：6 个服务（355+99+97+164+52+93 = 860 行）+ 4 项单元测试（475 行）
 - **改造集成**：`AgentDialog` 三处双通道逻辑 + `AppConfig` 开关与模板 | 编译 0 errors
+
+### E023 评测路径双通道补全 — T13 验证通过（2026-07-03）
+- **问题发现**：T13 评测日志中 `[DecoupledPipeline]` 标记为 0，评测路径未走双通道架构
+- **根因**：`UseDecoupledArchitecture = true` 仅在 `AgentDialog.cs`（对话路径）中检查，`EvalEngine.cs`（评测路径）未注入双通道逻辑
+- **修复方案**：`EvalEngine.cs` 注入两处双通道逻辑 — `FactAssembler`（确定性事实渲染） + `ResponseMerger`（双通道合并） + `OutputSanitizer` + `BuildNoResult` 兜底
+- **权限修正**：`FactAssembler.BuildNoResult()` `private` → `public`，使评测路径可跨类调用兜底方法
+- **T13 验证结果**：60/63 案例评测完成，`[DecoupledPipeline]` 标记 126 个（上轮 0）
+- **BuildNoResult 兜底**：6 条日志覆盖 3 个案例（D004 / D007 / G005），全部成功介入
+- **对比**：上一轮 4 个「未触发任何工具」案例无兜底 → 本轮全部有 `BuildNoResult` 确定性输出
+- **文件**：2 files, +29/-1 | 已推送 Gitee + GitHub
 
 ### CI Docker 构建三阶段修复 — GHCR 镜像推送全线通过（2026-07-02）
 - **Bug1 (.dockerignore)**: `.dockerignore` 排除了 `Dockerfile` 自身，buildx 在构建上下文中找不到 Dockerfile，docker job 16s 秒挂
