@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Agent1.Config;
+using Microsoft.SemanticKernel;
 
 namespace Agent1.Services
 {
@@ -1011,10 +1012,13 @@ namespace Agent1.Services
                     if (llmSvc != null)
                     {
                         // [策略切换] 流式优先（GPU 3090环境），非流式仅作CPU低算力降级
-                        hydeDocument = await llmSvc.InvokeStreamWithRetryAsync(hydePrompt, ConsoleColor.Gray, "HyDE生成");
+                        // [Bug C 修复] HyDE 是纯文本生成，禁用 FC 防止递归调用 CheckStorageCompatibility
+                        hydeDocument = await llmSvc.InvokeStreamWithRetryAsync(hydePrompt, ConsoleColor.Gray, "HyDE生成",
+                            fcBehavior: FunctionChoiceBehavior.None());
                         // 流式空回退时降级到非流式
                         if (string.IsNullOrWhiteSpace(hydeDocument))
-                            hydeDocument = await llmSvc.InvokeNonStreamingWithRetryAsync(hydePrompt, "HyDE生成(降级)");
+                            hydeDocument = await llmSvc.InvokeNonStreamingWithRetryAsync(hydePrompt, "HyDE生成(降级)",
+                                fcBehavior: FunctionChoiceBehavior.None());
                     }
                     else
                     {

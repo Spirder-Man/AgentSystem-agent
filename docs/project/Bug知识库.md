@@ -2,7 +2,7 @@
 
 > **目的**：结构化记录每个 Bug 的根因/修复/影响模块，实现跨批次知识累积，避免同类问题反复出现。
 > **使用方式**：每次修复 Bug 后按模板录入；每次分析日志前浏览「系统弱点了然表」确定重点监控项。
-> **文档版本**：v1.3 | **创建日期**：2026-06-30 | **最后更新**：2026-07-02（新增 Bug-017 FormatException + Bug-018 FC Required 死循环）
+> **文档版本**：v1.5 | **创建日期**：2026-06-30 | **最后更新**：2026-07-03（新增思维链路记录机制 + Bug-019 回填示例）
 
 ---
 
@@ -22,6 +22,7 @@
 | W8 | **评测格式匹配脆弱** | 模型输出格式变化导致评分归零 | `Faithfulness=0` / `格式不匹配` | [Bug-010](#bug-010) |
 | W9 | **KV Cache 跨请求累积（LCP slot 复用）** | FC 退化、重试死亡螺旋、重复输出 | `LLM 调用耗时 >100s` / `生成错误: ...canceled` / 单 case 重复输出 >30 行 / llama-server slot 复用日志 | [Bug-015](#bug-015) [Bug-016](#bug-016) |
 | W10 | **FC Required() 策略误用于业务评测** | 死循环、同一工具被调用 40+ 次、评测卡死 | `[工具诊断]` 同一工具名连续出现 >5 次 / 单 case 耗时 >120s | [Bug-018](#bug-018) |
+| W11 | **HyDE + FC 递归死循环（静默卡死）** | 进程存活但无输出，FC 重试环路不崩溃 | `[SK诊断]` FC 交替出现 Required/None / 单 case 日志行数 >1800 / 同一工具名交替出现 | [Bug-019](#bug-019) |
 
 ---
 
@@ -29,6 +30,7 @@
 
 | ID | 日期 | 等级 | 类别 | 标题 |
 |:---:|------|:---:|------|------|
+| [Bug-019](#bug-019) | 07-03 | P0 | LLM配置 | HyDE + FunctionChoiceBehavior.Required() 导致 FC 递归死循环（F005 静默卡死） |
 | [Bug-018](#bug-018) | 07-02 | P0 | LLM配置 | FunctionChoiceBehavior.Required() 导致评测死循环 |
 | [Bug-017](#bug-017) | 07-01 | P0 | C#语法 | 字符串插值 Guid 格式说明符歧义导致全量 FormatException |
 | [Bug-015](#bug-015) | 06-30 | P0 | LLM配置 | KV Cache 溢出导致 FC 退化（C008 重现） |
@@ -342,6 +344,37 @@
 
 ---
 
+### Bug-019：HyDE + FunctionChoiceBehavior.Required() 导致 FC 递归死循环（F005 静默卡死）{#bug-019}
+
+| 字段 | 内容 |
+|------|------|
+| **发现日期** | 2026-07-03 |
+| **严重等级** | 🔴 P0 — 静默卡死，进程存活但无进度，比 Bug-018 更隐蔽 |
+| **发现场景** | T13 心跳监控日志（t13_heartbeat.log）— F005（乙醇+硝酸综合审核）卡死在 `CheckStorageCompatibility → HyDE文档检索 → CheckStorageCompatibility` 无限递归，单 case 超 1800+ 行日志无任何结论输出 |
+| **影响模块** | `Agent1/Services/AI/LlmService.cs` L124（FC 硬编码）、`Agent1/Services/AI/ILlmService.cs`（接口缺 FC 参数）、`Agent1/Services/Knowledge/HybridKnowledgeBaseService.cs`（HyDE 调用方）、`Agent1/Services/Dialog/RunReflectionStreamTools.cs`（Reflection 调用方） |
+| **根因** | **L1 现象**：进程存活(PID 2929)但不产出结论，同一 case 中 CheckStorageCompatibility 被反复调用；**L2 调用链**：主管线 FC=Required → CheckStorageCompatibility DB 未命中 → HyDeRetrieveIfAvailableAsync → HydeRetrieveAsync → InvokeStreamWithRetryAsync(hydePrompt) → InvokeStreamAsync 硬编码 `FunctionChoiceBehavior.Required()` → HyDE 提示词「生成法规摘要…乙醇硝酸同库储存」被强制调用工具 → 再次触发 CheckStorageCompatibility → 无限递归。Bug-018 是显性死循环（同一工具 40+ 次、会超时），Bug C 是**静默卡死**（进程永远不死、监控告警不触发、每轮工具名交替变化）；**L3 设计冲突**：Git 历史 commit `82dae1dd` FC 统一化时主动移除了 FC 灵活性，HyDE 被引入时 (`40bcb0fa`) 被动继承了 Required()，形成「FC 统一 + HyDE 特殊需求」的设计冲突。 |
+| **修复** | **FC 策略参数化架构重构**（4 文件修改）：① `ILlmService.cs` 新增 3 个带 `FunctionChoiceBehavior? fcBehavior = null` 参数的重载，默认 null → Required() 向后兼容；② `LlmService.cs` 核心实现：`InvokeStreamAsync` / `InvokeStreamWithRetryAsync` / `InvokeNonStreamingWithRetryAsync` 全部 FC 参数化，新增 effectiveFc = fcBehavior ?? Required()；③ `HybridKnowledgeBaseService.cs` HyDE 两条路径（流式+降级）改为 `FunctionChoiceBehavior.None()` 从根源阻断递归；④ `RunReflectionStreamTools.cs` 分层策略：Step1→Auto()（允许但不强制）、Step4/5/降级→None()（手动 ParseToolCalls 模式不依赖 SK FC） |
+| **修复提交** | 待提交 |
+| **关联 Bug** | [Bug-018](#bug-018)（同一 FC 配置族的显性表现）、[Bug-016](#bug-016)（同属静默卡死但根因是 KV Cache） |
+| **验证方法** | T13 心跳监控中 F005 无 1800+ 行重试日志；`grep "Required\|None" t13*.log` FC 策略分布符合预期（主路径 Required、HyDE 路径 None、Reflection 路径 Auto/None） |
+| **教训** | ① 静默卡死比显性死循环更危险：进程存活、监控不告警、难以发现；② FC 策略是**语义级参数**，不同调用目的（工具辅助检索 vs 管线强制调用）对 FC 有不同需求，API 设计时必须参数化不能硬编码；③ 统一化重构时需检查所有 call site 是否有差异化需求，统一 ≠ 同质。 |
+| **追问深度** | 3 层（L1 现象 → L2 调用链递归机制 → L3 设计冲突与 Git 历史演进） |
+
+## 思维链路（对话复盘）
+
+> 记录本次 Bug 分析的关键思考节点，使后续复盘时不依赖记忆即可还原推理过程。
+
+| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
+|:---:|------|------|------|------|------|
+| N1 | 现象确认 | t13_heartbeat.log 中 F005 卡死在 1800+ 行循环 | 进程存活(PID 2929)但不产出结论，CheckStorageCompatibility 被反复调用 | 确认 Bug C 真实存在，进入 L1 分析 | — |
+| N2 | L1→L2 追问 | 为什么 HyDE 提示词会触发 CheckStorageCompatibility？ | 调用链：主管线 FC=Required → CheckStorageCompatibility → HyDE → InvokeStreamAsync 硬编码 Required() → 递归 | 深入原理层追踪完整调用链而非修症状 | 停在 L1 修症状（加超时/截断）无法根治递归根因 |
+| N3 | 横向对比 | Bug-016 / Bug-018 和 Bug C 有什么异同？ | 同属 FC 配置族：Bug-018 是显性死循环（同一工具 40+ 次、会超时），Bug C 是静默卡死（进程永远不死、工具名交替变化） | 确认 Bug C 比 Bug-018 更隐蔽更危险 | — |
+| N4 | L2→L3 追问 | 为什么 InvokeStreamAsync 硬编码 Required()？Git 历史上谁改的？ | commit `82dae1dd` FC 统一化主动移除灵活性，HyDE (`40bcb0fa`) 被动继承 Required()，Bug B 修复 (`0a246d3d`) 只改了评测路径 | 暴露设计冲突：FC 统一 ≠ 所有场景需求相同 | 不追溯 Git 历史就无法理解"为什么当时没发现这个递归问题" |
+| N5 | 方案分支 | 方案 A（FC 策略参数化）还是方案 B（HyDE 路径硬编码改 None）？ | A 向后兼容（默认 Required）、所有调用方可控；B 简单但有回归风险（Reflection 路径也被影响） | 选 A：FC 策略参数化架构重构（4 文件修改） | B：硬编码改 None，无法精细控制 Reflection 各步骤的 FC 策略 |
+| N6 | 实现决策 | Reflection Step1 用 Auto() 还是 None()？ | Reflection 使用手动 ParseToolCalls 模式，不依赖 SK Auto FC；Step1 需要工具辅助推理 | Step1→Auto（允许但不强制），Step4/5/降级→None（纯审查/修正任务） | 全部 None：Step1 可能跳过工具调用失去推理依据；全部 Auto：与手动 ParseToolCalls 可能冲突 |
+
+---
+
 ### Bug-017：字符串插值 Guid 格式说明符歧义导致全量 FormatException {#bug-017}
 
 | 字段 | 内容 |
@@ -366,7 +399,7 @@
 |------|:---:|------|
 | LLM 流式输出质量 | 2 | 死循环、重复输出 |
 | LLM 幻觉 | 1 | GB 编号错误 |
-| LLM 配置 | 3 | FC 退化、重试死亡螺旋、Required() 死循环 |
+| LLM 配置 | 4 | FC 退化、重试死亡螺旋、Required() 死循环、HyDE+FC 递归 |
 | 编码/乱码 | 1 | UTF-8 → 锟斤拷 |
 | 数据库事务 | 2 | tx 重复 / 未提交 |
 | 并发安全 | 2 | Dictionary / async void |
@@ -375,7 +408,44 @@
 | 评测系统 | 2 | 格式匹配 / 评分归零 |
 | 异常处理 | 1 | 检索异常错误标记 |
 | C# 语法 | 1 | 字符串插值格式说明符歧义 |
-| **合计** | **18** | |
+| **合计** | **19** | |
+
+---
+
+## 思维链路记录（为什么要有这个？）
+
+> 🔴 **核心问题**：传统 Bug 记录只保留"结果"（根因是什么、怎么修的），丢失了"过程"（怎么一步步想到的）。下次复盘时，你只看到结论，看不到推理——相当于每次都从头推演，无法站在上次的肩膀上。
+>
+> **解决方案**：每个 Bug 增加「思维链路」字段，记录关键思考节点、分支决策、否决过的路径。使复盘时不依赖记忆即可还原完整推理过程。
+
+**思维链路格式**：
+
+```markdown
+## 思维链路（对话复盘）
+
+> 记录本次 Bug 分析的关键思考节点，使后续复盘时不依赖记忆即可还原推理过程。
+
+| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
+|:---:|------|------|------|------|------|
+| N1 | 现象确认 | 用户发现 XX 日志异常 | 确认 Bug 表现范围 | 进入 L1 分析层 | — |
+| N2 | L1→L2 追问 | 为什么 XX 会导致 YY？ | 调用链追踪到 ZZ | 深入原理层而非修症状 | 停在这个 Bug 修症状就完了 |
+| N3 | 横向对比 | 和 Bug-NN 有什么异同？ | 同族不同触发条件 | 对比分析找共性 | — |
+| N4 | 方案分支 | 方案 A 还是方案 B？ | A 向后兼容、B 简单但风险大 | 选 A | B：硬编码改 None，影响 Reflection 路径 |
+| N5 | 实现决策 | 某路径用 Auto 还是 None？ | 手动 ParseToolCalls 不依赖 SK FC | 分层策略 | 全部统一：丢失场景差异 |
+```
+
+**节点类型分类**：
+
+| 类型 | 含义 | 示例 |
+|------|------|------|
+| 现象确认 | 从日志/监控中确认 Bug 真实存在 | "t13_heartbeat.log 中 F005 卡死在 1800+ 行循环" |
+| L1→L2 追问 | 从表面现象向下追问到调用链机制 | "为什么 HyDE 提示词会触发 CheckStorageCompatibility？" |
+| L2→L3 追问 | 从调用链追问到设计冲突/历史演进 | "为什么 InvokeStreamAsync 硬编码 Required()？Git 历史上谁改的？" |
+| 横向对比 | 与同类 Bug 对比找共性和差异 | "Bug-018 vs Bug-019：都是 FC 配置问题，为什么表现不同？" |
+| 方案分支 | 在多个方案之间做选择 | "参数化 vs 硬编码改 None：哪个更安全？" |
+| 实现决策 | 具体实现层面的选择 | "Reflection Step1 用 Auto 还是 None？" |
+
+> 💡 **一句话记忆**：Bug 记录的价值不在于"这次修好了什么"，而在于"下次能多快定位到同类问题"。思维链路是下次定位的加速器。
 
 ---
 
@@ -396,4 +466,6 @@
 | **关联 Bug** | 相关 Bug ID |
 | **验证方法** | 如何确认已修复 |
 | **教训** | 沉淀的工程原则 |
+| **追问深度** | 追问了几层、各层触达了什么（L1现象→L2原理→L3设计冲突→...） |
+| **思维链路** | 见上方「思维链路记录」格式，用表格记录关键思考节点和分支决策 |
 ```

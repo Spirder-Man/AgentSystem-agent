@@ -82,7 +82,7 @@ namespace Agent1.Services
             _kernel.FunctionInvocationFilters.Add(new FunctionCallDiagnosticsFilter(this));
         }
 
-        public async Task<string> InvokeStreamAsync(string prompt, ConsoleColor color)
+        public async Task<string> InvokeStreamAsync(string prompt, ConsoleColor color, FunctionChoiceBehavior? fcBehavior = null)
         {
             var result = new StringBuilder();
             Console.WriteLine();
@@ -119,9 +119,14 @@ namespace Agent1.Services
                 // 当 llama-server -c 8192 KV Cache 不足时，模型无法在受限上下文中生成正确 FC JSON，
                 // 导致 SK 一直等待工具调用 → 2min 超时 → 重试循环 → 上下文进一步被工具结果填充 → 死循环
                 // [T13 无状态架构] cache_prompt=false 禁用服务端 KV Cache 复用，配合 -sps 0.0 确保每个请求独立
+                // [Bug C 修复] FC 策略由调用方显式声明，不再硬编码 Required()。
+                // 默认保持 Required() 向后兼容；HyDE/Reflection 等纯文本场景传 None()。
+                var effectiveFc = fcBehavior ?? FunctionChoiceBehavior.Required();
+                Console.WriteLine($"   [SK诊断] 模型={ModelConfig.ModelId}, FC={(effectiveFc?.GetType().Name ?? "None")}");
+
                 var settings = new OpenAIPromptExecutionSettings
                 {
-                    FunctionChoiceBehavior = FunctionChoiceBehavior.Required(),
+                    FunctionChoiceBehavior = effectiveFc,
                     Temperature = 0.3,
                 };
                 settings.ExtensionData = new Dictionary<string, object>
@@ -131,8 +136,6 @@ namespace Agent1.Services
 
                 // Phase 2a 验证: 清空上一轮工具调用记录
                 LastFunctionCalls.Clear();
-
-                Console.WriteLine($"   [SK诊断] 模型={ModelConfig.ModelId}, FC=AutoInvokeKernelFunctions");
 
                 // [Bug-016 根因位点] _kernel.InvokePromptStreamingAsync 每次发送完整 prompt（system + tools 定义 + user query）
                 // 到 llama-server。当 tools 定义 + prompt > -c 设定值时，llama.cpp 截断最旧 tokens（含 system prompt 中的 FC 格式说明），
@@ -360,7 +363,17 @@ namespace Agent1.Services
             return string.Join("\n", cleanedLines).Trim();
         }
 
+        /// <summary>
+        /// [Bug C 修复] 旧重载委托到新重载，默认 FC=null → Required()，保持向后兼容。
+        /// </summary>
         public async Task<string> InvokeStreamWithRetryAsync(string prompt, ConsoleColor color, string stageName = "")
+            => await InvokeStreamWithRetryAsync(prompt, color, stageName, fcBehavior: null);
+
+        /// <summary>
+        /// [Bug C 修复] 新增 FC 策略参数，调用方显式声明语义需求。
+        /// fcBehavior=null → 默认 Required()（主流程兼容）；None() → 纯文本生成（HyDE/反思）；Auto() → 自主决定。
+        /// </summary>
+        public async Task<string> InvokeStreamWithRetryAsync(string prompt, ConsoleColor color, string stageName, FunctionChoiceBehavior? fcBehavior)
         {
             // Task 7: 熔断器检查 — 电路打开时快速失败
             CheckCircuitBreaker();
@@ -386,7 +399,7 @@ namespace Agent1.Services
                             Console.WriteLine($"\n🔄 第{attempt}次重试 {stageName}...");
                         }
 
-                        var result = await InvokeStreamAsync(prompt, color);
+                        var result = await InvokeStreamAsync(prompt, color, fcBehavior);
                         RecordCircuitSuccess();
                         MetricsCollector.RecordLlmCall(sw.ElapsedMilliseconds, true, retries);
                         return result;
@@ -424,17 +437,24 @@ namespace Agent1.Services
         }
 
         /// <summary>
+        /// [Bug C 修复] 旧重载委托到新重载，默认 FC=null → Required()，保持向后兼容。
+        /// </summary>
+        public async Task<string> InvokeNonStreamingWithRetryAsync(string prompt, string stageName = "")
+            => await InvokeNonStreamingWithRetryAsync(prompt, stageName, fcBehavior: null);
+
+        /// <summary>
+        /// [Bug C 修复] 新增 FC 策略参数。
         /// Phase 2a 评测加速: 非流式调用 — 跳过流式缓冲/控制台打印/think过滤，
         /// 直接拿完整结果。用于批量评测场景，相比流式节省 30-40% CPU 时间。
         /// 
         /// 重试策略:
-        ///   - 第1次: 完整 Function Calling (SK Auto)，LLM 自主决定工具调用
+        ///   - 第1次: 使用调用方指定的 FC 策略（默认 Required），LLM 自主决定工具调用
         ///   - 第2-3次: 若首次已成功调用工具，重试时禁用 FC 并将工具结果内联到 prompt，
         ///              避免重复触发 RAG 检索浪费 CPU。仅重试 LLM 文本生成部分。
         /// 
         /// 超时: 5 分钟 (CPU 推理下 qwen3:8b-eval + num_ctx 8192 需要更多时间)
         /// </summary>
-        public async Task<string> InvokeNonStreamingWithRetryAsync(string prompt, string stageName = "")
+        public async Task<string> InvokeNonStreamingWithRetryAsync(string prompt, string stageName, FunctionChoiceBehavior? fcBehavior)
         {
             // Task 7: 熔断器检查 — 电路打开时快速失败
             CheckCircuitBreaker();
@@ -462,9 +482,11 @@ namespace Agent1.Services
                     if (attempt == 1)
                     {
                         // ── 第 1 次: 完整 Function Calling 模式 ──
+                        // [Bug C 修复] FC 策略由调用方显式传入，默认 Required。
+                        var effectiveFc = fcBehavior ?? FunctionChoiceBehavior.Required();
                         var settings = new OpenAIPromptExecutionSettings
                         {
-                            FunctionChoiceBehavior = FunctionChoiceBehavior.Required(),
+                            FunctionChoiceBehavior = effectiveFc,
                             Temperature = 0.0,
                             MaxTokens = 512,
                         };
