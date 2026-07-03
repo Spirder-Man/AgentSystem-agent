@@ -280,8 +280,36 @@ public class EvalEngine
                     result.tool_match = false;
                     result.actual_tools = "(无工具调用)";
                     Console.WriteLine($"   ❌ 未触发任何工具");
+                    // [E023 eval path] BuildNoResult fallback when no tools called
+                    if (AppConfig.Instance.PromptTemplates.UseDecoupledArchitecture)
+                    {
+                        var fallback = FactAssembler.BuildNoResult();
+                        response = fallback + "\n\n" + (response ?? "");
+                        result.actual_response = response;
+                        Serilog.Log.Warning("[DecoupledPipeline] EvalPath BuildNoResult | Id={Id}", tc.Id);
+                    }
                 }
 
+
+                // [E023 eval path] Dual-channel: FactAssembler + ResponseMerger
+                if (AppConfig.Instance.PromptTemplates.UseDecoupledArchitecture && result.tool_match)
+                {
+                    try
+                    {
+                        var evalToolCalls = llmSvc?.LastFunctionCalls ?? new List<FunctionCallRecord>();
+                        var evalFacts = ComplianceFactExtractor.Extract(evalToolCalls, isInfoQuery);
+                        if (evalFacts.HasAnyToolResult || evalFacts.RegulationRefs.Count > 0)
+                        {
+                            var sanitized = OutputSanitizer.Sanitize(response ?? "", evalFacts.RegulationRefs);
+                            var factOutput = FactAssembler.Build(evalFacts);
+                            response = ResponseMerger.Merge(factOutput, sanitized);
+                            result.actual_response = response;
+                            Serilog.Log.Information("[DecoupledPipeline] EvalPath | Regs={RegCount} | Fact={FactLen} | Expl={ExplLen}",
+                                evalFacts.RegulationRefs.Count, factOutput.Length, sanitized.Length);
+                        }
+                    }
+                    catch (Exception ex) { Serilog.Log.Warning(ex, "[DecoupledPipeline] EvalPath failed"); }
+                }
                 var cat2 = categoryStats[tc.Category];
                 categoryStats[tc.Category] = (
                     cat2.total,

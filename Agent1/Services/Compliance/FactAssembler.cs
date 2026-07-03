@@ -86,7 +86,7 @@ namespace Agent1.Services
         }
 
         /// <summary>工具未触发或数据不足时的标准化输出</summary>
-        private static string BuildNoResult()
+        public static string BuildNoResult()
         {
             return
                 "━━━ 查询结果 ━━━\n\n" +
