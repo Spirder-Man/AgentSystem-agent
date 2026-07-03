@@ -405,6 +405,16 @@ namespace Agent1.Config
             "输出格式：\n" +
             "【查询结果】直接给出具体信息内容（一句话概括）\n" +
             "【法规依据】引用具体标准编号+条款（如有）";
+
+        // 双通道解耦架构开关：true=事实通道+解释通道分离，false=传统单通道
+        public bool UseDecoupledArchitecture { get; set; } = true;
+
+        // 双通道解耦架构下的 LLM 输出模板（不含法规引用要求）
+        // LLM 只负责专业解读和建议，法规引用由 FactAssembler 确定性渲染
+        public string OutputTemplateDecoupled { get; set; } =
+            "【专业解读】基于已知事实给出专业分析\n" +
+            "【操作建议】具体的行动建议（如有）\n" +
+            "【注意事项】需要人工关注的风险点";
     }
 
     // [P1] 告警配置

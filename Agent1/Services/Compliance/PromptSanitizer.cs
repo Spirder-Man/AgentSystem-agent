@@ -1,0 +1,96 @@
+using System.Text.RegularExpressions;
+
+namespace Agent1.Services
+{
+    /// <summary>
+    /// 双通道解耦架构 — Prompt 消毒器。
+    /// 在 LLM 看到工具结果之前，剥离所有法规编号（GB 模式、[REGULATIONS:] 标签等）。
+    /// 从源头杜绝 LLM 接触法规编号，使其无法编造。
+    /// </summary>
+    public static class PromptSanitizer
+    {
+        /// <summary>匹配 [REGULATIONS:...] 整标签</summary>
+        private static readonly Regex RegulationsTagRegex = new(
+            @"\[REGULATIONS:\s*[^\]]*\]\s*",
+            RegexOptions.Compiled);
+
+        /// <summary>匹配 [判定:...] 标签</summary>
+        private static readonly Regex VerdictTagRegex = new(
+            @"\[判定[：:][^\]]*\]\s*",
+            RegexOptions.Compiled);
+
+        /// <summary>匹配独立的 GB 编号模式</summary>
+        private static readonly Regex GbStandaloneRegex = new(
+            @"\bGB\s*/?T?\s*\d{4,5}(?:[.\-]\d+(?:\.\d+)?)?(?:\s*-\s*\d{4})?\b",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        /// <summary>匹配条款号模式（如"第3.2条"、"第5.3.2条"）</summary>
+        private static readonly Regex ClauseRegex = new(
+            @"第\d+(?:\.\d+)*条",
+            RegexOptions.Compiled);
+
+        /// <summary>
+        /// 消毒工具结果文本 —— 剥离法规编号，保留语义信息。
+        /// </summary>
+        /// <param name="toolResult">原始工具结果文本</param>
+        /// <returns>消毒后的描述性文本</returns>
+        public static string SanitizeToolResult(string toolResult)
+        {
+            if (string.IsNullOrWhiteSpace(toolResult))
+                return toolResult ?? "";
+
+            var sanitized = toolResult;
+
+            // 1. 移除 [REGULATIONS:...] 标签（含前缀换行）
+            sanitized = RegulationsTagRegex.Replace(sanitized, "");
+
+            // 2. 移除 [判定:...] 标签
+            sanitized = VerdictTagRegex.Replace(sanitized, "");
+
+            // 3. 移除独立的 GB 编号
+            sanitized = GbStandaloneRegex.Replace(sanitized, "");
+
+            // 4. 移除条款号
+            sanitized = ClauseRegex.Replace(sanitized, "");
+
+            // 5. 清理多余空格和空行
+            sanitized = Regex.Replace(sanitized, @"\n{3,}", "\n\n");
+            sanitized = Regex.Replace(sanitized, @"^[ \t]+|[ \t]+$", "", RegexOptions.Multiline);
+            sanitized = sanitized.Trim();
+
+            return sanitized;
+        }
+
+        /// <summary>
+        /// 消毒完整的 System Role prompt —— 移除要求 LLM 输出法规编号的指令。
+        /// </summary>
+        /// <param name="systemPrompt">原始 System Role prompt</param>
+        /// <returns>消毒后的 prompt（不含要求法规引用的指令）</returns>
+        public static string SanitizeSystemPrompt(string systemPrompt)
+        {
+            if (string.IsNullOrWhiteSpace(systemPrompt))
+                return systemPrompt ?? "";
+
+            var sanitized = systemPrompt;
+
+            // 移除要求引用法规编号的指令行
+            sanitized = Regex.Replace(sanitized,
+                @"【法规依据】[^\n]*",
+                "", RegexOptions.Compiled);
+
+            // 移除"引用具体标准编号"类指令
+            sanitized = Regex.Replace(sanitized,
+                @"引用具体标准编号\+条款",
+                "引用已知事实中的法规依据",
+                RegexOptions.Compiled);
+
+            // 替换 output format 中的法规依据为专业解读
+            sanitized = Regex.Replace(sanitized,
+                @"【法规依据】",
+                "【专业解读】",
+                RegexOptions.Compiled);
+
+            return sanitized;
+        }
+    }
+}

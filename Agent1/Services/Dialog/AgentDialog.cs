@@ -139,6 +139,25 @@ namespace Agent1.Services
                 RecordEvent(traceId, "ToolCalled", $"工具调用: {tc.FunctionName}",
                     new Dictionary<string, object> { ["Function"] = tc.FunctionName, ["Success"] = tc.Success });
 
+            // ★ 双通道解耦架构 Pipeline 级别最后防线：OutputSanitizer 硬拦截（受开关控制）
+            if (AppConfig.Instance.PromptTemplates.UseDecoupledArchitecture
+                && intent == IntentType.ChemicalCompliance && toolCalls.Count > 0)
+            {
+                var pipelineFacts = ComplianceFactExtractor.Extract(toolCalls, isInfoQuery: false);
+                if (pipelineFacts.RegulationRefs.Count > 0)
+                {
+                    var beforeLen = result.Length;
+                    result = OutputSanitizer.Sanitize(result, pipelineFacts.RegulationRefs);
+                    var afterLen = result.Length;
+                    if (beforeLen != afterLen)
+                    {
+                        Serilog.Log.Warning(
+                            "[DecoupledPipeline] OutputSanitizer 拦截 {Removed} 字符 | TraceId={TraceId}",
+                            beforeLen - afterLen, traceId);
+                    }
+                }
+            }
+
             // [安全检测] 输出高危断言检测
             var t4s = sw.ElapsedMilliseconds;
             var (outputSafe, outputWarnings) = SafetyGuardService.ValidateOutput(result);
@@ -318,7 +337,22 @@ namespace Agent1.Services
             var t = AppConfig.Instance.PromptTemplates;// 获取提示模板
             var history = t.HistoryTemplate.Replace("{History}", context.History ?? "");// 替换历史记录
             var question = t.CurrentQuestionTemplate.Replace("{UserInput}", input);// 替换用户输入
-            var prompt = $"{t.SystemRole}\n\n{history}\n\n{question}\n\n{t.OutputTemplate}";// 组合成完整提示   
+
+            // ★ 双通道解耦架构：使用消毒后的输出模板（不含法规引用要求），LLM 只负责专业解读
+            string outputTemplate;
+            string systemRole;
+            if (t.UseDecoupledArchitecture)
+            {
+                outputTemplate = t.OutputTemplateDecoupled;
+                systemRole = PromptSanitizer.SanitizeSystemPrompt(t.SystemRole);
+                Console.WriteLine("   [双通道解耦] LLM 仅负责专业解读，法规引用由 FactAssembler 确定性渲染");
+            }
+            else
+            {
+                outputTemplate = t.OutputTemplate;
+                systemRole = t.SystemRole;
+            }
+            var prompt = $"{systemRole}\n\n{history}\n\n{question}\n\n{outputTemplate}";// 组合成完整提示   
 
             Console.WriteLine("\n   【SK Auto Function Calling 模式】");
             Console.ForegroundColor = ConsoleColor.Blue;
@@ -354,6 +388,24 @@ namespace Agent1.Services
                 LastToolResults = new Dictionary<string, string>();
                 LastToolPlan = new ToolPlan { NeedsTools = false };
             }
+            // ★ 双通道解耦架构：事实提取 + LLM 输出消毒 + 合并（受 UseDecoupledArchitecture 开关控制）
+            if (AppConfig.Instance.PromptTemplates.UseDecoupledArchitecture)
+            {
+                var facts = ComplianceFactExtractor.Extract(toolCalls, isInfoQuery: false);
+                if (facts.HasAnyToolResult)
+                {
+                    // 消毒 LLM 输出中的法规引用（硬拦截）
+                    var sanitizedExplanation = OutputSanitizer.Sanitize(answer, facts.RegulationRefs);
+                    // 确定性事实渲染（不走 LLM）
+                    var factOutput = FactAssembler.Build(facts);
+                    // 合并双通道输出
+                    answer = ResponseMerger.Merge(factOutput, sanitizedExplanation);
+                    Serilog.Log.Information(
+                        "[DecoupledPipeline] 双通道合并 | 法规数={RegCount} | 事实通道={FactLen} | 解释通道={ExplLen}",
+                        facts.RegulationRefs.Count, factOutput.Length, sanitizedExplanation.Length);
+                }
+            }
+
             // 提取并存储关键事实 input 和 answer 是提示模板的输入和输出
             _memoryService.ExtractAndStoreKeyFacts(input, answer);
 
@@ -568,6 +620,30 @@ namespace Agent1.Services
             }
 
             Console.WriteLine("完成");
+
+            // ★ 双通道解耦架构：评测路径同样应用事实提取 + 消毒（受开关控制）
+            if (AppConfig.Instance.PromptTemplates.UseDecoupledArchitecture)
+            {
+                var evalToolCalls = llmService?.LastFunctionCalls
+                    .Select(fc => new FunctionCallRecord
+                    {
+                        FunctionName = fc.FunctionName,
+                        Arguments = fc.Arguments,
+                        Result = fc.Result,
+                        Success = fc.Success,
+                        Quality = fc.Quality
+                    }).ToList() ?? new List<FunctionCallRecord>();
+
+                if (evalToolCalls.Count > 0)
+                {
+                    var evalFacts = ComplianceFactExtractor.Extract(evalToolCalls, isInfoQuery);
+                    if (evalFacts.HasAnyToolResult)
+                    {
+                        answer = OutputSanitizer.Sanitize(answer, evalFacts.RegulationRefs);
+                    }
+                }
+            }
+
             return answer;
         }
 
