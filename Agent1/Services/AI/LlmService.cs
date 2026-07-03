@@ -610,9 +610,11 @@ namespace Agent1.Services
             const int MaxTotalChars = 5000;
 
             // [T13 无状态架构] cache_prompt=false 禁用服务端 KV Cache 复用
+            // [Bug B 修复] Required() → Auto()：业务评测由 LLM 自主决定是否调用工具，
+            // 避免 Required() 在 FC 返回结果后继续强制新一轮调用导致死循环。
             var settings = new OpenAIPromptExecutionSettings
             {
-                FunctionChoiceBehavior = FunctionChoiceBehavior.Required(),
+                FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(),
                 Temperature = 0.3,
             };
             settings.ExtensionData = new Dictionary<string, object>
