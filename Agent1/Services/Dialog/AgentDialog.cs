@@ -621,7 +621,7 @@ namespace Agent1.Services
 
             Console.WriteLine("完成");
 
-            // ★ 双通道解耦架构：评测路径同样应用事实提取 + 消毒（受开关控制）
+            // ★ 双通道解耦架构：评测路径应用完整双通道（事实提取 + 消毒 + 事实渲染 + 合并）
             if (AppConfig.Instance.PromptTemplates.UseDecoupledArchitecture)
             {
                 var evalToolCalls = llmService?.LastFunctionCalls
@@ -634,13 +634,22 @@ namespace Agent1.Services
                         Quality = fc.Quality
                     }).ToList() ?? new List<FunctionCallRecord>();
 
-                if (evalToolCalls.Count > 0)
+                var evalFacts = ComplianceFactExtractor.Extract(evalToolCalls, isInfoQuery);
+                if (evalFacts.HasAnyToolResult)
                 {
-                    var evalFacts = ComplianceFactExtractor.Extract(evalToolCalls, isInfoQuery);
-                    if (evalFacts.HasAnyToolResult)
-                    {
-                        answer = OutputSanitizer.Sanitize(answer, evalFacts.RegulationRefs);
-                    }
+                    // 消毒 LLM 输出中的法规引用（硬拦截）
+                    var sanitizedExplanation = OutputSanitizer.Sanitize(answer, evalFacts.RegulationRefs);
+                    // 确定性事实渲染（不走 LLM）
+                    var factOutput = FactAssembler.Build(evalFacts);
+                    // 合并双通道输出
+                    answer = ResponseMerger.Merge(factOutput, sanitizedExplanation);
+                }
+                else
+                {
+                    // 兜底：工具未触发时，先消毒 LLM 输出剔除幻觉引用，再渲染"无确定结论"声明
+                    var sanitized = OutputSanitizer.Sanitize(answer, evalFacts.RegulationRefs);
+                    var factOutput = FactAssembler.Build(evalFacts);
+                    answer = ResponseMerger.Merge(factOutput, sanitized);
                 }
             }
 
