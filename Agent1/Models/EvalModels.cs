@@ -108,6 +108,63 @@ public class EvalConclusion
     [JsonIgnore] public string? expected_distance_unit { get => ExpectedDistanceUnit; set => ExpectedDistanceUnit = value; }
 }
 
+/// <summary>单条声明的完整验证轨迹 — 可追溯审计</summary>
+public class ClaimDetail
+{
+    [JsonPropertyName("claimed_text")]
+    public string ClaimedText { get; set; } = "";
+
+    [JsonPropertyName("claim_type")]
+    public string ClaimType { get; set; } = "";  // "RegulationNumber" | "Clause" | "Value"
+
+    [JsonPropertyName("search_query")]
+    public string SearchQuery { get; set; } = "";
+
+    [JsonPropertyName("chunks_returned")]
+    public int ChunksReturned { get; set; }
+
+    [JsonPropertyName("top_chunk_snippet")]
+    public string? TopChunkSnippet { get; set; }
+
+    [JsonPropertyName("found_in_source")]
+    public bool FoundInSource { get; set; }
+
+    [JsonPropertyName("verdict")]
+    public string Verdict { get; set; } = "";  // "verified" | "hallucinated" | "unverifiable"
+
+    [JsonPropertyName("verdict_reason")]
+    public string? VerdictReason { get; set; }
+}
+
+/// <summary>单条引用的验证轨迹 — 可追溯审计</summary>
+public class CitationTrace
+{
+    [JsonPropertyName("cited_regulation")]
+    public string CitedRegulation { get; set; } = "";
+
+    [JsonPropertyName("found_in_context")]
+    public bool FoundInContext { get; set; }
+
+    [JsonPropertyName("source_chunk_id")]
+    public string? SourceChunkId { get; set; }
+
+    [JsonPropertyName("source_snippet")]
+    public string? SourceSnippet { get; set; }
+}
+
+/// <summary>结论判定的逻辑路径 — 可追溯审计</summary>
+public class ConclusionReason
+{
+    [JsonPropertyName("level")]
+    public string Level { get; set; } = "";  // "Level1_Tag" | "Level2_Reg" | "Level3_Keyword" | "Level4_HallucinationCheck"
+
+    [JsonPropertyName("rule_applied")]
+    public string RuleApplied { get; set; } = "";
+
+    [JsonPropertyName("passed")]
+    public bool Passed { get; set; }
+}
+
 public class EvalResult
 {
     [JsonPropertyName("id")]
@@ -212,6 +269,16 @@ public class EvalResult
     /// <summary>行为匹配 (refusal正确/行为符合预期)</summary>
     [JsonPropertyName("behavior_match")]
     public bool? BehaviorMatch { get; set; }
+
+    // ── 可追溯审计字段 ──
+    [JsonPropertyName("claim_details")]
+    public List<ClaimDetail>? ClaimDetails { get; set; }
+
+    [JsonPropertyName("citation_traces")]
+    public List<CitationTrace>? CitationTraces { get; set; }
+
+    [JsonPropertyName("conclusion_reasons")]
+    public List<ConclusionReason>? ConclusionReasons { get; set; }
 
     // 兼容旧代码
     [JsonIgnore] public string id { get => Id; set => Id = value; }
