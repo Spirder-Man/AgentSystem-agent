@@ -1,6 +1,6 @@
 # Agent1 — 化工园区危化品合规审查 AI Agent
 
-> **项目版本**：v3.7（T13 无状态评测架构 — 三层防御根治 KV Cache 跨请求累积 — 2026-06-30）
+> **项目版本**：v4.0（双通道解耦架构 — 零幻觉法规引用输出 — 2026-07-03）
 > **核心修复文档**：[P0-P1修复详细技术文档](docs/troubleshooting/P0-P1修复详细技术文档.md) | [RAG工程Bug修复笔记](docs/troubleshooting/RAG工程Bug修复笔记_2026-05-26.md) | [故障排查文档](docs/troubleshooting/故障排查文档.md) | [代码自检清单](docs/工程skill/代码自检清单%20Skill.md)
 > **前端开发**：[前端开发快速上手指南](docs/architecture/Agent1前端开发快速上手指南.md) | [Mock 机制说明](agent1-web/src/mocks/README.md)
 
@@ -9,7 +9,7 @@
 支持 20 个控制台菜单、12 个 ModuleType、REST API、JWT 认证、PostgreSQL+pgvector 混合检索、
 OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对 NVIDIA GPU (RTX 3090/3080 Ti) Linux 环境实现 RAG 全链路 GPU 加速**。
 
-> 整体完成度：~95% | 编译：0 错误 | C# 文件：~110 个 / ~16,500 行 | 测试：148 通过 | 自动化测试：25 条 CLI 全功能 | T13 无状态评测架构已交付
+> 整体完成度：~96% | 编译：0 错误 | C# 文件：~118 个 / ~18,000 行 | 测试：152 通过 | 自动化测试：25 条 CLI 全功能 | 双通道解耦架构 (对话+评测双路径) + T13 无状态评测已交付
 
 ## 功能全景
 
@@ -36,6 +36,7 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 │   │   ├── PipelineEvent.cs           # 事件溯源单元 (EventId/TraceId/EventType)
 │   │   ├── ChemicalSubstanceModels.cs  # 化学品属性/法规版本/安全距离
 │   │   ├── EvalModels.cs         # 评测数据模型
+│   │   ├── ExtractedFacts.cs     # 结构化事实模型(双通道:法规编号+类别+判定)
 │   │   ├── DialogTypes.cs        # 对话类型
 │   │   ├── LongTermMemoryModels.cs     # 长期记忆模型
 │   │   └── ModuleType.cs         # 模块枚举 (12 个, 全部实现)
@@ -63,6 +64,11 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 │   │   ├── Compliance/           # 化工合规
 │   │   │   ├── ChemicalComplianceTools.cs  # 8 个 SK Plugin 工具
 │   │   │   ├── ChemicalDatabaseService.cs  # 918行 化工数据库服务 (零失误架构核心)
+│   │   │   ├── FactExtractor.cs       # 事实提取器(双通道:正则+AsyncLocal双路径)
+│   │   │   ├── FactAssembler.cs       # 确定性事实渲染器(双通道:C#模板不走LLM)
+│   │   │   ├── PromptSanitizer.cs     # Prompt消毒器(双通道:剥离法规编号)
+│   │   │   ├── OutputSanitizer.cs     # 输出消毒器(双通道:白名单硬拦截兜底)
+│   │   │   ├── ResponseMerger.cs      # 响应合并器(双通道:事实通道+解释通道)
 │   │   │   ├── OutputValidator.cs          # 328行 输出校验器 (安全围栏)
 │   │   │   ├── ComplianceAuditLogger.cs    # 249行 合规审计日志
 │   │   │   ├── ConclusionVerifier.cs       # Post-hoc 结论验证
@@ -113,7 +119,7 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 │   │   ├── RequestIdMiddleware.cs          # 请求ID透传
 │   │   └── RequestMetricsMiddleware.cs     # 请求指标
 │   └── Program.cs                # API 启动（DI/Serilog/JWT/OTel/健康检查）
-├── Agent1.Tests/                 # xUnit 测试（148 tests, 含架构收敛+熔断器验证）
+├── Agent1.Tests/                 # xUnit 测试（152 tests, 含双通道4项+架构收敛+熔断器验证）
 ├── ArchitectureTest/             # 架构收敛测试
 ├── Benchmark/                    # C# HTTP 压测工具
 ├── SshRunner/                    # SSH 远程执行工具 (流式模式)
@@ -217,7 +223,28 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 - QueryCache 查询缓存（LRU + TTL）
 - 业务优先级重排序
 
-### 4. 合规审查能力
+### 4. 双通道解耦架构 — 零幻觉法规引用输出（★ v4.0 核心）
+
+LLM 与确定性代码彻底分层，各司其职：
+
+```
+事实通道 (C# 确定性代码)              解释通道 (LLM)
+┌──────────────────────────┐      ┌─────────────────────────┐
+│ FactExtractor             │      │ PromptSanitizer          │
+│ 从工具结果提取法规编号      │      │ 传给LLM前剥离所有法规编号   │
+│ FactAssembler             │      │ LLM 只做推理+建议         │
+│ C#模板确定性渲染法规引用    │      │ OutputSanitizer          │
+│ 100%准确，不走LLM          │      │ 白名单比对硬拦截兜底       │
+└──────────────────────────┘      └─────────────────────────┘
+              ↓                            ↓
+         ResponseMerger 合并 → 最终输出
+```
+
+- **设计哲学**：法规引用归代码（100% 确定性），推理分析归 LLM（专业解读）
+- **四道防线**：PromptSanitizer（源头掐断）→ LLM 无编号可编造 → OutputSanitizer（白名单兜底）→ FactAssembler（唯一法规来源）
+- **配置开关**：`UseDecoupledArchitecture = true`（默认启用），可灰度切换
+
+### 5. 合规审查能力
 - 危化品存储合规检查
 - 安全距离合规验证
 - 危险类别精准匹配
@@ -230,7 +257,7 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 - [P2] 风险评估 3×3 矩阵
 - [P2] 多模态 GHS 标签识别
 
-### 5. 结构化化学品数据库（58 种危化品）
+### 6. 结构化化学品数据库（58 种危化品）
 - 30+ 常见工业危化品结构化属性（CAS号/UN编号/分子式/闪点/沸点/爆炸极限）
 - 危险类别与 GB 30000 标准号精确映射
 - 20+ 精确化学品储存禁忌配对规则 + 类别级自动推断
@@ -239,7 +266,7 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 - 8 项关键法规标准版本追踪（GB 15603/18218/30871 等）
 - 40+ 化学品别名自动归一化
 
-### 6. AI 工具集（8 个 KernelFunction）
+### 7. AI 工具集（8 个 KernelFunction）
 - `CheckHazardCategory` — 危险类别查询
 - `CheckStorageCompatibility` — 储存兼容性检查
 - `GetSafetyDistance` — 安全距离查询
@@ -248,7 +275,7 @@ OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对
 - `LookupHazardLabel` — [P2] GHS 标签识别 (多模态)
 - `GetCurrentTime` / `Calculate` — 通用工具
 
-### 7. RAG GPU 全链路加速（★ Sprint 1-5）
+### 8. RAG GPU 全链路加速（★ Sprint 1-5）
 - **Sprint 1**: 批量 GPU 嵌入 (`GetEmbeddingsBatchAsync`)
 - **Sprint 2**: GPU 向量检索 (`GpuVectorIndexService` 内存索引)
 - **Sprint 3**: Cross-Encoder Reranker (`RerankerService`)
@@ -719,12 +746,32 @@ MIT License
 
 ---
 
-**文档版本**：v4.11  
-**最后更新**：2026年7月2日  
-**分支**：`main`  
-**状态**：CI/CD 全线通过 | Docker 镜像推送 GHCR | T13 无状态评测架构交付 | 零失误架构 v2.0 | 容器化 (llama.cpp)
+**文档版本**：v4.13  
+**最后更新**：2026年7月3日  
+**分支**：`linux原生编译模型llama.cpp`  
+**状态**：双通道解耦架构 v4.0 (对话+评测双路径) | E023 评测路径补全 T13 验证通过 | CI/CD 全线通过 | Docker 镜像推送 GHCR | T13 无状态评测架构 | 零失误架构 v2.0 | 容器化 (llama.cpp)
 
 ## 📋 近期更新
+
+### 双通道解耦架构 — 零幻觉法规引用输出（2026-07-03）★ v4.0
+- **核心设计**：LLM 与确定性代码彻底分层 — 法规引用归代码（100% 确定），推理分析归 LLM（专业解读）
+- **事实通道**：`FactExtractor`（正则+AsyncLocal双路径提取）→ `FactAssembler`（C# 模板确定性渲染，不走 LLM）
+- **解释通道**：`PromptSanitizer`（传给 LLM 前剥离所有法规编号）→ LLM 推理 → `OutputSanitizer`（白名单硬拦截兜底）
+- **合并输出**：`ResponseMerger` 合并双通道输出，`ExtractedFacts` 结构化事实模型承载法规数据
+- **四道防线**：PromptSanitizer（源头掐断）→ LLM 无编号可编造 → OutputSanitizer（白名单兜底）→ FactAssembler（唯一法规来源）
+- **配置开关**：`UseDecoupledArchitecture = true`（默认启用），可灰度切换回传统单通道
+- **新增文件**：6 个服务（355+99+97+164+52+93 = 860 行）+ 4 项单元测试（475 行）
+- **改造集成**：`AgentDialog` 三处双通道逻辑 + `AppConfig` 开关与模板 | 编译 0 errors
+
+### E023 评测路径双通道补全 — T13 验证通过（2026-07-03）
+- **问题发现**：T13 评测日志中 `[DecoupledPipeline]` 标记为 0，评测路径未走双通道架构
+- **根因**：`UseDecoupledArchitecture = true` 仅在 `AgentDialog.cs`（对话路径）中检查，`EvalEngine.cs`（评测路径）未注入双通道逻辑
+- **修复方案**：`EvalEngine.cs` 注入两处双通道逻辑 — `FactAssembler`（确定性事实渲染） + `ResponseMerger`（双通道合并） + `OutputSanitizer` + `BuildNoResult` 兜底
+- **权限修正**：`FactAssembler.BuildNoResult()` `private` → `public`，使评测路径可跨类调用兜底方法
+- **T13 验证结果**：60/63 案例评测完成，`[DecoupledPipeline]` 标记 126 个（上轮 0）
+- **BuildNoResult 兜底**：6 条日志覆盖 3 个案例（D004 / D007 / G005），全部成功介入
+- **对比**：上一轮 4 个「未触发任何工具」案例无兜底 → 本轮全部有 `BuildNoResult` 确定性输出
+- **文件**：2 files, +29/-1 | 已推送 Gitee + GitHub
 
 ### CI Docker 构建三阶段修复 — GHCR 镜像推送全线通过（2026-07-02）
 - **Bug1 (.dockerignore)**: `.dockerignore` 排除了 `Dockerfile` 自身，buildx 在构建上下文中找不到 Dockerfile，docker job 16s 秒挂
@@ -860,5 +907,5 @@ MIT License
 
 ### 编译状态
 ✅ `dotnet build`：0 错误，30 警告（全部为既有的 nullable 引用类型警告）
-✅ `dotnet test`：148 通过，0 失败
+✅ `dotnet test`：152 通过，0 失败
 ✅ `dotnet run`：本地启动正常，安全拦截生效，PipelineMetrics 完整采集
