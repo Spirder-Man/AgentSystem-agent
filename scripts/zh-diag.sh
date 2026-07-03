@@ -225,12 +225,12 @@ start_services() {
     echo "  启动 LLM 推理服务 (8080)..."
     # KV Cache: -c 32768 = 32K 上下文窗口，支持 63 条连续评测不溢出
     # --cache-type-k q8_0 + --cache-type-v q8_0 = KV Cache 量化，VRAM 降至 ~2GB
-    # -fa = Flash Attention，进一步减少显存占用
+    # --flash-attn on = Flash Attention，进一步减少显存占用
     # -sps 0.0 = 禁用 LCP 自动 slot 匹配，每个请求独立 KV Cache（防止跨请求累积）
     nohup "$LLAMA_DIR/llama-server" \
       -m "$LLM_MODEL" \
       --host 0.0.0.0 --port 8080 -ngl 99 -c 32768 \
-      --cache-type-k q8_0 --cache-type-v q8_0 -fa \
+      --cache-type-k q8_0 --cache-type-v q8_0 --flash-attn on \
       -sps 0.0 \
       > /root/autodl-tmp/logs/llama-server.log 2>&1 &
     echo "    PID: $!"
