@@ -30,8 +30,9 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 
 # 安装 wget（用于健康检查）+ 创建非 root 用户
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends wget && \
+# 注意：ARM64 镜像 GPG 密钥可能缺失，使用 --allow-unauthenticated
+RUN apt-get update --allow-insecure-repositories && \
+    apt-get install -y --no-install-recommends --allow-unauthenticated wget && \
     rm -rf /var/lib/apt/lists/* && \
     adduser --disabled-password --gecos "" appuser
 
@@ -49,7 +50,7 @@ ENV ASPNETCORE_URLS=http://+:8080
 # ════════════════════════════════════════
 # 环境变量默认值（可在 docker-compose 中覆盖）
 # ════════════════════════════════════════
-ENV LLM_ENDPOINT=http://ollama:11434
+ENV LLM_ENDPOINT=http://localhost:8080/v1
 ENV KNOWLEDGE_BASE_PATH=/app/knowledgebase
 ENV CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ENV ASPNETCORE_ENVIRONMENT=Production
