@@ -1,6 +1,6 @@
 # Agent1 — 化工园区危化品合规审查 AI Agent
 
-> **项目版本**：v4.0（双通道解耦架构 — 零幻觉法规引用输出 — 2026-07-03）
+> **项目版本**：v4.1（双通道解耦架构 + Docker 容器化全服务验证 — 2026-07-06）
 > **核心修复文档**：[P0-P1修复详细技术文档](docs/troubleshooting/P0-P1修复详细技术文档.md) | [RAG工程Bug修复笔记](docs/troubleshooting/RAG工程Bug修复笔记_2026-05-26.md) | [故障排查文档](docs/troubleshooting/故障排查文档.md) | [代码自检清单](docs/工程skill/代码自检清单%20Skill.md)
 > **前端开发**：[前端开发快速上手指南](docs/architecture/Agent1前端开发快速上手指南.md) | [Mock 机制说明](agent1-web/src/mocks/README.md)
 
@@ -438,17 +438,66 @@ curl http://localhost:5000/health/live
 
 ### 🐳 Docker 容器化部署
 
+> **已验证平台**：ARM64 (NVIDIA A100, Ubuntu 22.04) | x86_64 (RTX 3080 Ti / 3090, Ubuntu 22.04)
 > 完整部署文档：[Docker 容器化一键部署](docs/deploy/Docker容器化一键部署.md) | [Linux 快速启动指南](docs/deploy/Linux快速启动指南.md)
 
-核心命令（开发环境）：
-```powershell
-docker compose pull postgres prometheus grafana    # 拉取基础镜像
-docker compose build llama-server llama-embed api   # 构建服务镜像（首次 10~30 分钟）
-docker compose up -d                                 # 启动全部服务
-docker compose logs -f                               # 实时查看日志
+#### 服务架构（6 容器）
+
+```
+┌────────────┬───────────────┬─────────────┬────────────┬──────────────┬──────────┐
+│ PostgreSQL │ llama-server  │ llama-embed │ Agent1 API │ Prometheus   │ Grafana  │
+│ :5432      │ :8080 (LLM)   │ :8081       │ :5000      │ :9090        │ :3000    │
+│ pgvector   │ Qwen3-8B      │ nomic-embed │ .NET 8     │ 指标采集      │ 仪表盘   │
+│ 化学品库    │ CUDA 加速     │ CUDA 加速   │ JWT + 限流 │ 录制规则      │ JSON 面板 │
+└────────────┴───────────────┴─────────────┴────────────┴──────────────┴──────────┘
 ```
 
-> **Windows 注意**：无 GPU 直通，模型文件需手动放入 `models/` 目录。无模型时仍可启动 `postgres api prometheus grafana` 做 Mock 测试。详见部署文档。
+#### 快速启动
+
+```bash
+# 1. 准备模型文件（放入 models/ 目录）
+#    - Qwen_Qwen3-8B-Q4_K_M.gguf（~4.7GB）
+#    - nomic-embed-text-v1.5.f16.gguf（~274MB）
+
+# 2. 构建服务镜像（首次 30~90 分钟，含 llama.cpp CUDA 编译）
+docker compose build llama-server llama-embed api
+
+# 3. 拉取基础镜像 + 启动全部服务
+docker compose up -d
+
+# 4. 验证服务状态
+docker compose ps
+curl http://localhost:5000/health/live
+```
+
+#### ARM64 部署注意事项
+
+- **GPG 密钥**：ARM64 CUDA/Debian 基础镜像可能缺失 APT 签名密钥，Dockerfile 已内置 `--allow-unauthenticated` 降级策略
+- **libcuda.so.1**：devel 镜像仅含 stub，Dockerfile.llama 在 cmake 前自动建立符号链接
+- **模型命名**：`docker-compose.yml` 与 `Dockerfile.llama` 中的模型文件名需与实际文件一致
+
+#### GPU 配置（docker-compose.yml）
+
+`llama-server` 和 `llama-embed` 服务的 GPU 资源预留已默认启用，LLM 服务完整配置：
+
+```yaml
+command:
+  - "-m"  - "/models/Qwen_Qwen3-8B-Q4_K_M.gguf"
+  - "-c"  - "32768"          # 4x 扩容上下文
+  - "--cache-type-k" - "q8_0"
+  - "--cache-type-v" - "q8_0"
+  - "-fa"                     # Flash Attention
+  - "-sps" - "0.0"           # 禁用 Slot 复用（T13 无状态评测必需）
+```
+
+#### 清理命令
+
+```bash
+docker compose down -v --rmi all --remove-orphans   # 删容器+镜像+数据卷
+docker builder prune -af                             # 清构建缓存
+docker system prune -af                              # 清悬空资源
+rm -rf /root/agent-deploy                            # 删项目目录（含模型）
+```
 
 ### API 端点
 
@@ -746,12 +795,24 @@ MIT License
 
 ---
 
-**文档版本**：v4.13  
-**最后更新**：2026年7月3日  
+**文档版本**：v4.14  
+**最后更新**：2026年7月6日  
 **分支**：`linux原生编译模型llama.cpp`  
-**状态**：双通道解耦架构 v4.0 (对话+评测双路径) | E023 评测路径补全 T13 验证通过 | CI/CD 全线通过 | Docker 镜像推送 GHCR | T13 无状态评测架构 | 零失误架构 v2.0 | 容器化 (llama.cpp)
+**状态**：双通道解耦架构 v4.1 | Docker 6 服务 ARM64/x86_64 双架构验证通过 | E023 评测路径补全 T13 验证通过 | CI/CD 全线通过 | Docker 镜像推送 GHCR | T13 无状态评测架构 | 零失误架构 v2.0
 
 ## 📋 近期更新
+
+### Docker 容器化 ARM64/x86_64 双架构部署验证通过（2026-07-06）★ v4.1
+- **服务架构**：6 容器编排 — PostgreSQL(pgvector) + llama-server(LLM) + llama-embed + Agent1 API(.NET 8) + Prometheus + Grafana
+- **双架构验证**：ARM64 (NVIDIA A100, Ubuntu 22.04) 完整部署通过，含所有镜像构建→容器启动→健康检查
+- **ARM64 修复**：Dockerfile.llama 新增 GPG 密钥修复（`--allow-unauthenticated`）+ libcuda.so.1 stub 符号链接 + NVIDIA 源清理
+- **Dockerfile**：API 服务 ARM64 GPG 密钥修复
+- **docker-compose.yml**：LLM 服务参数优化（`-c 32768` / KV Cache q8_0 量化 / Flash Attention / `-sps 0.0`）
+- **模型命名规范**：统一为 `Qwen_Qwen3-8B-Q4_K_M.gguf` + `nomic-embed-text-v1.5.f16.gguf`
+- **GPU 配置**：默认启用 NVIDIA GPU 设备预留，开箱即用
+- **.dockerignore**：清理编码污染，重构排除规则
+- **清理命令**：提供完整一键清理命令（容器+镜像+数据卷+构建缓存+项目目录）
+- **文件**：6 files changed | 已在 ARM64 生产服务器完整验证
 
 ### 双通道解耦架构 — 零幻觉法规引用输出（2026-07-03）★ v4.0
 - **核心设计**：LLM 与确定性代码彻底分层 — 法规引用归代码（100% 确定），推理分析归 LLM（专业解读）
