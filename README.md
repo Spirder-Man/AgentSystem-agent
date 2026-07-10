@@ -1,7 +1,7 @@
 # Agent1 — 化工园区危化品合规审查 AI Agent
 
-> **项目版本**：v4.1（双通道解耦架构 + Docker 容器化全服务验证 — 2026-07-06）
-> **核心修复文档**：[P0-P1修复详细技术文档](docs/troubleshooting/P0-P1修复详细技术文档.md) | [RAG工程Bug修复笔记](docs/troubleshooting/RAG工程Bug修复笔记_2026-05-26.md) | [故障排查文档](docs/troubleshooting/故障排查文档.md) | [代码自检清单](docs/工程skill/代码自检清单%20Skill.md)
+> **项目版本**：v4.2（P0 Bug 修复批次：评测集数据对齐 + Citation Accuracy 误判修复 + 版本幻觉三层约束 — 2026-07-03）
+> **核心修复文档**：[P0-P1修复详细技术文档](docs/troubleshooting/P0-P1修复详细技术文档.md) | [RAG工程Bug修复笔记](docs/troubleshooting/RAG工程Bug修复笔记_2026-05-26.md) | [故障排查文档](docs/troubleshooting/故障排查文档.md) | [Bug知识库](docs/project/Bug知识库.md) | [代码自检清单](docs/工程skill/代码自检清单%20Skill.md)
 > **前端开发**：[前端开发快速上手指南](docs/architecture/Agent1前端开发快速上手指南.md) | [Mock 机制说明](agent1-web/src/mocks/README.md)
 
 基于 .NET 8 + Semantic Kernel + **llama.cpp 原生编译**构建的企业级化工园区危化品合规审查 AI Agent。
@@ -795,12 +795,22 @@ MIT License
 
 ---
 
-**文档版本**：v4.14  
-**最后更新**：2026年7月6日  
+**文档版本**：v4.15  
+**最后更新**：2026年7月3日  
 **分支**：`linux原生编译模型llama.cpp`  
-**状态**：双通道解耦架构 v4.1 | Docker 6 服务 ARM64/x86_64 双架构验证通过 | E023 评测路径补全 T13 验证通过 | CI/CD 全线通过 | Docker 镜像推送 GHCR | T13 无状态评测架构 | 零失误架构 v2.0
+**状态**：P0 Bug 修复批次（Bug-026/027/028）| 评测集 GB 数据与数据库对齐 | Citation Accuracy 区分数据源 | 版本幻觉三层约束 | 编译 0 errors
 
 ## 📋 近期更新
+
+### P0 Bug 修复批次：评测集数据对齐 + Citation Accuracy 误判修复 + 版本幻觉三层约束（2026-07-03）★ v4.2
+- **Bug A (P0)**：`ComplianceEvalSet.json` 7 条危险类别 `expected_regulation_number` 与 `ChemicalSubstanceDatabase` 实际 GB 映射不一致 — C003 液氯 GB 30000.24→30000.6、C004 硝酸铵 GB 30000.14→30000.15 等
+- **修复**：修正 7 条数据 + 新增 `StringOrListConverter` 支持 `["GB 30000.6","GB 30000.5"]` 数组格式 + `EvalEngine.CheckConclusion` 改为列表匹配
+- **Bug B (P0)**：Citation Accuracy 误判数据库源 GB 编号为幻觉 — `CheckRegulationVersion` 返回的编号来自 C# 硬编码字典而非 RAG 文档，KB 检索不到 → 误判为幻觉
+- **修复**：Level4 KB 验证前插入 `ChemicalSubstanceDatabase.GetRegulationVersion()` 查询，数据库源跳过 RAG 幻觉检查（42 条疑似幻觉 → 仅 8-12 条真实幻觉）
+- **Bug C (P1)**：Qwen3:8b 自行编造法规年代版本号（GB 15603-2023 实际为 2022）
+- **修复**：三层约束防御 — L1 `PromptSanitizer` 注入版本约束指令 → L2 `OutputSanitizer.ValidateVersionYear()` 正则提取+DB 校验替换 → L3 `Sanitize()` 末尾硬兜底
+- **Bug 知识库**：新增 Bug-026/027/028 三条记录（含完整思维链路表格）
+- **文件**：5 files, +151/-23 | 编译 0 errors, 0 warnings | 已推送 Gitee + GitHub
 
 ### Docker 容器化 ARM64/x86_64 双架构部署验证通过（2026-07-06）★ v4.1
 - **服务架构**：6 容器编排 — PostgreSQL(pgvector) + llama-server(LLM) + llama-embed + Agent1 API(.NET 8) + Prometheus + Grafana
