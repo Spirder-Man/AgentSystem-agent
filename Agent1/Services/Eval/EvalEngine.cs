@@ -232,26 +232,40 @@ public class EvalEngine
                             var toolResult = matchedCall?.Result;
                             result.conclusion_match = CheckConclusion(response, tc.ExpectedConclusion, result.tool_match, tc.Category, tc.Intent, toolResult);
                             var isInfoQ = (tc.Intent ?? "") == "info_query";
-                            Console.WriteLine($"      {(result.conclusion_match ? "✅" : "⚠️")} 结论: {(isInfoQ ? $"reg={tc.ExpectedConclusion.ExpectedRegulationNumber ?? "?"}" : $"is_compliant={tc.ExpectedConclusion.IsCompliant}")}");
+                            var regDisplay = tc.ExpectedConclusion.ExpectedRegulationNumbers.Count > 1
+                                ? $"reg=[{string.Join(", ", tc.ExpectedConclusion.ExpectedRegulationNumbers)}]"
+                                : $"reg={tc.ExpectedConclusion.ExpectedRegulationNumber ?? "?"}";
+                            Console.WriteLine($"      {(result.conclusion_match ? "✅" : "⚠️")} 结论: {(isInfoQ ? regDisplay : $"is_compliant={tc.ExpectedConclusion.IsCompliant}")}");
 
                             // [P1 FIX] Level 4 补充: KB-based extra reg hallucination 计数
-                            if (result.conclusion_match && isInfoQ && !string.IsNullOrEmpty(tc.ExpectedConclusion?.ExpectedRegulationNumber))
+                            if (result.conclusion_match && isInfoQ && tc.ExpectedConclusion!.ExpectedRegulationNumbers.Count > 0)
                             {
                                 try
                                 {
                                     var allRegs = ConclusionVerifier.ExtractRegulations(response);
-                                    var expectedReg = tc.ExpectedConclusion.ExpectedRegulationNumber;
-                                    var extraRegs = allRegs.Where(r => !CheckRegulationMatch(r, expectedReg)).ToList();
+                                    var expectedRegs = tc.ExpectedConclusion.ExpectedRegulationNumbers;
+                                    var extraRegs = allRegs.Where(r => !expectedRegs.Any(e => CheckRegulationMatch(r, e))).ToList();
 
+                                    var expectedDisplay = expectedRegs.Count > 1 ? $"[{string.Join(", ", expectedRegs)}]" : expectedRegs[0];
                                     result.ConclusionReasons = new List<ConclusionReason>
                                     {
-                                        new ConclusionReason { Level = "Level4_HallucinationCheck", RuleApplied = $"提取{allRegs.Count}个GB编号, 预期={expectedReg}", Passed = true }
+                                        new ConclusionReason { Level = "Level4_HallucinationCheck", RuleApplied = $"提取{allRegs.Count}个GB编号, 预期={expectedDisplay}", Passed = true }
                                     };
 
                                     foreach (var reg in extraRegs)
                                     {
                                         try
                                         {
+                                            // [P0 FIX] Bug B: 数据库源GB编号不应被误判为幻觉
+                                            // CheckRegulationVersion 返回的 GB 编号来自 ChemicalSubstanceDatabase 硬编码字典，
+                                            // 非 RAG 文档。若知识库检索不到但数据库中存在，视为合法引用，不计入幻觉。
+                                            var dbRegVersion = ChemicalSubstanceDatabase.GetRegulationVersion(reg);
+                                            if (dbRegVersion != null)
+                                            {
+                                                Console.WriteLine($"      🔍 Level4 KB验证: ⚡ {reg} → 数据库源（非RAG），跳过幻觉检查 (版本:{dbRegVersion.CurrentVersion})");
+                                                continue;
+                                            }
+
                                             var chunks = await _knowledgeBaseService.RetrieveChemicalRegulationAsync(reg, regulationType: "国标", topK: 1);
                                             if (chunks.Count == 0)
                                             {
@@ -1096,25 +1110,28 @@ public class EvalEngine
                 return false;
             }
 
-            if (!string.IsNullOrEmpty(expected.ExpectedRegulationNumber))
+            if (expected.ExpectedRegulationNumbers.Count > 0)
             {
-                // [P1 FIX] Level 4: 反向幻觉扣除
-                // 提取回答中所有 GB 编号，验证预期编号是否在列表中
+                // [P1 FIX] Level 4: 反向幻觉扣除（支持数组格式预期值）
+                // 提取回答中所有 GB 编号，验证预期编号列表中至少一个在回答中
                 var allRegs = ConclusionVerifier.ExtractRegulations(response);
+                var expectedRegs = expected.ExpectedRegulationNumbers;
                 if (allRegs.Count > 0)
                 {
-                    // 回答中有 GB 编号 → 检查预期编号是否存在
-                    var hasExpected = allRegs.Any(r => CheckRegulationMatch(r, expected.ExpectedRegulationNumber));
+                    // 回答中有 GB 编号 → 检查是否有任一预期编号匹配
+                    var hasExpected = expectedRegs.Any(e => allRegs.Any(r => CheckRegulationMatch(r, e)));
                     if (!hasExpected)
                     {
-                        Console.WriteLine($"      🔍 Level4 幻觉扣除: 回答含 {allRegs.Count} 个GB编号但无预期 {expected.ExpectedRegulationNumber}");
+                        var expectedDisplay = expectedRegs.Count > 1 ? $"[{string.Join(", ", expectedRegs)}]" : expectedRegs[0];
+                        Console.WriteLine($"      🔍 Level4 幻觉扣除: 回答含 {allRegs.Count} 个GB编号但预期 {expectedDisplay} 均不匹配");
                         return false;
                     }
-                    Console.WriteLine($"      ✅ Level4: 预期编号 {expected.ExpectedRegulationNumber} 在回答的 {allRegs.Count} 个GB编号中");
+                    var matchedDisplay = expectedRegs.Count > 1 ? $"[{string.Join(", ", expectedRegs)}]" : expectedRegs[0];
+                    Console.WriteLine($"      ✅ Level4: 预期编号 {matchedDisplay} 至少一个在回答的 {allRegs.Count} 个GB编号中");
                     return true;
                 }
                 // 回答中没有 GB 编号 → 降级到子串匹配
-                return CheckRegulationMatch(response, expected.ExpectedRegulationNumber);
+                return expectedRegs.Any(e => CheckRegulationMatch(response, e));
             }
 
             var hasDistance = Regex.IsMatch(response, @"(\d+(?:\.\d+)?)\s*(米|m)");
