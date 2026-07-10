@@ -19,6 +19,11 @@ namespace Agent1.Services
             @"GB\s*/?T?\s*\d{4,5}(?:[.\-]\d+(?:\.\d+)?)?(?:\s*-\s*\d{4})?",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+        /// <summary>[P1 FIX] Bug C: 匹配 GB 编号+年代版本号的完整模式（如 GB 15603-2023）</summary>
+        private static readonly Regex GbWithYearRegex = new(
+            @"(GB\s*/?T?\s*\d{4,5}(?:[.\-]\d+(?:\.\d+)?)?)\s*-\s*(\d{4})",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
         /// <summary>匹配条款号模式</summary>
         private static readonly Regex ClauseRegex = new(
             @"第\d+(?:\.\d+)*条",
@@ -93,6 +98,9 @@ namespace Agent1.Services
             sanitized = Regex.Replace(sanitized, @"\n{3,}", "\n\n");
             sanitized = sanitized.Trim();
 
+            // [P1 FIX] Bug C: 6. 硬校验 GB 编号的年代版本号
+            sanitized = ValidateVersionYear(sanitized);
+
             return sanitized;
         }
 
@@ -158,6 +166,69 @@ namespace Agent1.Services
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// [P1 FIX] Bug C: 校验输出中所有 GB 编号的年代版本号。
+        /// 将 LLM 生成的版本号（如 -2023）替换为 ChemicalSubstanceDatabase 中记录的
+        /// 正确版本号（如 -2022）。若数据库中无此法规记录，则剥离年份后缀。
+        /// </summary>
+        public static string ValidateVersionYear(string sanitized)
+        {
+            if (string.IsNullOrWhiteSpace(sanitized))
+                return sanitized;
+
+            return GbWithYearRegex.Replace(sanitized, match =>
+            {
+                var gbNumber = match.Groups[1].Value; // 如 "GB 15603"
+                var yearText = match.Groups[2].Value; // 如 "2023"
+
+                // 规范化 GB 编号用于数据库查询
+                var normalizedGb = NormalizeGbNumber(gbNumber).Replace(" ", "");
+
+                try
+                {
+                    var regVersion = ChemicalSubstanceDatabase.GetRegulationVersion(normalizedGb);
+                    if (regVersion != null)
+                    {
+                        var dbYear = ExtractYear(regVersion.CurrentVersion);
+                        if (dbYear.HasValue && int.TryParse(yearText, out var llmYear))
+                        {
+                            if (llmYear == dbYear.Value)
+                            {
+                                // 年份正确 → 保留原文
+                                return match.Value;
+                            }
+                            // 年份错误 → 强制替换为数据库版本
+                            Console.WriteLine($"      🔧 版本校正: {gbNumber}-{yearText} → {gbNumber}-{dbYear.Value} (数据库: {regVersion.CurrentVersion})");
+                            return $"{gbNumber}-{dbYear.Value}";
+                        }
+                    }
+
+                    // 数据库中无此法规记录 → 剥离年份后缀，只保留法规编号
+                    Console.WriteLine($"      🔧 剥离未知版本: {match.Value} → {gbNumber} (数据库无记录)");
+                    return gbNumber;
+                }
+                catch
+                {
+                    // 数据库查询异常 → 安全处理：剥离年份
+                    return gbNumber;
+                }
+            });
+        }
+
+        /// <summary>从版本字符串（如 "现行2022版"）中提取年份</summary>
+        private static int? ExtractYear(string versionText)
+        {
+            if (string.IsNullOrWhiteSpace(versionText))
+                return null;
+
+            var yearMatch = Regex.Match(versionText, @"\b(\d{4})\b");
+            if (yearMatch.Success && int.TryParse(yearMatch.Groups[1].Value, out var year)
+                && year >= 1990 && year <= 2099)
+                return year;
+
+            return null;
         }
     }
 }

@@ -1,6 +1,29 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Agent1.Models;
+
+/// <summary>
+/// JSON 转换器：兼容 "GB 30000.7"(string) 和 ["GB 30000.6","GB 30000.5"](array) 两种格式。
+/// </summary>
+public class StringOrListConverter : JsonConverter<List<string>>
+{
+    public override List<string>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        return reader.TokenType switch
+        {
+            JsonTokenType.String => new List<string> { reader.GetString()! },
+            JsonTokenType.StartArray => JsonSerializer.Deserialize<List<string>>(ref reader, options),
+            JsonTokenType.Null => null,
+            _ => throw new JsonException($"expected_regulation_number 不支持的类型: {reader.TokenType}")
+        };
+    }
+
+    public override void Write(Utf8JsonWriter writer, List<string> value, JsonSerializerOptions options)
+    {
+        JsonSerializer.Serialize(writer, value, options);
+    }
+}
 
 /// <summary>
 /// 评测数据模型 — 从 Program.cs 内联类迁移为独立公共模型。
@@ -84,8 +107,14 @@ public class EvalConclusion
     [JsonPropertyName("regulation")]
     public string Regulation { get; set; } = "";
 
+    /// <summary>预期法规编号列表（兼容字符串和数组两种 JSON 格式）</summary>
     [JsonPropertyName("expected_regulation_number")]
-    public string? ExpectedRegulationNumber { get; set; }
+    [JsonConverter(typeof(StringOrListConverter))]
+    public List<string> ExpectedRegulationNumbers { get; set; } = new();
+
+    /// <summary>向后兼容：返回列表第一个元素，空列表返回 null</summary>
+    [JsonIgnore]
+    public string? ExpectedRegulationNumber => ExpectedRegulationNumbers.Count > 0 ? ExpectedRegulationNumbers[0] : null;
 
     [JsonPropertyName("expected_clause")]
     public string? ExpectedClause { get; set; }
@@ -101,7 +130,7 @@ public class EvalConclusion
 
     [JsonIgnore] public bool? is_compliant { get => IsCompliant; set => IsCompliant = value; }
     [JsonIgnore] public string regulation { get => Regulation; set => Regulation = value; }
-    [JsonIgnore] public string? expected_regulation_number { get => ExpectedRegulationNumber; set => ExpectedRegulationNumber = value; }
+    [JsonIgnore] public string? expected_regulation_number { get => ExpectedRegulationNumber; set { ExpectedRegulationNumbers.Clear(); if (value != null) ExpectedRegulationNumbers.Add(value); } }
     [JsonIgnore] public string? expected_clause { get => ExpectedClause; set => ExpectedClause = value; }
     [JsonIgnore] public string? expected_reason_keyword { get => ExpectedReasonKeyword; set => ExpectedReasonKeyword = value; }
     [JsonIgnore] public double? expected_distance { get => ExpectedDistance; set => ExpectedDistance = value; }

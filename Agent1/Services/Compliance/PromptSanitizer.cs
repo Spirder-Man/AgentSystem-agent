@@ -62,7 +62,8 @@ namespace Agent1.Services
         }
 
         /// <summary>
-        /// 消毒完整的 System Role prompt —— 移除要求 LLM 输出法规编号的指令。
+        /// 消毒完整的 System Role prompt —— 移除要求 LLM 输出法规编号的指令，
+        /// 并注入版本约束（禁止 LLM 自行推断法规年代版本号）。
         /// </summary>
         /// <param name="systemPrompt">原始 System Role prompt</param>
         /// <returns>消毒后的 prompt（不含要求法规引用的指令）</returns>
@@ -89,6 +90,16 @@ namespace Agent1.Services
                 @"【法规依据】",
                 "【专业解读】",
                 RegexOptions.Compiled);
+
+            // [P1 FIX] Bug C: 注入版本约束 —— 禁止 LLM 推断法规的年代版本号
+            // 法规版本号（如 GB 15603-2022 中的 2022）必须由系统从 ChemicalSubstanceDatabase
+            // 中查询。LLM 只负责输出法规编号（如 GB 15603），不得追加年份后缀。
+            if (!sanitized.Contains("禁止输出法规年代版本号"))
+            {
+                sanitized += "\n\n【合规约束】法规版本号（如 -2022、-2018）由系统从数据库自动查询获取。" +
+                    "你只输出法规编号（如 GB 15603、GB 30000.7），禁止在编号后追加年代版本号（如 -2023）。" +
+                    "若需引用法规版本信息，请使用工具查询，不要自行推断。";
+            }
 
             return sanitized;
         }
