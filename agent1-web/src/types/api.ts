@@ -4,6 +4,12 @@
 
 // ── Auth 认证 ──
 
+/** 用户角色 — 对齐后端 Program.cs 授权策略:
+ *  Admin   = admin only
+ *  Auditor = admin + auditor (所有业务 Controller 实际使用的策略)
+ *  Viewer  = admin + auditor + viewer (已定义但当前无 Controller 使用) */
+export type UserRole = 'admin' | 'auditor' | 'viewer';
+
 export interface LoginRequest {
   username: string;
   password: string;
@@ -13,7 +19,7 @@ export interface LoginResponse {
   token: string;
   refreshToken: string;
   username: string;
-  role: 'admin' | 'auditor' | 'viewer';
+  role: UserRole;
   expiresAt: string; // ISO 8601
 }
 
@@ -200,12 +206,22 @@ export interface QuickCheckResult {
 
 // ── Tickets 工单 ──
 
+/** 工单状态 — 对齐后端 TicketFollowupModule.TicketStatus 枚举 */
+export type TicketStatus =
+  | 'New'
+  | 'Accepted'
+  | 'InProgress'
+  | 'Completed'
+  | 'Verified'
+  | 'Closed'
+  | 'Rejected';
+
 export interface TicketItem {
   id: number;
   issue: string;
   action: string;
   priority: string;
-  status: string;
+  status: TicketStatus;
   assignee: string;
   regulationRef: string;
   suggestedDeadline: string;

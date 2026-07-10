@@ -1,5 +1,8 @@
 // ============================================================
 // 整改工单 Mock 数据
+// 状态值对齐后端 TicketFollowupModule.TicketStatus 枚举:
+//   New → Accepted → InProgress → Completed → Verified
+//   New → Rejected   Accepted/InProgress → Closed
 // ============================================================
 
 import type { TicketListResponse, TicketItem } from '../../types/api';
@@ -22,7 +25,7 @@ export const mockTickets: TicketItem[] = [
     issue: '甲醇存量超临界量80%',
     action: '降低甲醇存量至临界量500吨的50%以下，或提交重大危险源备案',
     priority: 'High',
-    status: 'Confirmed',
+    status: 'Accepted',
     assignee: '李四',
     regulationRef: 'GB 18218-2018',
     suggestedDeadline: '2026-07-01T00:00:00Z',
@@ -38,7 +41,7 @@ export const mockTickets: TicketItem[] = [
     assignee: '王五',
     regulationRef: 'GB 50016 §7.1.8',
     suggestedDeadline: '2026-07-15T00:00:00Z',
-    isOpen: false,
+    isOpen: true,
     logCount: 2,
   },
   {
@@ -46,7 +49,7 @@ export const mockTickets: TicketItem[] = [
     issue: '甲类仓库通风系统老化',
     action: '更换甲类仓库A区和B区的防爆通风机，确保换气次数 ≥ 12次/小时',
     priority: 'High',
-    status: 'Confirmed',
+    status: 'Accepted',
     assignee: '张三',
     regulationRef: 'GB 15603-2022 §5.1.3',
     suggestedDeadline: '2026-07-10T00:00:00Z',
@@ -74,18 +77,19 @@ export const mockTicketList: TicketListResponse = {
 };
 
 // ── 状态流转引擎 ──
-// New → Confirmed → InProgress → Remediated → VerifiedClosed
-//                    ↘ Closed (无效工单)
-// New → FalsePositive
+// 对齐后端 TicketFollowupModule.TicketItem 状态机:
+//   New → Accepted → InProgress → Completed → Verified
+//   New → Rejected
+//   Accepted/InProgress → Closed
 
 const stateTransitions: Record<string, string[]> = {
-  New: ['Confirmed', 'FalsePositive'],
-  Confirmed: ['InProgress', 'Closed'],
-  InProgress: ['Remediated', 'Closed'],
-  Remediated: ['VerifiedClosed'],
-  VerifiedClosed: [],
+  New: ['Accepted', 'Rejected'],
+  Accepted: ['InProgress', 'Closed'],
+  InProgress: ['Completed', 'Closed'],
+  Completed: ['Verified'],
+  Verified: [],
   Closed: [],
-  FalsePositive: [],
+  Rejected: [],
 };
 
 export function applyTicketStatusUpdate(
@@ -99,25 +103,25 @@ export function applyTicketStatusUpdate(
   const allowedNext = stateTransitions[ticket.status];
   if (!allowedNext) return null;
 
-  // action → 目标状态映射
+  // action → 目标状态映射 (对齐后端 TicketsController.UpdateStatus)
   const actionToStatus: Record<string, string> = {
-    accept: 'Confirmed',
+    accept: 'Accepted',
     start: 'InProgress',
-    complete: 'Remediated',
-    verify: 'VerifiedClosed',
+    complete: 'Completed',
+    verify: 'Verified',
     close: 'Closed',
-    reject: 'FalsePositive',
+    reject: 'Rejected',
   };
 
   const newStatus = actionToStatus[action];
   if (!newStatus || !allowedNext.includes(newStatus)) return null;
 
-  ticket.status = newStatus;
+  ticket.status = newStatus as TicketItem['status'];
   ticket.logCount += 1;
   if (assignee) ticket.assignee = assignee;
 
-  // 终态工单关闭 isOpen
-  if (['VerifiedClosed', 'Closed', 'FalsePositive'].includes(newStatus)) {
+  // 终态工单关闭 isOpen (Verified / Closed / Rejected)
+  if (['Verified', 'Closed', 'Rejected'].includes(newStatus)) {
     ticket.isOpen = false;
   }
 
