@@ -10,16 +10,18 @@ class Program
     const int WarmupRequests = 3;
     static int MeasureRequests = 20;
     static int Concurrency = 10;
+    static bool JsonOutput = false;
 
     static string? _token = null;
     static string? _refreshToken = null;
 
     static async Task Main(string[] args)
     {
-        // CLI: dotnet run -- [concurrency] [requests] [baseUrl]
+        // CLI: dotnet run -- [concurrency] [requests] [baseUrl] [--json]
         if (args.Length > 0) int.TryParse(args[0], out Concurrency);
         if (args.Length > 1) int.TryParse(args[1], out MeasureRequests);
         if (args.Length > 2) BaseUrl = args[2];
+        JsonOutput = args.Contains("--json");
 
         Concurrency = Math.Clamp(Concurrency, 1, 100);
         MeasureRequests = Math.Clamp(MeasureRequests, 1, 1000);
@@ -59,6 +61,9 @@ class Program
         if (_token != null)
         {
             results.Add(await RunBenchmark(http, "compliance/check", "POST", "/api/compliance/check", """{"query":"benzene safety requirements"}""", useAuth: true));
+            results.Add(await RunBenchmark(http, "hazard/query", "POST", "/api/compliance/hazard/query", """{"query":"benzene hazard class"}""", useAuth: true));
+            results.Add(await RunBenchmark(http, "storage/compat", "POST", "/api/compliance/storage/compatibility", """{"query":"benzene and acetone"}""", useAuth: true));
+            results.Add(await RunBenchmark(http, "admin/config/decoupled", "GET", "/admin/config/decoupled-architecture", useAuth: true));
             results.Add(await RunBenchmark(http, "cache/stats", "GET", "/cache/stats", useAuth: true));
             results.Add(await RunBenchmark(http, "memory/stats", "GET", "/memory/stats", useAuth: true));
         }
@@ -67,19 +72,48 @@ class Program
         Console.WriteLine("\n========================================");
         Console.WriteLine(" SUMMARY");
         Console.WriteLine("========================================");
-        Console.WriteLine($"{"Endpoint",-22} {"OK",5} {"FAIL",5} {"QPS",7} {"Avg",8} {"P95",8} {"P99",8} {"Min",6} {"Max",6}");
-        Console.WriteLine(new string('-', 80));
+        Console.WriteLine($"{"Endpoint",-24} {"OK",5} {"FAIL",5} {"QPS",7} {"Avg",8} {"P50",8} {"P95",8} {"P99",8} {"Min",6} {"Max",6}");
+        Console.WriteLine(new string('-', 90));
 
         int totalOk = 0, totalFail = 0;
-        foreach (var r in results)
+ foreach (var r in results)
         {
-            Console.WriteLine($"{r.Name,-22} {r.Ok,5} {r.Fail,5} {r.Qps,6:F1} {r.Avg,7:F1}ms {r.P95,7:F1}ms {r.P99,7:F1}ms {r.Min,5:F0}ms {r.Max,5:F0}ms");
+            Console.WriteLine($"{r.Name,-24} {r.Ok,5} {r.Fail,5} {r.Qps,6:F1} {r.Avg,7:F1}ms {r.P50,7:F1}ms {r.P95,7:F1}ms {r.P99,7:F1}ms {r.Min,5:F0}ms {r.Max,5:F0}ms");
             totalOk += r.Ok;
             totalFail += r.Fail;
         }
-        Console.WriteLine(new string('-', 80));
-        Console.WriteLine($"{"TOTAL",-22} {totalOk,5} {totalFail,5}");
-        Console.WriteLine("========================================");
+        Console.WriteLine(new string('-', 90));
+        Console.WriteLine($"{"TOTAL",-24} {totalOk,5} {totalFail,5}");
+        Console.WriteLine("========================================\n");
+
+        // JSON baseline output (用于 CI 版本化管理)
+        if (JsonOutput)
+        {
+            var baseline = new
+            {
+                timestamp = DateTime.UtcNow.ToString("o"),
+                target = BaseUrl,
+                concurrency = Concurrency,
+                requests = MeasureRequests,
+                results = results.Select(r => new
+                {
+                    endpoint = r.Name,
+                    ok = r.Ok,
+                    fail = r.Fail,
+                    qps = Math.Round(r.Qps, 1),
+                    avg_ms = Math.Round(r.Avg, 1),
+                    p50_ms = Math.Round(r.P50, 1),
+                    p95_ms = Math.Round(r.P95, 1),
+                    p99_ms = Math.Round(r.P99, 1),
+                    min_ms = (int)r.Min,
+                    max_ms = (int)r.Max
+                })
+            };
+            var json = System.Text.Json.JsonSerializer.Serialize(baseline, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            var baselinePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "baseline.json");
+            File.WriteAllText(baselinePath, json);
+            Console.WriteLine($"[BASELINE] 已写入: {baselinePath}");
+        }
     }
 
     static async Task<LatencyStats> RunBenchmark(HttpClient http, string name, string method, string endpoint, string? body = null, bool useAuth = false)

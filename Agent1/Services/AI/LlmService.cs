@@ -385,6 +385,7 @@ namespace Agent1.Services
             EnableThinking = true;
             var sw = Stopwatch.StartNew();
             int retries = 0;
+            MetricsCollector.IncrementLlmActiveRequests();
             try
             {
                 Exception lastException = null;
@@ -433,6 +434,7 @@ namespace Agent1.Services
             finally
             {
                 EnableThinking = previousThinking;
+                MetricsCollector.DecrementLlmActiveRequests();
             }
         }
 
@@ -803,6 +805,7 @@ namespace Agent1.Services
                 _consecutiveFailures = 0;
                 _circuitOpenTime = null;
             }
+            MetricsCollector.SetCircuitBreakerOpen(false);
         }
 
         private void RecordCircuitFailure()
@@ -820,6 +823,9 @@ namespace Agent1.Services
                     Console.WriteLine($"   ⚠️ [熔断器] 失败计数: {_consecutiveFailures}/{MaxConsecutiveFailures}");
                 }
             }
+            // 更新 Prometheus gauge
+            if (_consecutiveFailures >= MaxConsecutiveFailures)
+                MetricsCollector.SetCircuitBreakerOpen(true);
         }
 
         public async Task<(bool passed, int triggerCount, int totalCount, string detail)> RunFcReadinessCheckAsync()

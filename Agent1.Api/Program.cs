@@ -469,6 +469,29 @@ app.MapPost("/cache/clear", (ResponseCacheService cache) =>
 });
 
 // ═══════════════════════════════════════════════════
+// 管理配置端点 — 运行时热切换（无需重启）
+// ═══════════════════════════════════════════════════
+
+// 查询双通道解耦架构开关状态
+app.MapGet("/admin/config/decoupled-architecture", () =>
+{
+    var enabled = AppConfig.GetUseDecoupledArchitecture();
+    return Results.Ok(new { UseDecoupledArchitecture = enabled });
+});
+
+// 切换双通道解耦架构开关
+app.MapPost("/admin/config/decoupled-architecture", (DecoupledSwitchRequest request) =>
+{
+    var previous = AppConfig.SetUseDecoupledArchitecture(request.Enabled);
+    return Results.Ok(new
+    {
+        message = $"双通道解耦架构已{(request.Enabled ? "启用" : "禁用")}",
+        previous,
+        current = request.Enabled
+    });
+});
+
+// ═══════════════════════════════════════════════════
 // [P1] 告警测试端点 — 验证 SMTP 邮件通道是否打通
 // ═══════════════════════════════════════════════════
 app.MapPost("/alert/test", async (AlertDispatcher dispatcher, ILogger<Program> logger) =>
@@ -596,4 +619,9 @@ catch (Exception ex)
 }
     }
 }
+
+/// <summary>
+/// 双通道解耦架构热切换请求 DTO。
+/// </summary>
+public record DecoupledSwitchRequest(bool Enabled);
 

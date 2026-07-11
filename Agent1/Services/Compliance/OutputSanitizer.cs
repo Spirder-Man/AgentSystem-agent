@@ -50,6 +50,7 @@ namespace Agent1.Services
             if (string.IsNullOrWhiteSpace(llmOutput))
                 return llmOutput ?? "";
 
+            var originalLength = llmOutput.Length;
             var whitelist = NormalizeWhitelist(regulationWhitelist);
             var sanitized = llmOutput;
 
@@ -100,6 +101,10 @@ namespace Agent1.Services
 
             // [P1 FIX] Bug C: 6. 硬校验 GB 编号的年代版本号
             sanitized = ValidateVersionYear(sanitized);
+
+            // 记录移除的字符数（用于 Prometheus 监控）
+            var charsRemoved = originalLength - sanitized.Length;
+            MetricsCollector.RecordDecoupledPipelineCharsRemoved(charsRemoved);
 
             return sanitized;
         }

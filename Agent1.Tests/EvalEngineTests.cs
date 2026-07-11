@@ -128,7 +128,7 @@ public class EvalEngineTests
     public void CheckConclusion_InfoQuery_RegulationMatch_ReturnsTrue()
     {
         var response = "适用标准 GB 30000.2-2013，该物质属于易燃液体";
-        var expected = new EvalConclusion { ExpectedRegulationNumber = "GB 30000.2-2013" };
+        var expected = new EvalConclusion { ExpectedRegulationNumbers = new List<string> { "GB 30000.2-2013" } };
         EvalEngine.CheckConclusion(response, expected, toolTriggered: true, intent: "info_query")
             .Should().BeTrue();
     }

@@ -26,20 +26,20 @@ declare module 'vue-router' {
   }
 }
 
-// ── 页面懒加载 (占位符 — 页面组件逐步实现) ──
+// ── 页面懒加载 ──
 const LoginPage = () => import('@/pages/LoginPage.vue');
 const DashboardPage = () => import('@/pages/DashboardPage.vue');
 const ForbiddenPage = () => import('@/pages/ForbiddenPage.vue');
-// 以下页面尚未实现，使用统一的占位组件
-const CompliancePage = () => import('@/pages/PlaceholderPage.vue');
-const ComplianceHistoryPage = () => import('@/pages/PlaceholderPage.vue');
-const InspectionPlansPage = () => import('@/pages/PlaceholderPage.vue');
-const InspectionRoundsPage = () => import('@/pages/PlaceholderPage.vue');
-const TicketListPage = () => import('@/pages/PlaceholderPage.vue');
-const TicketDetailPage = () => import('@/pages/PlaceholderPage.vue');
-const AssetsPage = () => import('@/pages/PlaceholderPage.vue');
-const AuditPage = () => import('@/pages/PlaceholderPage.vue');
-const SettingsPage = () => import('@/pages/PlaceholderPage.vue');
+const CompliancePage = () => import('@/pages/ComplianceCheckPage.vue');
+const ComplianceHistoryPage = () => import('@/pages/ComplianceHistoryPage.vue');
+const TicketListPage = () => import('@/pages/TicketListPage.vue');
+// 以下页面尚未实现
+const InspectionPlansPage = () => import('@/pages/InspectionPlansPage.vue');
+const InspectionRoundsPage = () => import('@/pages/InspectionRoundsPage.vue');
+const TicketDetailPage = () => import('@/pages/TicketDetailPage.vue');
+const AssetsPage = () => import('@/pages/AssetsPage.vue');
+const AuditPage = () => import('@/pages/AuditPage.vue');
+const SettingsPage = () => import('@/pages/SettingsPage.vue');
 
 // ═══════════════════════════════════════
 // 路由表

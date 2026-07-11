@@ -6,6 +6,7 @@
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import AppSidebar from '@/components/layout/AppSidebar.vue';
+import GlobalLoadingBar from '@/components/common/GlobalLoadingBar.vue';
 
 const route = useRoute();
 
@@ -18,6 +19,8 @@ const showSidebar = computed(() => {
 </script>
 
 <template>
+  <GlobalLoadingBar />
+
   <!-- 无侧边栏: 登录页 / 403 等 -->
   <router-view v-if="!showSidebar" />
 

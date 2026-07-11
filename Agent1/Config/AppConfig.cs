@@ -148,6 +148,32 @@ namespace Agent1.Config
 
             return errors;
         }
+
+        /// <summary>
+        /// [运行时热切换] 动态切换双通道解耦架构开关。
+        /// 无需重启应用，所有后续请求立即生效。
+        /// 通过 admin API 端点调用：POST /admin/config/decoupled-architecture
+        /// </summary>
+        public static bool SetUseDecoupledArchitecture(bool enabled)
+        {
+            if (_instance == null)
+                throw new InvalidOperationException("AppConfig 尚未加载");
+            var previous = _instance.PromptTemplates.UseDecoupledArchitecture;
+            _instance.PromptTemplates.UseDecoupledArchitecture = enabled;
+            Serilog.Log.Information(
+                "[配置热切换] UseDecoupledArchitecture: {Previous} → {Current}",
+                previous, enabled);
+            return previous;
+        }
+
+        /// <summary>
+        /// [运行时查询] 获取当前双通道解耦架构开关状态。
+        /// </summary>
+        public static bool GetUseDecoupledArchitecture()
+        {
+            if (_instance == null) return true; // 默认启用
+            return _instance.PromptTemplates.UseDecoupledArchitecture;
+        }
     }
 
     // 化工场景专用LLM配置

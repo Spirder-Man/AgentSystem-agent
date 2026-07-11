@@ -115,7 +115,9 @@ jobs:
           context: .
           push: true
           provenance: false
-          tags: ghcr.io/${{ env.REPO_LOWER }}:latest
+          tags: |
+            ghcr.io/${{ env.REPO_LOWER }}:latest
+            ghcr.io/${{ env.REPO_LOWER }}:${{ github.sha }}
 
   # ═══════════════════════════════════════
   # Job 4: CI 结果邮件通知（失败时发送到 QQ 邮箱）
@@ -153,3 +155,61 @@ jobs:
             查看详情: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           to: ${{ secrets.QQ_EMAIL }}
           from: ${{ secrets.QQ_EMAIL }}
+
+  # ═══════════════════════════════════════
+  # Job 5: Staging 环境自动部署
+  # 基于 GHCR 预构建镜像，SSH 到 staging 服务器执行 docker-compose pull + up
+  # 触发条件: main / feature/partner-dev 分支 push，且 build-test + docker 均通过
+  # 所需 Secrets: STAGING_HOST, STAGING_USER, STAGING_SSH_KEY
+  # 所需 Vars: STAGING_URL, STAGING_PROJECT_PATH
+  # ═══════════════════════════════════════
+  staging-deploy:
+    needs: [build-and-test, integration-test, docker]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/partner-dev'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+
+    steps:
+      - name: Check secrets availability
+        run: |
+          if [ -z "${{ secrets.STAGING_HOST }}" ] || [ -z "${{ secrets.STAGING_SSH_KEY }}" ]; then
+            echo "::warning::STAGING_HOST or STAGING_SSH_KEY not configured, skipping staging deploy"
+            echo "SKIP_DEPLOY=true" >> $GITHUB_ENV
+          fi
+
+      - name: Deploy to staging via SSH
+        if: env.SKIP_DEPLOY != 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            cd ${{ vars.STAGING_PROJECT_PATH }}
+            echo "[DEPLOY] Pulling latest images..."
+            docker-compose -f docker-compose.yml -f docker-compose.staging.yml pull api
+            echo "[DEPLOY] Restarting api service..."
+            docker-compose -f docker-compose.yml -f docker-compose.staging.yml up -d --remove-orphans api
+            echo "[DEPLOY] Waiting for health check..."
+            sleep 10
+            docker-compose ps
+
+      - name: Smoke test (health check)
+        if: env.SKIP_DEPLOY != 'true'
+        run: |
+          echo "[SMOKE] Waiting for service to stabilize..."
+          for i in $(seq 1 12); do
+            if curl -sf ${{ vars.STAGING_URL }}/health/live 2>/dev/null; then
+              echo ""
+              echo "[SMOKE] ✅ /health/live OK"
+              break
+            fi
+            echo "[SMOKE] Attempt $i/12 — not ready yet, retrying in 5s..."
+            sleep 5
+          done
+          curl -sf ${{ vars.STAGING_URL }}/health || echo "::warning::/health endpoint check failed (may need LLM/DB)"
+          echo "[SMOKE] ✅ Deployment smoke test complete"

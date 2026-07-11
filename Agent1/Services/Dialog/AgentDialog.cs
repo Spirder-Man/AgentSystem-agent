@@ -2,6 +2,7 @@
 using Agent1.Config;
 using Agent1.Models;
 using Agent1.Modules;
+using Agent1.Services.Orchestration;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -18,6 +19,7 @@ namespace Agent1.Services
         private readonly IToolService _toolService;
         private readonly MemoryCoordinator? _memoryCoordinator;
         private readonly IAuditService _auditService;
+        private readonly DeterministicRuleEngine? _ruleEngine;
 
         /// <summary>最近一次化工合规执行的工具结果（供 Reflection 验证层使用）</summary>
         [Obsolete("请使用 ExecuteAsync 返回的 CliExecutionResult.ToolCalls。LastToolResults 仅保留向后兼容。")]
@@ -32,7 +34,8 @@ namespace Agent1.Services
             ILlmService llmService,
             IToolService toolService,
             IAuditService auditService,
-            MemoryCoordinator? memoryCoordinator = null)
+            MemoryCoordinator? memoryCoordinator = null,
+            DeterministicRuleEngine? ruleEngine = null)
         {
             _sessionService = sessionService;
             _memoryService = memoryService;
@@ -40,6 +43,7 @@ namespace Agent1.Services
             _toolService = toolService;
             _auditService = auditService;
             _memoryCoordinator = memoryCoordinator;
+            _ruleEngine = ruleEngine;
         }
 
         public SessionContext CreateSession(SessionType type)
@@ -357,9 +361,36 @@ namespace Agent1.Services
             Console.WriteLine("\n   【SK Auto Function Calling 模式】");
             Console.ForegroundColor = ConsoleColor.Blue;
             // 提示用户输入化工合规问题
-            var answer = await _llmService.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Blue, "化工合规");
+            string answer;
+            try
+            {
+                answer = await _llmService.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Blue, "化工合规");
+            }
+            catch (CircuitBreakerOpenException cbEx)
+            {
+                Console.WriteLine($"\n   🔴 熔断器打开: {cbEx.Message}");
+                var fallbackAnswer = TryFallbackToRuleEngine(input);
+                if (!string.IsNullOrEmpty(fallbackAnswer))
+                {
+                    _memoryService.ExtractAndStoreKeyFacts(input, fallbackAnswer);
+                    return (fallbackAnswer, new List<FunctionCallRecord>(), new List<string> { "LLM熔断，规则引擎接管" });
+                }
+                throw;
+            }
             Console.ResetColor();
             Console.WriteLine();
+
+            // LLM 返回错误消息时尝试降级
+            if (answer.StartsWith("生成失败"))
+            {
+                Console.WriteLine($"   ⚠️ LLM 调用失败，尝试规则引擎降级...");
+                var fallbackAnswer = TryFallbackToRuleEngine(input);
+                if (!string.IsNullOrEmpty(fallbackAnswer))
+                {
+                    _memoryService.ExtractAndStoreKeyFacts(input, fallbackAnswer);
+                    return (fallbackAnswer, new List<FunctionCallRecord>(), new List<string> { "LLM不可用，规则引擎接管" });
+                }
+            }
 
             // Phase 2a 验证: 从 LlmService 诊断记录同步工具调用
             var llmService = _llmService as LlmService;
@@ -388,23 +419,8 @@ namespace Agent1.Services
                 LastToolResults = new Dictionary<string, string>();
                 LastToolPlan = new ToolPlan { NeedsTools = false };
             }
-            // ★ 双通道解耦架构：事实提取 + LLM 输出消毒 + 合并（受 UseDecoupledArchitecture 开关控制）
-            if (AppConfig.Instance.PromptTemplates.UseDecoupledArchitecture)
-            {
-                var facts = ComplianceFactExtractor.Extract(toolCalls, isInfoQuery: false);
-                if (facts.HasAnyToolResult)
-                {
-                    // 消毒 LLM 输出中的法规引用（硬拦截）
-                    var sanitizedExplanation = OutputSanitizer.Sanitize(answer, facts.RegulationRefs);
-                    // 确定性事实渲染（不走 LLM）
-                    var factOutput = FactAssembler.Build(facts);
-                    // 合并双通道输出
-                    answer = ResponseMerger.Merge(factOutput, sanitizedExplanation);
-                    Serilog.Log.Information(
-                        "[DecoupledPipeline] 双通道合并 | 法规数={RegCount} | 事实通道={FactLen} | 解释通道={ExplLen}",
-                        facts.RegulationRefs.Count, factOutput.Length, sanitizedExplanation.Length);
-                }
-            }
+            // ★ 双通道解耦架构：统一入口（事实提取 + 消毒 + 事实渲染 + 合并）
+            answer = ApplyDecoupledPipeline(answer, toolCalls, isInfoQuery: false);
 
             // 提取并存储关键事实 input 和 answer 是提示模板的输入和输出
             _memoryService.ExtractAndStoreKeyFacts(input, answer);
@@ -485,7 +501,7 @@ namespace Agent1.Services
                 .Replace("{SystemRole}", t.SystemRole)
                 .Replace("{UserInput}", userInput);
 
-            return await ExecuteEvalInternalAsync(prompt, "评测");
+            return await ExecuteEvalInternalAsync(prompt, "评测", isInfoQuery: false, userInput);
         }
 
         /// <summary>
@@ -502,55 +518,91 @@ namespace Agent1.Services
                 .Replace("{SystemRole}", t.SystemRole)
                 .Replace("{UserInput}", userInput);
 
-            return await ExecuteEvalInternalAsync(prompt, "评测(信息查询)");
+            return await ExecuteEvalInternalAsync(prompt, "评测(信息查询)", isInfoQuery: true, userInput);
         }
 
         /// <summary>评测快速通道内部实现（流式优先，GPU 3090环境；非流式仅作CPU低算力降级）</summary>
-        private async Task<string> ExecuteEvalInternalAsync(string prompt, string stageName)
+        private async Task<string> ExecuteEvalInternalAsync(string prompt, string stageName, bool isInfoQuery, string? userInput = null)
         {
             Console.Write("   [流式] 调用中... ");
             var llmService = _llmService as LlmService;
             string answer;
 
-            if (llmService != null)
+            try
             {
-                // 主力路径：流式调用（GPU 3090 环境优先）
-                answer = await llmService.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Blue, stageName);
-
-                // 同步工具调用记录供评测器检查
-                if (llmService.LastFunctionCalls.Count > 0)
+                if (llmService != null)
                 {
-                    LastToolResults = new Dictionary<string, string>();
-                    foreach (var fc in llmService.LastFunctionCalls)
+                    // 主力路径：流式调用（GPU 3090 环境优先）
+                    answer = await llmService.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Blue, stageName);
+
+                    // 同步工具调用记录供评测器检查
+                    if (llmService.LastFunctionCalls.Count > 0)
                     {
-                        LastToolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
+                        LastToolResults = new Dictionary<string, string>();
+                        foreach (var fc in llmService.LastFunctionCalls)
+                        {
+                            LastToolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
+                        }
+                        LastToolPlan = new ToolPlan
+                        {
+                            NeedsTools = true,
+                            ToolNames = llmService.LastFunctionCalls.Select(fc => fc.FunctionName).ToList()
+                        };
                     }
-                    LastToolPlan = new ToolPlan
+                    else
                     {
-                        NeedsTools = true,
-                        ToolNames = llmService.LastFunctionCalls.Select(fc => fc.FunctionName).ToList()
-                    };
+                        LastToolResults = new Dictionary<string, string>();
+                        LastToolPlan = new ToolPlan { NeedsTools = false };
+                    }
+
+                    // 流式结果为空时降级到非流式
+                    if (string.IsNullOrWhiteSpace(answer))
+                    {
+                        Console.Write("   [流式空回退→非流式] 调用中... ");
+                        answer = await llmService.InvokeNonStreamingWithRetryAsync(prompt, stageName);
+                    }
                 }
                 else
                 {
-                    LastToolResults = new Dictionary<string, string>();
-                    LastToolPlan = new ToolPlan { NeedsTools = false };
-                }
-
-                // 流式结果为空时降级到非流式
-                if (string.IsNullOrWhiteSpace(answer))
-                {
-                    Console.Write("   [流式空回退→非流式] 调用中... ");
-                    answer = await llmService.InvokeNonStreamingWithRetryAsync(prompt, stageName);
+                    // 无 LlmService 引用时直接流式调用
+                    answer = await _llmService.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Blue, "化工合规");
                 }
             }
-            else
+            catch (CircuitBreakerOpenException cbEx)
             {
-                // 无 LlmService 引用时直接流式调用
-                answer = await _llmService.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Blue, "化工合规");
+                Console.WriteLine($"\n   🔴 熔断器打开: {cbEx.Message}");
+                // 尝试规则引擎降级
+                var fallbackInput = userInput ?? ExtractUserQueryFromPrompt(prompt);
+                var fallbackAnswer = TryFallbackToRuleEngine(fallbackInput);
+                if (!string.IsNullOrEmpty(fallbackAnswer))
+                    return fallbackAnswer;
+                throw; // 规则引擎也无法处理，重新抛出
+            }
+
+            // LLM 返回错误消息时尝试降级
+            if (answer.StartsWith("生成失败"))
+            {
+                Console.WriteLine($"   ⚠️ LLM 调用失败，尝试规则引擎降级...");
+                var fallbackInput = userInput ?? ExtractUserQueryFromPrompt(prompt);
+                var fallbackAnswer = TryFallbackToRuleEngine(fallbackInput);
+                if (!string.IsNullOrEmpty(fallbackAnswer))
+                    return fallbackAnswer;
             }
 
             Console.WriteLine("完成");
+
+            // ★ 双通道解耦架构：统一入口（覆盖 API / 旧评测路径）
+            var evalToolCalls = llmService?.LastFunctionCalls
+                .Select(fc => new FunctionCallRecord
+                {
+                    FunctionName = fc.FunctionName,
+                    Arguments = fc.Arguments,
+                    Result = fc.Result,
+                    Success = fc.Success,
+                    Quality = fc.Quality
+                }).ToList() ?? new List<FunctionCallRecord>();
+            answer = ApplyDecoupledPipeline(answer, evalToolCalls, isInfoQuery);
+
             return answer;
         }
 
@@ -581,79 +633,168 @@ namespace Agent1.Services
             var llmService = _llmService as LlmService;
             string answer;
 
-            if (llmService != null)
+            try
             {
-                // 主力路径：流式调用 + 工具过滤（GPU 3090 环境优先）
-                answer = await llmService.InvokeEvalWithToolsAsync(prompt, toolNames);
-
-                // 同步工具调用记录供评测器检查
-                if (llmService.LastFunctionCalls.Count > 0)
+                if (llmService != null)
                 {
-                    LastToolResults = new Dictionary<string, string>();
-                    foreach (var fc in llmService.LastFunctionCalls)
+                    // 主力路径：流式调用 + 工具过滤（GPU 3090 环境优先）
+                    answer = await llmService.InvokeEvalWithToolsAsync(prompt, toolNames);
+
+                    // 同步工具调用记录供评测器检查
+                    if (llmService.LastFunctionCalls.Count > 0)
                     {
-                        LastToolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
+                        LastToolResults = new Dictionary<string, string>();
+                        foreach (var fc in llmService.LastFunctionCalls)
+                        {
+                            LastToolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
+                        }
+                        LastToolPlan = new ToolPlan
+                        {
+                            NeedsTools = true,
+                            ToolNames = llmService.LastFunctionCalls.Select(fc => fc.FunctionName).ToList()
+                        };
                     }
-                    LastToolPlan = new ToolPlan
+                    else
                     {
-                        NeedsTools = true,
-                        ToolNames = llmService.LastFunctionCalls.Select(fc => fc.FunctionName).ToList()
-                    };
+                        LastToolResults = new Dictionary<string, string>();
+                        LastToolPlan = new ToolPlan { NeedsTools = false };
+                    }
+
+                    // 流式结果为空时降级到非流式（保留全量工具作为兜底）
+                    if (string.IsNullOrWhiteSpace(answer))
+                    {
+                        Console.Write("   [流式空回退→非流式] 调用中... ");
+                        answer = await llmService.InvokeNonStreamingWithRetryAsync(prompt, "评测(裁剪工具)");
+                    }
                 }
                 else
                 {
-                    LastToolResults = new Dictionary<string, string>();
-                    LastToolPlan = new ToolPlan { NeedsTools = false };
-                }
-
-                // 流式结果为空时降级到非流式（保留全量工具作为兜底）
-                if (string.IsNullOrWhiteSpace(answer))
-                {
-                    Console.Write("   [流式空回退→非流式] 调用中... ");
-                    answer = await llmService.InvokeNonStreamingWithRetryAsync(prompt, "评测(裁剪工具)");
+                    // 无 LlmService 引用时直接流式调用
+                    answer = await _llmService.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Blue, "评测");
                 }
             }
-            else
+            catch (CircuitBreakerOpenException cbEx)
             {
-                // 无 LlmService 引用时直接流式调用
-                answer = await _llmService.InvokeStreamWithRetryAsync(prompt, ConsoleColor.Blue, "评测");
+                Console.WriteLine($"\n   🔴 熔断器打开: {cbEx.Message}");
+                var fallbackAnswer = TryFallbackToRuleEngine(userInput);
+                if (!string.IsNullOrEmpty(fallbackAnswer))
+                    return fallbackAnswer;
+                throw;
+            }
+
+            // LLM 返回错误消息时尝试降级
+            if (answer.StartsWith("生成失败"))
+            {
+                Console.WriteLine($"   ⚠️ LLM 调用失败，尝试规则引擎降级...");
+                var fallbackAnswer = TryFallbackToRuleEngine(userInput);
+                if (!string.IsNullOrEmpty(fallbackAnswer))
+                    return fallbackAnswer;
             }
 
             Console.WriteLine("完成");
 
-            // ★ 双通道解耦架构：评测路径应用完整双通道（事实提取 + 消毒 + 事实渲染 + 合并）
-            if (AppConfig.Instance.PromptTemplates.UseDecoupledArchitecture)
-            {
-                var evalToolCalls = llmService?.LastFunctionCalls
-                    .Select(fc => new FunctionCallRecord
-                    {
-                        FunctionName = fc.FunctionName,
-                        Arguments = fc.Arguments,
-                        Result = fc.Result,
-                        Success = fc.Success,
-                        Quality = fc.Quality
-                    }).ToList() ?? new List<FunctionCallRecord>();
-
-                var evalFacts = ComplianceFactExtractor.Extract(evalToolCalls, isInfoQuery);
-                if (evalFacts.HasAnyToolResult)
+            // ★ 双通道解耦架构：统一入口（事实提取 + 消毒 + 事实渲染 + 合并）
+            var evalToolCalls = llmService?.LastFunctionCalls
+                .Select(fc => new FunctionCallRecord
                 {
-                    // 消毒 LLM 输出中的法规引用（硬拦截）
-                    var sanitizedExplanation = OutputSanitizer.Sanitize(answer, evalFacts.RegulationRefs);
-                    // 确定性事实渲染（不走 LLM）
-                    var factOutput = FactAssembler.Build(evalFacts);
-                    // 合并双通道输出
-                    answer = ResponseMerger.Merge(factOutput, sanitizedExplanation);
-                }
-                else
-                {
-                    // 兜底：工具未触发时，先消毒 LLM 输出剔除幻觉引用，再渲染"无确定结论"声明
-                    var sanitized = OutputSanitizer.Sanitize(answer, evalFacts.RegulationRefs);
-                    var factOutput = FactAssembler.Build(evalFacts);
-                    answer = ResponseMerger.Merge(factOutput, sanitized);
-                }
-            }
+                    FunctionName = fc.FunctionName,
+                    Arguments = fc.Arguments,
+                    Result = fc.Result,
+                    Success = fc.Success,
+                    Quality = fc.Quality
+                }).ToList() ?? new List<FunctionCallRecord>();
+            answer = ApplyDecoupledPipeline(answer, evalToolCalls, isInfoQuery);
 
             return answer;
+        }
+
+        /// <summary>
+        /// LLM 不可用时的降级路径：尝试使用 DeterministicRuleEngine 直接回答合规查询。
+        /// 返回空字符串表示规则引擎也无法处理。
+        /// </summary>
+        private string TryFallbackToRuleEngine(string userInput)
+        {
+            if (_ruleEngine == null)
+                return string.Empty;
+
+            try
+            {
+                var result = _ruleEngine.TryHandleComplianceQuery(userInput);
+                if (result == null)
+                    return string.Empty;
+
+                var refs = result.RegulationRefs.Count > 0
+                    ? string.Join("、", result.RegulationRefs)
+                    : "GB 15603";
+
+                Serilog.Log.Warning(
+                    "[LLM降级] 规则引擎接管 | 查询={Query} | 质量={Quality}",
+                    userInput.Truncate(60), result.Quality);
+
+                MetricsCollector.RecordLlmFallbackToRuleEngine();
+
+                return $"{result.Answer}\n\n【法规依据】{refs}\n【数据质量】确定性规则引擎 ({result.Quality}) — LLM 当前不可用，基于结构化数据库直接回答";
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Error(ex, "[LLM降级] 规则引擎异常 | 查询={Query}", userInput.Truncate(60));
+                return string.Empty;
+            }
+        }
+
+        /// <summary>从格式化 Prompt 中提取用户查询文本</summary>
+        private static string ExtractUserQueryFromPrompt(string prompt)
+        {
+            // 匹配 【当前问题】... 或 【当前问题（...）】...
+            var match = System.Text.RegularExpressions.Regex.Match(prompt,
+                @"【当前问题[^】]*】\s*(.+?)(?:\n|$)",
+                System.Text.RegularExpressions.RegexOptions.Singleline);
+            if (match.Success)
+            {
+                var query = match.Groups[1].Value.Trim();
+                if (!string.IsNullOrWhiteSpace(query))
+                    return query;
+            }
+            // 兜底：返回最后一行（通常是用户输入）
+            var lines = prompt.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            return lines.Length > 0 ? lines[^1].Trim() : prompt.Truncate(200);
+        }
+
+        /// <summary>
+        /// ★ 双通道解耦架构共用方法：事实提取 + LLM 输出消毒 + 确定性事实渲染 + 合并。
+        /// 所有合规输出路径（API / CLI 对话 / 评测 / 巡检）统一入口。
+        /// </summary>
+        /// <param name="answer">LLM 原始输出</param>
+        /// <param name="toolCalls">本次调用触发的工具调用记录</param>
+        /// <param name="isInfoQuery">是否为信息查询意图（影响 ComplianceFactExtractor 提取策略）</param>
+        private string ApplyDecoupledPipeline(string answer, List<FunctionCallRecord> toolCalls, bool isInfoQuery)
+        {
+            if (!AppConfig.Instance.PromptTemplates.UseDecoupledArchitecture)
+                return answer;
+
+            MetricsCollector.RecordDecoupledPipelineInvocation();
+
+            var facts = ComplianceFactExtractor.Extract(toolCalls, isInfoQuery);
+            if (facts.HasAnyToolResult)
+            {
+                // 消毒 LLM 输出中的法规引用（硬拦截）
+                var sanitizedExplanation = OutputSanitizer.Sanitize(answer, facts.RegulationRefs);
+                // 确定性事实渲染（不走 LLM）
+                var factOutput = FactAssembler.Build(facts);
+                // 合并双通道输出
+                var merged = ResponseMerger.Merge(factOutput, sanitizedExplanation);
+                Serilog.Log.Information(
+                    "[DecoupledPipeline] 双通道合并 | 法规数={RegCount} | 事实通道={FactLen} | 解释通道={ExplLen}",
+                    facts.RegulationRefs.Count, factOutput.Length, sanitizedExplanation.Length);
+                return merged;
+            }
+            else
+            {
+                // 兜底：工具未触发时，消毒 LLM 输出剔除幻觉引用，渲染"无确定结论"声明
+                var sanitized = OutputSanitizer.Sanitize(answer, facts.RegulationRefs);
+                var factOutput = FactAssembler.Build(facts);
+                return ResponseMerger.Merge(factOutput, sanitized);
+            }
         }
 
         /// <summary>

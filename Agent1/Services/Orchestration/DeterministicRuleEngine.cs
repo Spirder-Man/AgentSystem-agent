@@ -153,6 +153,202 @@ namespace Agent1.Services.Orchestration
             return null;
         }
 
+        // ═══════════════════════════════════════════════════════
+        // LLM 不可用时的合规查询降级路径
+        // ═══════════════════════════════════════════════════════
+
+        /// <summary>
+        /// 尝试用确定性规则回答合规查询（不依赖 LLM）。
+        /// 覆盖场景：储存兼容性、危化品危险类别、安全距离。
+        /// </summary>
+        /// <param name="userQuery">用户查询文本</param>
+        /// <returns>确定性回答；null 表示无法处理，需 LLM</returns>
+        public ComplianceFallbackResult? TryHandleComplianceQuery(string userQuery)
+        {
+            if (string.IsNullOrWhiteSpace(userQuery))
+                return null;
+
+            // 1. 尝试储存兼容性查询（两个化学品）
+            var storageResult = TryHandleStorageQuery(userQuery);
+            if (storageResult != null)
+                return storageResult;
+
+            // 2. 尝试危险类别查询（单个化学品 + 类别/分类关键词）
+            var hazardResult = TryHandleHazardQuery(userQuery);
+            if (hazardResult != null)
+                return hazardResult;
+
+            // 3. 尝试安全距离查询
+            var distanceResult = TryHandleSafetyDistanceQuery(userQuery);
+            if (distanceResult != null)
+                return distanceResult;
+
+            return null;
+        }
+
+        /// <summary>处理储存兼容性查询</summary>
+        private ComplianceFallbackResult? TryHandleStorageQuery(string query)
+        {
+            // 检测是否为储存兼容性查询
+            var storageKeywords = new[] { "同库", "共存", "混合", "禁忌", "配伍", "储存", "一起存放", "放在一起",
+                                          "同库存放", "兼容", "能否", "可以", "不可" };
+            if (!storageKeywords.Any(k => query.Contains(k)))
+                return null;
+
+            // 从 ChemicalSubstanceDatabase 获取所有已知化学品名称
+            var allSubstances = ChemicalSubstanceDatabase.GetAll();
+            var mentioned = allSubstances
+                .Where(s => query.Contains(s.Name, StringComparison.OrdinalIgnoreCase))
+                .Select(s => s.Name)
+                .ToList();
+
+            // 也检查别名
+            foreach (var sub in allSubstances)
+            {
+                if (!mentioned.Contains(sub.Name))
+                {
+                    foreach (var alias in sub.Aliases)
+                    {
+                        if (query.Contains(alias, StringComparison.OrdinalIgnoreCase))
+                        {
+                            mentioned.Add(sub.Name);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (mentioned.Count < 2)
+            {
+                // 也尝试从内置规则表中匹配
+                foreach (var rule in StorageCompatibilityRules)
+                {
+                    var (a, b) = rule.Key;
+                    if (query.Contains(a) && query.Contains(b))
+                    {
+                        return new ComplianceFallbackResult
+                        {
+                            Answer = $"【储存兼容性】{a}与{b}禁止同库储存",
+                            RegulationRefs = new List<string> { ExtractRegulationRef(rule.Value) },
+                            Quality = "DICTIONARY_HIT"
+                        };
+                    }
+                }
+                return null;
+            }
+
+            // 取前两个提到的化学品
+            var subA = mentioned[0];
+            var subB = mentioned[1];
+
+            // 先用内置规则表检查
+            foreach (var rule in StorageCompatibilityRules)
+            {
+                var (a, b) = rule.Key;
+                if ((string.Equals(a, subA, StringComparison.OrdinalIgnoreCase) && string.Equals(b, subB, StringComparison.OrdinalIgnoreCase)) ||
+                    (string.Equals(a, subB, StringComparison.OrdinalIgnoreCase) && string.Equals(b, subA, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return new ComplianceFallbackResult
+                    {
+                        Answer = $"【储存兼容性】{subA}与{subB}禁止同库储存",
+                        RegulationRefs = new List<string> { ExtractRegulationRef(rule.Value) },
+                        Quality = "DICTIONARY_HIT"
+                    };
+                }
+            }
+
+            // 再用 ChemicalSubstanceDatabase 检查
+            var compat = ChemicalSubstanceDatabase.CheckCompatibility(subA, subB);
+            if (compat != null)
+            {
+                var verdict = compat.IsCompatible ? "可同库储存" : "不得同库储存";
+                return new ComplianceFallbackResult
+                {
+                    Answer = $"【储存兼容性】{subA}与{subB}: {verdict}\n原因: {compat.Reason}",
+                    RegulationRefs = new List<string> { compat.RegulationRef ?? "GB 15603" },
+                    Quality = "DATABASE_HIT"
+                };
+            }
+
+            return null;
+        }
+
+        /// <summary>处理危险类别查询</summary>
+        private ComplianceFallbackResult? TryHandleHazardQuery(string query)
+        {
+            var hazardKeywords = new[] { "类别", "分类", "属于", "危险", "危害", "特性", "性质", "闪点", "沸点" };
+            if (!hazardKeywords.Any(k => query.Contains(k)))
+                return null;
+
+            var allSubstances = ChemicalSubstanceDatabase.GetAll();
+            foreach (var sub in allSubstances)
+            {
+                if (query.Contains(sub.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    var hazardInfo = sub.HazardCategories.FirstOrDefault()?.Category ?? "未知";
+                    var gbStandard = sub.HazardCategories.FirstOrDefault()?.GbStandard ?? "";
+                    var answer = $"【危险类别】{sub.Name}: {hazardInfo}";
+                    if (!string.IsNullOrEmpty(gbStandard))
+                        answer += $"（{gbStandard}）";
+                    if (sub.FlashPointC.HasValue)
+                        answer += $"\n闪点: {sub.FlashPointC}°C";
+                    if (sub.BoilingPointC.HasValue)
+                        answer += $"\n沸点: {sub.BoilingPointC}°C";
+
+                    var refs = new List<string>();
+                    if (!string.IsNullOrEmpty(gbStandard))
+                        refs.Add(gbStandard);
+                    foreach (var hc in sub.HazardCategories)
+                    {
+                        if (!string.IsNullOrEmpty(hc.GbStandard) && !refs.Contains(hc.GbStandard))
+                            refs.Add(hc.GbStandard);
+                    }
+
+                    return new ComplianceFallbackResult
+                    {
+                        Answer = answer,
+                        RegulationRefs = refs,
+                        Quality = "DATABASE_HIT"
+                    };
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>处理安全距离查询</summary>
+        private ComplianceFallbackResult? TryHandleSafetyDistanceQuery(string query)
+        {
+            var distanceKeywords = new[] { "安全距离", "间距", "消防通道", "防火间距", "储罐间距" };
+            if (!distanceKeywords.Any(k => query.Contains(k)))
+                return null;
+
+            var distances = ChemicalSubstanceDatabase.GetAllSafetyDistances();
+            foreach (var sd in distances)
+            {
+                if (query.Contains(sd.FacilityPair, StringComparison.OrdinalIgnoreCase) ||
+                    sd.FacilityPair.Split(new[] { '-' }, StringSplitOptions.RemoveEmptyEntries)
+                        .All(part => query.Contains(part.Trim(), StringComparison.OrdinalIgnoreCase)))
+                {
+                    return new ComplianceFallbackResult
+                    {
+                        Answer = $"【安全距离】{sd.FacilityPair}: 最小安全距离 {sd.MinDistanceMeters}m",
+                        RegulationRefs = new List<string> { sd.RegulationRef ?? "GB 50016" },
+                        Quality = "DATABASE_HIT"
+                    };
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>从规则文本中提取法规引用</summary>
+        private static string ExtractRegulationRef(string ruleText)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(ruleText, @"GB\s*\d{4,5}[^|]*");
+            return match.Success ? match.Value.Trim() : "GB 15603";
+        }
+
         // ── 辅助 ──
 
         private static double? ExtractNumber(string input)

@@ -1,6 +1,44 @@
 groups:
   - name: agent1_slo
     rules:
+      # LLM 调用速率 (5分钟)
+      - record: job:llm_calls:rate5m
+        expr: rate(agent1_llm_calls_total[5m])
+
+      # LLM 调用失败率 (5分钟)
+      - record: job:llm_errors:rate5m
+        expr: rate(agent1_llm_errors_total[5m]) / rate(agent1_llm_calls_total[5m])
+
+      # API 5xx 错误率 (5分钟)
+      - record: job:api_5xx:rate5m
+        expr: rate(agent1_api_5xx_total[5m]) / rate(agent1_api_requests_total[5m])
+
+      # API 总请求速率 (1分钟)
+      - record: job:api_requests:rate1m
+        expr: rate(agent1_api_requests_total[1m])
+
+      # 缓存命中率 (瞬时值)
+      - record: job:cache_hit_ratio
+        expr: agent1_rag_cache_hits_total / (agent1_rag_cache_hits_total + agent1_rag_cache_misses_total)
+
+      # 熔断器状态 (1=打开/拒绝服务, 0=闭合/正常)
+      - record: job:circuit_breaker_open
+        expr: agent1_circuit_breaker_open
+
+      # LLM 降级到规则引擎速率 (5分钟)
+      - record: job:llm_fallback:rate5m
+        expr: rate(agent1_llm_fallback_rule_engine_total[5m])
+
+      # 双通道解耦管道调用速率 (5分钟)
+      - record: job:decoupled_pipeline:rate5m
+        expr: rate(agent1_decoupled_pipeline_invocations_total[5m])
+
+      # 双通道管道消毒移除字符速率 (5分钟)
+      - record: job:decoupled_pipeline_chars:rate5m
+        expr: rate(agent1_decoupled_pipeline_chars_removed_total[5m])
+groups:
+  - name: agent1_slo
+    rules:
       # HTTP P95 延迟（5分钟滑动窗口）
       - record: job:http_request_duration_seconds:p95
         expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, http_method, http_route))

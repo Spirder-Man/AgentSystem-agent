@@ -99,6 +99,18 @@ export interface InspectionItemRequest {
   capability?: string;
 }
 
+/** 巡检计划列表项 — 对齐 GET /api/Inspection/plans 返回格式（items 为数字计数） */
+export interface InspectionPlanListItem {
+  planId: string;
+  name: string;
+  area: string;
+  inspector: string;
+  status: 'Draft' | 'InProgress' | 'Completed' | 'Archived';
+  items: number; // 后端返回 count，不是数组
+  createdAt: string;
+}
+
+/** 巡检计划详情 — 对齐 GET /api/Inspection/plans/:id 返回格式（items 为完整对象数组） */
 export interface InspectionPlan {
   planId: string;
   name: string;
@@ -260,5 +272,7 @@ export interface HealthStatus {
 
 export interface ApiError {
   error: string;
+  code?: string;
   retryAfter?: number;
+  details?: Record<string, string[]>; // 字段级校验详情
 }

@@ -185,6 +185,9 @@ namespace Agent1.Services
                 return cachedResults;
             }
 
+            // 缓存未命中
+            MetricsCollector.RecordRagCacheMiss();
+
             // Sprint 4: 查询扩展
             var expandedQuery = ExpandQuery(query);
 
