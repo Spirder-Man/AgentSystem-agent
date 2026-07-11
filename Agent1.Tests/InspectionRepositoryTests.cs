@@ -301,6 +301,10 @@ public class InspectionRepositoryTests : IDisposable
     [Fact]
     public void GetStats_ShouldReflectCurrentState()
     {
+        // 清除跨测试残留的持久化文件，确保隔离
+        if (System.IO.File.Exists("inspection-store.json"))
+            System.IO.File.Delete("inspection-store.json");
+
         var repo = new InspectionRepository();
         repo.SavePlan(new InspectionPlan { Name = "P1" });
         repo.SaveRound(new InspectionRound { PlanId = "any" });
