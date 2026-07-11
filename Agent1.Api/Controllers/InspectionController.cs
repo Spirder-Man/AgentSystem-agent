@@ -16,7 +16,7 @@ namespace Agent1.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "Auditor")]
+[Authorize(Policy = "Viewer")]
 public class InspectionController : ControllerBase
 {
     private readonly InspectionOrchestrator _orchestrator;
@@ -38,6 +38,7 @@ public class InspectionController : ControllerBase
     // ═══════════════════════════════════════
 
     [HttpPost("plans")]
+    [Authorize(Policy = "Auditor")]
     public IActionResult CreatePlan([FromBody] CreatePlanRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -95,6 +96,7 @@ public class InspectionController : ControllerBase
     // ═══════════════════════════════════════
 
     [HttpPost("plans/{planId}/execute")]
+    [Authorize(Policy = "Auditor")]
     public async Task<IActionResult> ExecutePlan(string planId)
     {
         try
@@ -209,6 +211,7 @@ public class InspectionController : ControllerBase
     }
 
     [HttpPost("scan")]
+    [Authorize(Policy = "Auditor")]
     public async Task<IActionResult> RunAutoScan()
     {
         var result = await _ruleEngine.ScanAssetsAsync(_repo.GetAllAssets(), GetCurrentUsername());

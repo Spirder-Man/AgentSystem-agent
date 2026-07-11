@@ -268,6 +268,39 @@ export interface HealthStatus {
   };
 }
 
+// ── Audit 审计日志 ──
+
+export interface AuditLogEntry {
+  id: number;
+  user: string;
+  operation: string;
+  details: string;
+  isSensitive: boolean;
+  timestamp: string;
+  chainHash: string | null;
+}
+
+export interface AuditLogListResponse {
+  total: number;
+  page: number;
+  pageSize: number;
+  logs: AuditLogEntry[];
+}
+
+export interface AuditIntegrityResponse {
+  intact: boolean;
+  brokenAtId: number | null;
+  detail: string;
+  verifiedAt: string;
+}
+
+export interface AuditStatsResponse {
+  totalCount: number;
+  byOperation: Record<string, number>;
+  byUser: Record<string, number>;
+  lastLogAt: string | null;
+}
+
 // ── Generic ──
 
 export interface ApiError {

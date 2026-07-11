@@ -13,7 +13,7 @@ namespace Agent1.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "Auditor")]
+[Authorize(Policy = "Viewer")]
 public class TicketsController : ControllerBase
 {
     private readonly InspectionRepository _repo;
@@ -51,6 +51,7 @@ public class TicketsController : ControllerBase
     }
 
     [HttpPut("{id}/status")]
+    [Authorize(Policy = "Auditor")]
     public IActionResult UpdateStatus(int id, [FromBody] TicketStatusUpdateRequest request)
     {
         // 查找工单

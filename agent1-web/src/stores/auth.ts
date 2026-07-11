@@ -28,6 +28,8 @@ export const useAuthStore = defineStore('auth', () => {
     if (!isAuthenticated.value || isExpired.value) return false;
     if (isAdmin.value) return true;
     if (isAuditor.value) return requiredRoles.includes('auditor') || requiredRoles.includes('viewer');
+    // viewer 只能访问标记了 'viewer' 角色的路由（只读业务页面）
+    if (isViewer.value) return requiredRoles.includes('viewer');
     return false;
   }
 

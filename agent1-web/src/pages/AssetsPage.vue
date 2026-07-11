@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import apiClient from '@/lib/axios';
 import type { ChemicalAsset } from '@/types/api';
 import SkeletonTable from '@/components/common/SkeletonTable.vue';
@@ -9,6 +10,8 @@ const assets = ref<ChemicalAsset[]>([]);
 const loading = ref(true);
 const error = ref('');
 const searchQuery = ref('');
+
+const router = useRouter();
 
 async function fetchAssets() {
   loading.value = true; error.value = '';
@@ -66,7 +69,12 @@ onMounted(fetchAssets);
         </thead>
         <tbody>
           <tr v-for="a in filteredAssets" :key="a.assetId" class="border-b border-slate-100 hover:bg-slate-50">
-            <td class="px-4 py-3 text-slate-800 font-medium">{{ a.name }}</td>
+            <td class="px-4 py-3 text-slate-800 font-medium">
+              <span
+                class="cursor-pointer text-blue-700 hover:text-blue-500 hover:underline"
+                @click="router.push(`/assets/${a.assetId}`)"
+              >{{ a.name }}</span>
+            </td>
             <td class="px-4 py-3 font-mono text-xs text-slate-500">{{ a.casNumber }}</td>
             <td class="px-4 py-3 text-xs text-slate-500">{{ a.location }}</td>
             <td class="px-4 py-3 text-xs text-slate-700">{{ a.quantityTons }}</td>

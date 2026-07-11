@@ -1,0 +1,154 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="67c714bf-69ee-480d-9b9b-52484cbcd21f" name="lcy@LAPTOP-40G212RC 2026-06-25 19:24:05" runUser="LAPTOP-40G212RC\lcy" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-06-25T19:24:05.7377400+08:00" queuing="2026-06-25T19:24:05.7377404+08:00" start="2026-06-25T19:24:05.1390744+08:00" finish="2026-06-25T19:24:05.8630652+08:00" />
+  <TestSettings name="default" id="d3c403b6-4813-4dda-9a88-3a794088a833">
+    <Deployment runDeploymentRoot="lcy_LAPTOP-40G212RC_2026-06-25_19_24_05" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="5260b7ee-5c3b-496f-aaea-25df3a8ef72d" testId="ec0f667d-e70f-c67a-caf9-aed1a3758dfa" testName="Agent1.Tests.SessionManagerTests.CreateSession_AutoCleanupEvery20_ShouldNotThrow" computerName="LAPTOP-40G212RC" duration="00:00:00.0003008" startTime="2026-06-25T19:24:05.7139594+08:00" endTime="2026-06-25T19:24:05.7139594+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5260b7ee-5c3b-496f-aaea-25df3a8ef72d" />
+    <UnitTestResult executionId="c5055f48-da2c-4074-bf35-afffa7ef9e02" testId="69c6ee6f-7e9d-328d-0822-db0dbe4a7f0b" testName="Agent1.Tests.SessionManagerTests.GetSession_ExistingId_ShouldReturnSession" computerName="LAPTOP-40G212RC" duration="00:00:00.0000993" startTime="2026-06-25T19:24:05.7149242+08:00" endTime="2026-06-25T19:24:05.7149243+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c5055f48-da2c-4074-bf35-afffa7ef9e02" />
+    <UnitTestResult executionId="7cf814d5-61c6-4558-ac71-babadbd6d248" testId="3f69dac4-d033-675e-40eb-d2d9397f2a7c" testName="Agent1.Tests.SessionManagerTests.GetSession_NonexistentId_ShouldReturnNull" computerName="LAPTOP-40G212RC" duration="00:00:00.0000744" startTime="2026-06-25T19:24:05.7139934+08:00" endTime="2026-06-25T19:24:05.7139935+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7cf814d5-61c6-4558-ac71-babadbd6d248" />
+    <UnitTestResult executionId="db1ce2dd-27ef-496d-a889-d84e43b56550" testId="a1ac3ee2-906e-8fa0-7c71-69aeb24eefa3" testName="Agent1.Tests.SessionManagerTests.GetFormattedHistory_NonexistentSession_ShouldReturnEmpty" computerName="LAPTOP-40G212RC" duration="00:00:00.0003564" startTime="2026-06-25T19:24:05.6926925+08:00" endTime="2026-06-25T19:24:05.6926926+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="db1ce2dd-27ef-496d-a889-d84e43b56550" />
+    <UnitTestResult executionId="63435515-246b-4323-bd86-c13836b9689c" testId="63ca89ca-a504-2200-fb1a-2494392bf799" testName="Agent1.Tests.SessionManagerTests.AddDialogTurn_NonexistentSession_ShouldNotThrow" computerName="LAPTOP-40G212RC" duration="00:00:00.0028479" startTime="2026-06-25T19:24:05.6956611+08:00" endTime="2026-06-25T19:24:05.6956613+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="63435515-246b-4323-bd86-c13836b9689c" />
+    <UnitTestResult executionId="a52e8774-8b4b-43c0-9c01-52093c9a2f61" testId="80b5cef6-9037-41aa-e17d-fd07172e93a1" testName="Agent1.Tests.SessionManagerTests.CleanupExpiredSessions_ShouldRemoveOldSessions" computerName="LAPTOP-40G212RC" duration="00:00:00.0022942" startTime="2026-06-25T19:24:05.6903557+08:00" endTime="2026-06-25T19:24:05.6903557+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a52e8774-8b4b-43c0-9c01-52093c9a2f61" />
+    <UnitTestResult executionId="57122bc2-28db-436f-8b27-814996e89ac4" testId="d03e7740-e0d1-727e-dc97-46f0a5b4d95a" testName="Agent1.Tests.SessionManagerTests.CreateSession_WithCustomPrompt_ShouldSetTemplate" computerName="LAPTOP-40G212RC" duration="00:00:00.0062867" startTime="2026-06-25T19:24:05.6895769+08:00" endTime="2026-06-25T19:24:05.6895770+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="57122bc2-28db-436f-8b27-814996e89ac4" />
+    <UnitTestResult executionId="8e31f9f1-2285-4539-90de-32c86778f0ad" testId="9e4f51ff-bbbd-cd5f-dcf2-f8276b28a5ec" testName="Agent1.Tests.SessionManagerTests.AddDialogTurn_ShouldIncrementHistory" computerName="LAPTOP-40G212RC" duration="00:00:00.0000788" startTime="2026-06-25T19:24:05.7140389+08:00" endTime="2026-06-25T19:24:05.7140389+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="8e31f9f1-2285-4539-90de-32c86778f0ad" />
+    <UnitTestResult executionId="77b3238c-dc7c-4c1f-9ec5-78999d19a881" testId="88d5713d-7a16-9c6d-2b6e-9fc306f73900" testName="Agent1.Tests.SessionManagerTests.CleanContent_ShouldStripBracketMarkers" computerName="LAPTOP-40G212RC" duration="00:00:00.0001127" startTime="2026-06-25T19:24:05.7149687+08:00" endTime="2026-06-25T19:24:05.7149687+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="77b3238c-dc7c-4c1f-9ec5-78999d19a881" />
+    <UnitTestResult executionId="7e6227c2-3438-4261-a360-b6742c8331d8" testId="d64684cf-2017-bde2-6216-04cbf565979c" testName="Agent1.Tests.SessionManagerTests.GetHistoryCount_NonexistentSession_ShouldReturnZero" computerName="LAPTOP-40G212RC" duration="00:00:00.0006432" startTime="2026-06-25T19:24:05.6923031+08:00" endTime="2026-06-25T19:24:05.6923032+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7e6227c2-3438-4261-a360-b6742c8331d8" />
+    <UnitTestResult executionId="99e6c74a-1f3c-4902-9a84-5b00dd7273a8" testId="ab39527a-be94-c1d5-1619-3f2cc589423f" testName="Agent1.Tests.SessionManagerTests.ClearHistory_ShouldClearTurns" computerName="LAPTOP-40G212RC" duration="00:00:00.0001895" startTime="2026-06-25T19:24:05.7140243+08:00" endTime="2026-06-25T19:24:05.7140243+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="99e6c74a-1f3c-4902-9a84-5b00dd7273a8" />
+    <UnitTestResult executionId="f3993a3f-cffb-4873-9b57-8361822ef560" testId="5484e842-07ca-dd4b-2982-8026a026acc3" testName="Agent1.Tests.SessionManagerTests.CleanContent_ShouldStripNumberedPrefix" computerName="LAPTOP-40G212RC" duration="00:00:00.0028052" startTime="2026-06-25T19:24:05.6916036+08:00" endTime="2026-06-25T19:24:05.6916037+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f3993a3f-cffb-4873-9b57-8361822ef560" />
+    <UnitTestResult executionId="d36b6478-6375-4917-90e9-253dc91ac2be" testId="ebd5899c-0d48-fd45-80f4-d4dd6d8d9dda" testName="Agent1.Tests.SessionCleanupHostedServiceTests.BackgroundService_IsProperlyTyped" computerName="LAPTOP-40G212RC" duration="00:00:00.0062778" startTime="2026-06-25T19:24:05.6872248+08:00" endTime="2026-06-25T19:24:05.6872617+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d36b6478-6375-4917-90e9-253dc91ac2be" />
+    <UnitTestResult executionId="6cbec643-eb62-41f4-89ae-f272ede256a4" testId="f65497cc-107e-a14b-06e7-67c9729cf724" testName="Agent1.Tests.SessionManagerTests.GetFormattedHistory_ShouldReturnHistory" computerName="LAPTOP-40G212RC" duration="00:00:00.0010556" startTime="2026-06-25T19:24:05.7140068+08:00" endTime="2026-06-25T19:24:05.7140068+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6cbec643-eb62-41f4-89ae-f272ede256a4" />
+    <UnitTestResult executionId="7b50e02e-dd81-4297-ba4d-6b7fe10fe111" testId="3c44989f-e1a2-d798-cee6-cf399b0ee335" testName="Agent1.Tests.SessionManagerTests.CreateSession_WithChemicalComplianceType_ShouldSetType" computerName="LAPTOP-40G212RC" duration="00:00:00.0004150" startTime="2026-06-25T19:24:05.7139795+08:00" endTime="2026-06-25T19:24:05.7139796+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7b50e02e-dd81-4297-ba4d-6b7fe10fe111" />
+    <UnitTestResult executionId="68f8f2f2-7355-4f8a-9501-a6b483afda7a" testId="5719c1db-2b59-e516-8182-f429fd172c0e" testName="Agent1.Tests.SessionManagerTests.CleanContent_ShouldStripThinkTags" computerName="LAPTOP-40G212RC" duration="00:00:00.0000791" startTime="2026-06-25T19:24:05.7149525+08:00" endTime="2026-06-25T19:24:05.7149526+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="68f8f2f2-7355-4f8a-9501-a6b483afda7a" />
+    <UnitTestResult executionId="93879910-b311-4805-a8f1-b2513a5cea82" testId="34a55e3a-e0b8-48aa-0319-ccb972ee5371" testName="Agent1.Tests.SessionManagerTests.GetContextSummary_NonexistentSession_ShouldReturnDefault" computerName="LAPTOP-40G212RC" duration="00:00:00.0000790" startTime="2026-06-25T19:24:05.7138184+08:00" endTime="2026-06-25T19:24:05.7138185+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="93879910-b311-4805-a8f1-b2513a5cea82" />
+    <UnitTestResult executionId="91bf6b20-d092-4312-bc29-feb94b86517b" testId="45b75615-4195-a72f-fc13-142576212d3b" testName="Agent1.Tests.SessionCleanupHostedServiceTests.ExecuteAsync_Cancelled_ShouldStop" computerName="LAPTOP-40G212RC" duration="00:00:00.0006476" startTime="2026-06-25T19:24:05.6902087+08:00" endTime="2026-06-25T19:24:05.6902088+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="91bf6b20-d092-4312-bc29-feb94b86517b" />
+    <UnitTestResult executionId="9b81cd1f-f049-4e6e-bdc2-d5b7c4142f72" testId="eedb42f5-0d18-70b8-4d36-c3da00478742" testName="Agent1.Tests.SessionManagerTests.GetContextSummary_ShouldReturnSummary" computerName="LAPTOP-40G212RC" duration="00:00:00.0001592" startTime="2026-06-25T19:24:05.7139276+08:00" endTime="2026-06-25T19:24:05.7139276+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="9b81cd1f-f049-4e6e-bdc2-d5b7c4142f72" />
+    <UnitTestResult executionId="b2baf54f-826c-494e-99ea-139273f9588f" testId="836d5ade-980b-3273-b19e-e3f4d10fa6a4" testName="Agent1.Tests.SessionManagerTests.CreateSession_ShouldReturnSessionWithId" computerName="LAPTOP-40G212RC" duration="00:00:00.0008193" startTime="2026-06-25T19:24:05.7139457+08:00" endTime="2026-06-25T19:24:05.7139458+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b2baf54f-826c-494e-99ea-139273f9588f" />
+    <UnitTestResult executionId="254ed29b-51e5-4729-9281-376fd52aeccc" testId="102d9c15-fa11-f62a-7b47-f38e4c9f7fa4" testName="Agent1.Tests.SessionCleanupHostedServiceTests.ExecuteAsync_ShouldRunWithoutError" computerName="LAPTOP-40G212RC" duration="00:00:00.1018791" startTime="2026-06-25T19:24:05.7902656+08:00" endTime="2026-06-25T19:24:05.7902659+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="254ed29b-51e5-4729-9281-376fd52aeccc" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="Agent1.Tests.SessionManagerTests.GetFormattedHistory_NonexistentSession_ShouldReturnEmpty" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="a1ac3ee2-906e-8fa0-7c71-69aeb24eefa3">
+      <Execution id="db1ce2dd-27ef-496d-a889-d84e43b56550" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionManagerTests" name="GetFormattedHistory_NonexistentSession_ShouldReturnEmpty" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionManagerTests.CleanContent_ShouldStripThinkTags" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="5719c1db-2b59-e516-8182-f429fd172c0e">
+      <Execution id="68f8f2f2-7355-4f8a-9501-a6b483afda7a" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionManagerTests" name="CleanContent_ShouldStripThinkTags" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionCleanupHostedServiceTests.BackgroundService_IsProperlyTyped" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="ebd5899c-0d48-fd45-80f4-d4dd6d8d9dda">
+      <Execution id="d36b6478-6375-4917-90e9-253dc91ac2be" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionCleanupHostedServiceTests" name="BackgroundService_IsProperlyTyped" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionManagerTests.CleanContent_ShouldStripNumberedPrefix" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="5484e842-07ca-dd4b-2982-8026a026acc3">
+      <Execution id="f3993a3f-cffb-4873-9b57-8361822ef560" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionManagerTests" name="CleanContent_ShouldStripNumberedPrefix" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionManagerTests.GetSession_ExistingId_ShouldReturnSession" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="69c6ee6f-7e9d-328d-0822-db0dbe4a7f0b">
+      <Execution id="c5055f48-da2c-4074-bf35-afffa7ef9e02" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionManagerTests" name="GetSession_ExistingId_ShouldReturnSession" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionCleanupHostedServiceTests.ExecuteAsync_ShouldRunWithoutError" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="102d9c15-fa11-f62a-7b47-f38e4c9f7fa4">
+      <Execution id="254ed29b-51e5-4729-9281-376fd52aeccc" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionCleanupHostedServiceTests" name="ExecuteAsync_ShouldRunWithoutError" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionManagerTests.CleanupExpiredSessions_ShouldRemoveOldSessions" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="80b5cef6-9037-41aa-e17d-fd07172e93a1">
+      <Execution id="a52e8774-8b4b-43c0-9c01-52093c9a2f61" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionManagerTests" name="CleanupExpiredSessions_ShouldRemoveOldSessions" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionManagerTests.AddDialogTurn_ShouldIncrementHistory" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="9e4f51ff-bbbd-cd5f-dcf2-f8276b28a5ec">
+      <Execution id="8e31f9f1-2285-4539-90de-32c86778f0ad" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionManagerTests" name="AddDialogTurn_ShouldIncrementHistory" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionManagerTests.GetContextSummary_ShouldReturnSummary" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="eedb42f5-0d18-70b8-4d36-c3da00478742">
+      <Execution id="9b81cd1f-f049-4e6e-bdc2-d5b7c4142f72" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionManagerTests" name="GetContextSummary_ShouldReturnSummary" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionManagerTests.CleanContent_ShouldStripBracketMarkers" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="88d5713d-7a16-9c6d-2b6e-9fc306f73900">
+      <Execution id="77b3238c-dc7c-4c1f-9ec5-78999d19a881" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionManagerTests" name="CleanContent_ShouldStripBracketMarkers" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionManagerTests.GetContextSummary_NonexistentSession_ShouldReturnDefault" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="34a55e3a-e0b8-48aa-0319-ccb972ee5371">
+      <Execution id="93879910-b311-4805-a8f1-b2513a5cea82" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionManagerTests" name="GetContextSummary_NonexistentSession_ShouldReturnDefault" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionManagerTests.CreateSession_ShouldReturnSessionWithId" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="836d5ade-980b-3273-b19e-e3f4d10fa6a4">
+      <Execution id="b2baf54f-826c-494e-99ea-139273f9588f" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionManagerTests" name="CreateSession_ShouldReturnSessionWithId" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionManagerTests.CreateSession_AutoCleanupEvery20_ShouldNotThrow" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="ec0f667d-e70f-c67a-caf9-aed1a3758dfa">
+      <Execution id="5260b7ee-5c3b-496f-aaea-25df3a8ef72d" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionManagerTests" name="CreateSession_AutoCleanupEvery20_ShouldNotThrow" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionCleanupHostedServiceTests.ExecuteAsync_Cancelled_ShouldStop" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="45b75615-4195-a72f-fc13-142576212d3b">
+      <Execution id="91bf6b20-d092-4312-bc29-feb94b86517b" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionCleanupHostedServiceTests" name="ExecuteAsync_Cancelled_ShouldStop" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionManagerTests.GetHistoryCount_NonexistentSession_ShouldReturnZero" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="d64684cf-2017-bde2-6216-04cbf565979c">
+      <Execution id="7e6227c2-3438-4261-a360-b6742c8331d8" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionManagerTests" name="GetHistoryCount_NonexistentSession_ShouldReturnZero" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionManagerTests.GetFormattedHistory_ShouldReturnHistory" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="f65497cc-107e-a14b-06e7-67c9729cf724">
+      <Execution id="6cbec643-eb62-41f4-89ae-f272ede256a4" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionManagerTests" name="GetFormattedHistory_ShouldReturnHistory" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionManagerTests.GetSession_NonexistentId_ShouldReturnNull" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="3f69dac4-d033-675e-40eb-d2d9397f2a7c">
+      <Execution id="7cf814d5-61c6-4558-ac71-babadbd6d248" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionManagerTests" name="GetSession_NonexistentId_ShouldReturnNull" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionManagerTests.CreateSession_WithCustomPrompt_ShouldSetTemplate" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="d03e7740-e0d1-727e-dc97-46f0a5b4d95a">
+      <Execution id="57122bc2-28db-436f-8b27-814996e89ac4" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionManagerTests" name="CreateSession_WithCustomPrompt_ShouldSetTemplate" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionManagerTests.CreateSession_WithChemicalComplianceType_ShouldSetType" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="3c44989f-e1a2-d798-cee6-cf399b0ee335">
+      <Execution id="7b50e02e-dd81-4297-ba4d-6b7fe10fe111" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionManagerTests" name="CreateSession_WithChemicalComplianceType_ShouldSetType" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionManagerTests.ClearHistory_ShouldClearTurns" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="ab39527a-be94-c1d5-1619-3f2cc589423f">
+      <Execution id="99e6c74a-1f3c-4902-9a84-5b00dd7273a8" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionManagerTests" name="ClearHistory_ShouldClearTurns" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.SessionManagerTests.AddDialogTurn_NonexistentSession_ShouldNotThrow" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="63ca89ca-a504-2200-fb1a-2494392bf799">
+      <Execution id="63435515-246b-4323-bd86-c13836b9689c" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.SessionManagerTests" name="AddDialogTurn_NonexistentSession_ShouldNotThrow" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="ec0f667d-e70f-c67a-caf9-aed1a3758dfa" executionId="5260b7ee-5c3b-496f-aaea-25df3a8ef72d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="69c6ee6f-7e9d-328d-0822-db0dbe4a7f0b" executionId="c5055f48-da2c-4074-bf35-afffa7ef9e02" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3f69dac4-d033-675e-40eb-d2d9397f2a7c" executionId="7cf814d5-61c6-4558-ac71-babadbd6d248" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a1ac3ee2-906e-8fa0-7c71-69aeb24eefa3" executionId="db1ce2dd-27ef-496d-a889-d84e43b56550" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="63ca89ca-a504-2200-fb1a-2494392bf799" executionId="63435515-246b-4323-bd86-c13836b9689c" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="80b5cef6-9037-41aa-e17d-fd07172e93a1" executionId="a52e8774-8b4b-43c0-9c01-52093c9a2f61" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d03e7740-e0d1-727e-dc97-46f0a5b4d95a" executionId="57122bc2-28db-436f-8b27-814996e89ac4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="9e4f51ff-bbbd-cd5f-dcf2-f8276b28a5ec" executionId="8e31f9f1-2285-4539-90de-32c86778f0ad" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="88d5713d-7a16-9c6d-2b6e-9fc306f73900" executionId="77b3238c-dc7c-4c1f-9ec5-78999d19a881" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d64684cf-2017-bde2-6216-04cbf565979c" executionId="7e6227c2-3438-4261-a360-b6742c8331d8" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ab39527a-be94-c1d5-1619-3f2cc589423f" executionId="99e6c74a-1f3c-4902-9a84-5b00dd7273a8" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="5484e842-07ca-dd4b-2982-8026a026acc3" executionId="f3993a3f-cffb-4873-9b57-8361822ef560" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ebd5899c-0d48-fd45-80f4-d4dd6d8d9dda" executionId="d36b6478-6375-4917-90e9-253dc91ac2be" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f65497cc-107e-a14b-06e7-67c9729cf724" executionId="6cbec643-eb62-41f4-89ae-f272ede256a4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3c44989f-e1a2-d798-cee6-cf399b0ee335" executionId="7b50e02e-dd81-4297-ba4d-6b7fe10fe111" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="5719c1db-2b59-e516-8182-f429fd172c0e" executionId="68f8f2f2-7355-4f8a-9501-a6b483afda7a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="34a55e3a-e0b8-48aa-0319-ccb972ee5371" executionId="93879910-b311-4805-a8f1-b2513a5cea82" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="45b75615-4195-a72f-fc13-142576212d3b" executionId="91bf6b20-d092-4312-bc29-feb94b86517b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="eedb42f5-0d18-70b8-4d36-c3da00478742" executionId="9b81cd1f-f049-4e6e-bdc2-d5b7c4142f72" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="836d5ade-980b-3273-b19e-e3f4d10fa6a4" executionId="b2baf54f-826c-494e-99ea-139273f9588f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="102d9c15-fa11-f62a-7b47-f38e4c9f7fa4" executionId="254ed29b-51e5-4729-9281-376fd52aeccc" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="列表中未列出的结果" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="所有已加载的结果" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="21" executed="21" passed="21" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.5.3.1+6b60a9e56a (64-bit .NET 8.0.27)&#xD;
+[xUnit.net 00:00:00.07]   Discovering: Agent1.Tests&#xD;
+[xUnit.net 00:00:00.14]   Discovered:  Agent1.Tests&#xD;
+[xUnit.net 00:00:00.14]   Starting:    Agent1.Tests&#xD;
+[xUnit.net 00:00:00.28]   Finished:    Agent1.Tests&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

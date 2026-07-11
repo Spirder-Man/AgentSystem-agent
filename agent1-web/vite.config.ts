@@ -14,27 +14,27 @@ export default defineConfig({
     proxy: {
       // 当 Mock 关闭时，将 /api 请求转发到后端
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:15001',
         changeOrigin: true,
       },
       '/health': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:15001',
         changeOrigin: true,
       },
       '/metrics': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:15001',
         changeOrigin: true,
       },
       '/cache': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:15001',
         changeOrigin: true,
       },
       '/knowledgebase': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:15001',
         changeOrigin: true,
       },
       '/memory': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:15001',
         changeOrigin: true,
       },
     },

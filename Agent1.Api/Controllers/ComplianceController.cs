@@ -11,7 +11,7 @@ namespace Agent1.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "Auditor")]
+[Authorize(Policy = "Viewer")]
 public class ComplianceController : ControllerBase
 {
     private readonly AgentDialog _agentDialog;
@@ -93,6 +93,7 @@ public class ComplianceController : ControllerBase
     /// 化工合规审核 — 提交查询并返回合规判断
     /// </summary>
     [HttpPost("check")]
+    [Authorize(Policy = "Auditor")]
     public async Task<IActionResult> CheckCompliance([FromBody] ComplianceRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Query))

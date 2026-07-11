@@ -38,6 +38,7 @@ const InspectionPlansPage = () => import('@/pages/InspectionPlansPage.vue');
 const InspectionRoundsPage = () => import('@/pages/InspectionRoundsPage.vue');
 const TicketDetailPage = () => import('@/pages/TicketDetailPage.vue');
 const AssetsPage = () => import('@/pages/AssetsPage.vue');
+const AssetDetailPage = () => import('@/pages/AssetDetailPage.vue');
 const AuditPage = () => import('@/pages/AuditPage.vue');
 const SettingsPage = () => import('@/pages/SettingsPage.vue');
 
@@ -71,7 +72,7 @@ const routes: RouteRecordRaw[] = [
     path: '/dashboard',
     name: 'Dashboard',
     component: DashboardPage,
-    meta: { title: '仪表盘', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: '仪表盘', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
     path: '/compliance',
@@ -83,7 +84,7 @@ const routes: RouteRecordRaw[] = [
     path: '/compliance/history',
     name: 'ComplianceHistory',
     component: ComplianceHistoryPage,
-    meta: { title: '合规历史', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: '合规历史', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
     path: '/inspection/plans',
@@ -95,13 +96,13 @@ const routes: RouteRecordRaw[] = [
     path: '/inspection/rounds',
     name: 'InspectionRounds',
     component: InspectionRoundsPage,
-    meta: { title: '巡检记录', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: '巡检记录', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
     path: '/tickets',
     name: 'Tickets',
     component: TicketListPage,
-    meta: { title: '工单管理', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: '工单管理', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
     path: '/tickets/:id',
@@ -113,13 +114,19 @@ const routes: RouteRecordRaw[] = [
     path: '/assets',
     name: 'Assets',
     component: AssetsPage,
-    meta: { title: '资产台账', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: '资产台账', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
+  },
+  {
+    path: '/assets/:assetId',
+    name: 'AssetDetail',
+    component: AssetDetailPage,
+    meta: { title: '资产详情', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
     path: '/audit',
     name: 'Audit',
     component: AuditPage,
-    meta: { title: '审计日志', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: '审计日志', requiresAuth: true, roles: ['admin'] },
   },
   {
     path: '/settings',

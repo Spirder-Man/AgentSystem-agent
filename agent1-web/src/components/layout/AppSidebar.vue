@@ -19,7 +19,6 @@ import {
   Warning,
   Box,
   Setting,
-  Lock,
 } from '@element-plus/icons-vue';
 
 const auth = useAuthStore();
@@ -34,14 +33,14 @@ interface NavItem {
 }
 
 const allNavItems: NavItem[] = [
-  { path: '/dashboard', title: '仪表盘', icon: Monitor, roles: ['admin', 'auditor'] },
+  { path: '/dashboard', title: '仪表盘', icon: Monitor, roles: ['admin', 'auditor', 'viewer'] },
   { path: '/compliance', title: '合规检查', icon: Document, roles: ['admin', 'auditor'] },
-  { path: '/compliance/history', title: '合规历史', icon: Clock, roles: ['admin', 'auditor'] },
+  { path: '/compliance/history', title: '合规历史', icon: Clock, roles: ['admin', 'auditor', 'viewer'] },
   { path: '/inspection/plans', title: '巡检计划', icon: List, roles: ['admin', 'auditor'] },
-  { path: '/inspection/rounds', title: '巡检记录', icon: List, roles: ['admin', 'auditor'] },
-  { path: '/tickets', title: '工单管理', icon: Warning, roles: ['admin', 'auditor'] },
-  { path: '/assets', title: '资产台账', icon: Box, roles: ['admin', 'auditor'] },
-  { path: '/audit', title: '审计日志', icon: Document, roles: ['admin', 'auditor'] },
+  { path: '/inspection/rounds', title: '巡检记录', icon: List, roles: ['admin', 'auditor', 'viewer'] },
+  { path: '/tickets', title: '工单管理', icon: Warning, roles: ['admin', 'auditor', 'viewer'] },
+  { path: '/assets', title: '资产台账', icon: Box, roles: ['admin', 'auditor', 'viewer'] },
+  { path: '/audit', title: '审计日志', icon: Document, roles: ['admin'] },
   { path: '/settings', title: '系统设置', icon: Setting, roles: ['admin'] },
 ];
 
@@ -71,28 +70,19 @@ function navigateTo(path: string) {
 
     <!-- 导航菜单 -->
     <nav class="flex-1 py-3 overflow-y-auto">
-      <div v-if="auth.isViewer" class="px-5 py-8 text-center">
-        <el-icon :size="32" class="text-gray-300 mb-3"><Lock /></el-icon>
-        <p class="text-sm text-gray-400 leading-relaxed">
-          当前为只读角色<br />暂无可用功能
-        </p>
+      <div
+        v-for="item in visibleItems"
+        :key="item.path"
+        class="nav-item flex items-center px-5 py-2.5 mx-2 my-0.5 rounded-md cursor-pointer transition-colors text-sm"
+        :class="{
+          'bg-blue-50 text-blue-700 font-medium': activePath === item.path || activePath.startsWith(item.path + '/'),
+          'text-gray-600 hover:bg-gray-50': !(activePath === item.path || activePath.startsWith(item.path + '/')),
+        }"
+        @click="navigateTo(item.path)"
+      >
+        <el-icon class="mr-3"><component :is="item.icon" /></el-icon>
+        {{ item.title }}
       </div>
-
-      <template v-else>
-        <div
-          v-for="item in visibleItems"
-          :key="item.path"
-          class="nav-item flex items-center px-5 py-2.5 mx-2 my-0.5 rounded-md cursor-pointer transition-colors text-sm"
-          :class="{
-            'bg-blue-50 text-blue-700 font-medium': activePath === item.path || activePath.startsWith(item.path + '/'),
-            'text-gray-600 hover:bg-gray-50': !(activePath === item.path || activePath.startsWith(item.path + '/')),
-          }"
-          @click="navigateTo(item.path)"
-        >
-          <el-icon class="mr-3"><component :is="item.icon" /></el-icon>
-          {{ item.title }}
-        </div>
-      </template>
     </nav>
 
     <!-- 底部用户信息 -->
