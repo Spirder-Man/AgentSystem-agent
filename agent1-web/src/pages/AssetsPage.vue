@@ -10,6 +10,8 @@ const assets = ref<ChemicalAsset[]>([]);
 const loading = ref(true);
 const error = ref('');
 const searchQuery = ref('');
+const page = ref(1);
+const pageSize = ref(20);
 
 const router = useRouter();
 
@@ -29,6 +31,11 @@ const filteredAssets = computed(() => {
     a.location.toLowerCase().includes(q) ||
     a.responsiblePerson.toLowerCase().includes(q)
   );
+});
+
+const pagedAssets = computed(() => {
+  const start = (page.value - 1) * pageSize.value;
+  return filteredAssets.value.slice(start, start + pageSize.value);
 });
 
 onMounted(fetchAssets);
@@ -68,7 +75,7 @@ onMounted(fetchAssets);
           </tr>
         </thead>
         <tbody>
-          <tr v-for="a in filteredAssets" :key="a.assetId" class="border-b border-slate-100 hover:bg-slate-50">
+          <tr v-for="a in pagedAssets" :key="a.assetId" class="border-b border-slate-100 hover:bg-slate-50">
             <td class="px-4 py-3 text-slate-800 font-medium">
               <span
                 class="cursor-pointer text-blue-700 hover:text-blue-500 hover:underline"
@@ -92,6 +99,18 @@ onMounted(fetchAssets);
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- 分页 -->
+    <div v-if="filteredAssets.length > pageSize" class="flex justify-center">
+      <el-pagination
+        :current-page="page"
+        :page-size="pageSize"
+        :total="filteredAssets.length"
+        layout="prev, pager, next"
+        small
+        @current-change="(p: number) => page = p"
+      />
     </div>
   </div>
 </template>

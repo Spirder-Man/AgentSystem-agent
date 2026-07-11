@@ -4,8 +4,8 @@
 //
 // 权限对齐:
 //   admin    → 全部菜单
-//   auditor  → 除 Settings 外的全部菜单
-//   viewer   → 无菜单 (仅 header 显示"无访问权限")
+//   auditor  → 除 Settings/System 外的全部菜单
+//   viewer   → 仪表盘 / 合规历史 / 巡检记录 / 工单管理 / 资产台账（只读）
 // ============================================================
 
 import { computed } from 'vue';
@@ -19,6 +19,10 @@ import {
   Warning,
   Box,
   Setting,
+  Search,
+  Link,
+  ChatDotRound,
+  Odometer,
 } from '@element-plus/icons-vue';
 
 const auth = useAuthStore();
@@ -40,14 +44,16 @@ const allNavItems: NavItem[] = [
   { path: '/inspection/rounds', title: '巡检记录', icon: List, roles: ['admin', 'auditor', 'viewer'] },
   { path: '/tickets', title: '工单管理', icon: Warning, roles: ['admin', 'auditor', 'viewer'] },
   { path: '/assets', title: '资产台账', icon: Box, roles: ['admin', 'auditor', 'viewer'] },
+  { path: '/hazard', title: '危化品查询', icon: Search, roles: ['admin', 'auditor'] },
+  { path: '/storage/compatibility', title: '储存兼容性', icon: Link, roles: ['admin', 'auditor'] },
+  { path: '/chat', title: 'AI 合规助手', icon: ChatDotRound, roles: ['admin', 'auditor'] },
   { path: '/audit', title: '审计日志', icon: Document, roles: ['admin'] },
+  { path: '/system', title: '运维看板', icon: Odometer, roles: ['admin'] },
   { path: '/settings', title: '系统设置', icon: Setting, roles: ['admin'] },
 ];
 
 const visibleItems = computed(() => {
   if (!auth.role) return [];
-  // viewer: 无任何业务菜单
-  if (auth.isViewer) return [];
   return allNavItems.filter(
     (item) => !item.roles || item.roles.includes(auth.role!)
   );

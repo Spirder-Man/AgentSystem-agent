@@ -16,10 +16,11 @@ import type {
   HazardQueryRequest, HazardQueryResponse,
   StorageCompatibilityRequest, StorageCompatibilityResponse,
   ComplianceSummary,
-  CreatePlanRequest, InspectionPlanListItem, InspectionPlan, InspectionRound, InspectionReport, ChemicalAsset,
+  CreatePlanRequest, InspectionPlanListItem, InspectionRoundListItem, InspectionPlan, InspectionRound, InspectionReport, ChemicalAsset,
   ScanResult, QuickCheckRequest, QuickCheckResult,
   TicketListResponse, TicketStatusUpdateRequest,
   HealthStatus, ApiError,
+  AuditLogEntry, AuditLogListResponse, AuditIntegrityResponse, AuditStatsResponse,
 } from '../types/api';
 import { mockComplianceSummary, getComplianceResponse, getHazardResponse, getStorageCompatibilityResponse } from './data/compliance';
 import { mockPlans, getMockRound, getMockReport, mockAssets, mockScanResult, getMockQuickCheck } from './data/inspection';
@@ -62,7 +63,7 @@ function parseAuth(request: Request): MockAuth | null {
 // 错误模拟 (通过 x-simulate-error Header 按需触发)
 // ═══════════════════════════════════════
 
-function checkSimulatedError(request: Request): HttpResponse | null {
+function checkSimulatedError(request: Request) {
   const code = request.headers.get('x-simulate-error');
   if (!code) return null;
 
@@ -82,10 +83,13 @@ function checkSimulatedError(request: Request): HttpResponse | null {
 }
 
 // ═══════════════════════════════════════
-// Auth Guard: 无 Token → 401, viewer → 403
+// Auth Guards — 对齐后端三层授权策略:
+//   readAuthGuard  = [Authorize(Policy = "Viewer")]  → admin/auditor/viewer
+//   writeAuthGuard = [Authorize(Policy = "Auditor")] → admin/auditor
+//   adminAuthGuard = [Authorize(Policy = "Admin")]   → admin only
 // ═══════════════════════════════════════
 
-function authGuard(request: Request): HttpResponse | null {
+function readAuthGuard(request: Request) {
   const auth = parseAuth(request);
   if (!auth) {
     return HttpResponse.json<ApiError>(
@@ -99,9 +103,29 @@ function authGuard(request: Request): HttpResponse | null {
       { status: 401 }
     );
   }
+  return null;
+}
+
+function writeAuthGuard(request: Request) {
+  const base = readAuthGuard(request);
+  if (base) return base;
+  const auth = parseAuth(request)!;
   if (auth.role === 'viewer') {
     return HttpResponse.json<ApiError>(
       { error: '您没有权限执行此操作', code: 'UNAUTHORIZED' },
+      { status: 403 }
+    );
+  }
+  return null;
+}
+
+function adminAuthGuard(request: Request) {
+  const base = readAuthGuard(request);
+  if (base) return base;
+  const auth = parseAuth(request)!;
+  if (auth.role !== 'admin') {
+    return HttpResponse.json<ApiError>(
+      { error: '需要管理员权限', code: 'UNAUTHORIZED' },
       { status: 403 }
     );
   }
@@ -160,12 +184,12 @@ export const handlers = [
     await delay(200);
     const body = await request.json() as RefreshRequest;
     if (!body.refreshToken?.trim()) {
-      return HttpResponse.json<ApiError>(
+      return HttpResponse.json(
         { error: 'RefreshToken 不能为空', code: 'INVALID_INPUT' },
         { status: 400 }
       );
     }
-    return HttpResponse.json<LoginResponse>({
+    return HttpResponse.json({
       token: `mock-jwt-admin-${Date.now()}`,
       refreshToken: `mock-refresh-new-${Date.now()}`,
       username: 'admin',
@@ -185,14 +209,14 @@ export const handlers = [
   // ═══════════════════════════════════════
 
   http.get('/api/Compliance/summary', async ({ request }) => {
-    const g = authGuard(request); if (g) return g;
+    const g = readAuthGuard(request); if (g) return g;
     const e = checkSimulatedError(request); if (e) return e;
     await delay(200);
     return HttpResponse.json<ComplianceSummary>(mockComplianceSummary);
   }),
 
   http.post('/api/Compliance/check', async ({ request }) => {
-    const g = authGuard(request); if (g) return g;
+    const g = writeAuthGuard(request); if (g) return g;
     const e = checkSimulatedError(request); if (e) return e;
     const s = maybeSimulateError(); if (s) return HttpResponse.json(s, { status: 503 });
     await simulateLlmDelay();
@@ -201,7 +225,7 @@ export const handlers = [
   }),
 
   http.post('/api/Compliance/hazard/query', async ({ request }) => {
-    const g = authGuard(request); if (g) return g;
+    const g = readAuthGuard(request); if (g) return g;
     const e = checkSimulatedError(request); if (e) return e;
     await simulateLlmDelay();
     const body = await request.json() as HazardQueryRequest;
@@ -209,7 +233,7 @@ export const handlers = [
   }),
 
   http.post('/api/Compliance/storage/compatibility', async ({ request }) => {
-    const g = authGuard(request); if (g) return g;
+    const g = readAuthGuard(request); if (g) return g;
     const e = checkSimulatedError(request); if (e) return e;
     await simulateLlmDelay();
     const body = await request.json() as StorageCompatibilityRequest;
@@ -223,7 +247,7 @@ export const handlers = [
   // ═══════════════════════════════════════
 
   http.get('/api/Inspection/plans', async ({ request }) => {
-    const g = authGuard(request); if (g) return g;
+    const g = readAuthGuard(request); if (g) return g;
     const e = checkSimulatedError(request); if (e) return e;
     await delay(200);
     // 对齐后端：列表仅返回 items 计数，不含 type/scheduledDate/notes
@@ -236,7 +260,7 @@ export const handlers = [
   }),
 
   http.post('/api/Inspection/plans', async ({ request }) => {
-    const g = authGuard(request); if (g) return g;
+    const g = writeAuthGuard(request); if (g) return g;
     const e = checkSimulatedError(request); if (e) return e;
     await delay(300);
     const body = await request.json() as CreatePlanRequest;
@@ -255,7 +279,7 @@ export const handlers = [
   }),
 
   http.get('/api/Inspection/plans/:id', async ({ request, params }) => {
-    const g = authGuard(request); if (g) return g;
+    const g = readAuthGuard(request); if (g) return g;
     const e = checkSimulatedError(request); if (e) return e;
     await delay(200);
     const plan = mockPlans.find((p) => p.planId === params.id);
@@ -264,7 +288,7 @@ export const handlers = [
   }),
 
   http.post('/api/Inspection/plans/:id/execute', async ({ request, params }) => {
-    const g = authGuard(request); if (g) return g;
+    const g = writeAuthGuard(request); if (g) return g;
     const e = checkSimulatedError(request); if (e) return e;
     const s = maybeSimulateError(); if (s) return HttpResponse.json(s, { status: 503 });
     await simulateLlmDelay();
@@ -278,8 +302,29 @@ export const handlers = [
     });
   }),
 
+  // GET /api/Inspection/rounds — 巡检轮次列表（对齐后端 InspectionController.ListRounds）
+  http.get('/api/Inspection/rounds', async ({ request }) => {
+    const g = readAuthGuard(request); if (g) return g;
+    const e = checkSimulatedError(request); if (e) return e;
+    await delay(200);
+    const planNames = Object.fromEntries(mockPlans.map(p => [p.planId, p.name]));
+    const listItems: InspectionRoundListItem[] = mockPlans.flatMap(p => [
+      getMockRound(`round-${p.planId}-1`, p.planId),
+      getMockRound(`round-${p.planId}-2`, p.planId),
+    ]).sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
+    .map(r => ({
+      roundId: r.roundId, planId: r.planId,
+      planName: planNames[r.planId] ?? '未知计划',
+      complianceRate: r.complianceRate, compliantCount: r.compliantCount,
+      nonCompliantCount: r.nonCompliantCount, ticketCount: r.ticketCount,
+      warningCount: r.warningCount, totalElapsedMs: r.totalElapsedMs,
+      executedBy: r.executedBy, startedAt: r.startedAt, completedAt: r.completedAt,
+    }));
+    return HttpResponse.json<InspectionRoundListItem[]>(listItems);
+  }),
+
   http.get('/api/Inspection/rounds/:id', async ({ request, params }) => {
-    const g = authGuard(request); if (g) return g;
+    const g = readAuthGuard(request); if (g) return g;
     const e = checkSimulatedError(request); if (e) return e;
     await delay(200);
     const round = getMockRound(params.id as string, 'plan-001');
@@ -298,14 +343,14 @@ export const handlers = [
   }),
 
   http.get('/api/Inspection/reports/:id', async ({ request, params }) => {
-    const g = authGuard(request); if (g) return g;
+    const g = readAuthGuard(request); if (g) return g;
     const e = checkSimulatedError(request); if (e) return e;
     await delay(200);
     return HttpResponse.json<InspectionReport>(getMockReport(params.id as string, 'round-001'));
   }),
 
   http.get('/api/Inspection/reports/:id/export', async ({ request, params }) => {
-    const g = authGuard(request); if (g) return g;
+    const g = readAuthGuard(request); if (g) return g;
     const e = checkSimulatedError(request); if (e) return e;
     await delay(100);
     const report = getMockReport(params.id as string, 'round-001');
@@ -320,14 +365,14 @@ export const handlers = [
   }),
 
   http.get('/api/Inspection/assets', async ({ request }) => {
-    const g = authGuard(request); if (g) return g;
+    const g = readAuthGuard(request); if (g) return g;
     const e = checkSimulatedError(request); if (e) return e;
     await delay(200);
     return HttpResponse.json<ChemicalAsset[]>(mockAssets);
   }),
 
   http.post('/api/Inspection/scan', async ({ request }) => {
-    const g = authGuard(request); if (g) return g;
+    const g = writeAuthGuard(request); if (g) return g;
     const e = checkSimulatedError(request); if (e) return e;
     const s = maybeSimulateError(); if (s) return HttpResponse.json(s, { status: 503 });
     await simulateLlmDelay();
@@ -335,7 +380,7 @@ export const handlers = [
   }),
 
   http.post('/api/Inspection/quick-check', async ({ request }) => {
-    const g = authGuard(request); if (g) return g;
+    const g = readAuthGuard(request); if (g) return g;
     const e = checkSimulatedError(request); if (e) return e;
     await delay(1500);
     const body = await request.json() as QuickCheckRequest;
@@ -347,14 +392,14 @@ export const handlers = [
   // ═══════════════════════════════════════
 
   http.get('/api/Tickets', async ({ request }) => {
-    const g = authGuard(request); if (g) return g;
+    const g = readAuthGuard(request); if (g) return g;
     const e = checkSimulatedError(request); if (e) return e;
     await delay(200);
     return HttpResponse.json<TicketListResponse>(mockTicketList);
   }),
 
   http.put('/api/Tickets/:id/status', async ({ request, params }) => {
-    const g = authGuard(request); if (g) return g;
+    const g = writeAuthGuard(request); if (g) return g;
     const e = checkSimulatedError(request); if (e) return e;
     await delay(300);
     const body = await request.json() as TicketStatusUpdateRequest;
@@ -367,6 +412,64 @@ export const handlers = [
       );
     }
     return HttpResponse.json({ ticketId: updated.id, newStatus: updated.status, logCount: updated.logCount });
+  }),
+
+  // ═══════════════════════════════════════
+  // Audit 审计日志 (Admin only) — 对齐后端 AuditController
+  // ═══════════════════════════════════════
+
+  http.get('/api/Audit/logs', async ({ request }) => {
+    const g = adminAuthGuard(request); if (g) return g;
+    const e = checkSimulatedError(request); if (e) return e;
+    await delay(200);
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page')) || 1;
+    const pageSize = Number(url.searchParams.get('pageSize')) || 50;
+    const mockLogs: AuditLogEntry[] = [
+      { id: 1, user: 'admin', operation: '合规审核', details: '查询: 苯与丙酮同库储存 | 工具: [CheckStorageCompatibility] | 验证法规: 3条 | 幻觉法规: 0条', isSensitive: true, timestamp: '2026-07-10 14:30:00', chainHash: 'a1b2c3d4e5f6a7b8' },
+      { id: 2, user: 'auditor', operation: '危化品查询', details: '化学品: 甲醇 | 工具: [CheckHazardCategory]', isSensitive: true, timestamp: '2026-07-10 13:15:00', chainHash: 'b2c3d4e5f6a7b8c9d0' },
+      { id: 3, user: 'admin', operation: '巡检执行', details: '计划: plan-001 (甲类仓库周检) | 合规率: 80%', isSensitive: false, timestamp: '2026-07-10 10:00:00', chainHash: 'c3d4e5f6a7b8c9d0e1' },
+      { id: 4, user: 'viewer', operation: '查看报告', details: '报告: report-001 | 轮次: round-001', isSensitive: false, timestamp: '2026-07-10 09:45:00', chainHash: 'd4e5f6a7b8c9d0e1f2' },
+      { id: 5, user: 'auditor', operation: '储存兼容性', details: '苯 vs 丙酮 | 工具: [CheckStorageCompatibility]', isSensitive: true, timestamp: '2026-07-09 16:20:00', chainHash: 'e5f6a7b8c9d0e1f2a3' },
+      { id: 6, user: 'admin', operation: '自动扫描', details: '资产 6/6 | 发现 2 条 | 新增 1 条', isSensitive: false, timestamp: '2026-07-09 08:00:00', chainHash: 'f6a7b8c9d0e1f2a3b4' },
+    ];
+    const total = mockLogs.length;
+    const paged = mockLogs.slice((page - 1) * pageSize, page * pageSize);
+    return HttpResponse.json<AuditLogListResponse>({ total, page, pageSize, logs: paged });
+  }),
+
+  http.get('/api/Audit/integrity', async ({ request }) => {
+    const g = adminAuthGuard(request); if (g) return g;
+    const e = checkSimulatedError(request); if (e) return e;
+    await delay(500);
+    return HttpResponse.json<AuditIntegrityResponse>({
+      intact: true,
+      brokenAtId: null,
+      detail: 'SHA256 哈希链完整 — 所有 6 条日志记录未检测到篡改',
+      verifiedAt: new Date().toISOString(),
+    });
+  }),
+
+  http.get('/api/Audit/export', async ({ request }) => {
+    const g = adminAuthGuard(request); if (g) return g;
+    const e = checkSimulatedError(request); if (e) return e;
+    await delay(300);
+    return HttpResponse.json({
+      report: '# Agent1 审计报告\n\n## 时间范围: 2026-07-01 ~ 2026-07-10\n\n### 操作统计\n- 合规审核: 12 次\n- 危化品查询: 8 次\n- 巡检执行: 3 次\n- 储存兼容性: 5 次\n- 自动扫描: 2 次\n\n### 完整性验证\n✅ SHA256 哈希链完整，未检测到篡改',
+      generatedAt: new Date().toISOString(),
+    });
+  }),
+
+  http.get('/api/Audit/stats', async ({ request }) => {
+    const g = adminAuthGuard(request); if (g) return g;
+    const e = checkSimulatedError(request); if (e) return e;
+    await delay(200);
+    return HttpResponse.json<AuditStatsResponse>({
+      totalCount: 156,
+      byOperation: { '合规审核': 42, '危化品查询': 35, '巡检执行': 18, '储存兼容性': 22, '自动扫描': 12, '查看报告': 27 },
+      byUser: { admin: 68, auditor: 55, viewer: 33 },
+      lastLogAt: '2026-07-10 14:30:00',
+    });
   }),
 
   // ═══════════════════════════════════════

@@ -35,12 +35,19 @@ const ComplianceHistoryPage = () => import('@/pages/ComplianceHistoryPage.vue');
 const TicketListPage = () => import('@/pages/TicketListPage.vue');
 // 以下页面尚未实现
 const InspectionPlansPage = () => import('@/pages/InspectionPlansPage.vue');
+const InspectionPlanDetailPage = () => import('@/pages/InspectionPlanDetailPage.vue');
 const InspectionRoundsPage = () => import('@/pages/InspectionRoundsPage.vue');
+const InspectionRoundDetailPage = () => import('@/pages/InspectionRoundDetailPage.vue');
 const TicketDetailPage = () => import('@/pages/TicketDetailPage.vue');
 const AssetsPage = () => import('@/pages/AssetsPage.vue');
 const AssetDetailPage = () => import('@/pages/AssetDetailPage.vue');
 const AuditPage = () => import('@/pages/AuditPage.vue');
 const SettingsPage = () => import('@/pages/SettingsPage.vue');
+const InspectionReportPage = () => import('@/pages/InspectionReportPage.vue');
+const HazardQueryPage = () => import('@/pages/HazardQueryPage.vue');
+const StorageCompatibilityPage = () => import('@/pages/StorageCompatibilityPage.vue');
+const AIChatPage = () => import('@/pages/AIChatPage.vue');
+const SystemMonitorPage = () => import('@/pages/SystemMonitorPage.vue');
 
 // ═══════════════════════════════════════
 // 路由表
@@ -87,16 +94,34 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '合规历史', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
+    path: '/inspection/plans/:planId',
+    name: 'InspectionPlanDetail',
+    component: InspectionPlanDetailPage,
+    meta: { title: '计划详情', requiresAuth: true, roles: ['admin', 'auditor'] },
+  },
+  {
     path: '/inspection/plans',
     name: 'InspectionPlans',
     component: InspectionPlansPage,
     meta: { title: '巡检计划', requiresAuth: true, roles: ['admin', 'auditor'] },
   },
   {
+    path: '/inspection/rounds/:roundId',
+    name: 'InspectionRoundDetail',
+    component: InspectionRoundDetailPage,
+    meta: { title: '轮次详情', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
+  },
+  {
     path: '/inspection/rounds',
     name: 'InspectionRounds',
     component: InspectionRoundsPage,
     meta: { title: '巡检记录', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
+  },
+  {
+    path: '/inspection/report/:roundId',
+    name: 'InspectionReport',
+    component: InspectionReportPage,
+    meta: { title: '巡检报告', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
     path: '/tickets',
@@ -133,6 +158,30 @@ const routes: RouteRecordRaw[] = [
     name: 'Settings',
     component: SettingsPage,
     meta: { title: '系统设置', requiresAuth: true, roles: ['admin'] },
+  },
+  {
+    path: '/hazard',
+    name: 'HazardQuery',
+    component: HazardQueryPage,
+    meta: { title: '危化品查询', requiresAuth: true, roles: ['admin', 'auditor'] },
+  },
+  {
+    path: '/storage/compatibility',
+    name: 'StorageCompatibility',
+    component: StorageCompatibilityPage,
+    meta: { title: '储存兼容性', requiresAuth: true, roles: ['admin', 'auditor'] },
+  },
+  {
+    path: '/chat',
+    name: 'AIChat',
+    component: AIChatPage,
+    meta: { title: 'AI 合规助手', requiresAuth: true, roles: ['admin', 'auditor'] },
+  },
+  {
+    path: '/system',
+    name: 'SystemMonitor',
+    component: SystemMonitorPage,
+    meta: { title: '运维看板', requiresAuth: true, roles: ['admin'] },
   },
 
   // ── 404 兜底 ──

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import apiClient from '@/lib/axios';
 import type { TicketListResponse, TicketItem } from '@/types/api';
@@ -20,6 +20,8 @@ const data = ref<TicketListResponse | null>(null);
 const loading = ref(true);
 const error = ref('');
 const updatingId = ref<number | null>(null);
+const page = ref(1);
+const pageSize = ref(20);
 
 async function fetchTickets() {
   loading.value = true; error.value = '';
@@ -64,6 +66,12 @@ function viewDetail(ticket: TicketItem) {
 }
 
 onMounted(fetchTickets);
+
+const pagedTickets = computed(() => {
+  const list = data.value?.tickets ?? [];
+  const start = (page.value - 1) * pageSize.value;
+  return list.slice(start, start + pageSize.value);
+});
 
 const statusBadgeCls = (s: string) => {
   const m: Record<string, string> = {
@@ -127,7 +135,7 @@ const actionBtnCls = (t: string) => {
         </thead>
         <tbody>
           <tr
-            v-for="t in data.tickets" :key="t.id"
+            v-for="t in pagedTickets" :key="t.id"
             class="border-b border-slate-100 hover:bg-slate-50"
             :class="{ 'opacity-60': !t.isOpen }"
           >
@@ -166,6 +174,18 @@ const actionBtnCls = (t: string) => {
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- 分页 -->
+    <div v-if="data && data.tickets.length > pageSize" class="flex justify-center">
+      <el-pagination
+        :current-page="page"
+        :page-size="pageSize"
+        :total="data.tickets.length"
+        layout="prev, pager, next"
+        small
+        @current-change="(p: number) => page = p"
+      />
     </div>
   </div>
 </template>

@@ -5,8 +5,31 @@
 # 前提：PostgreSQL 已启动 + LLM(8080) + Embed(8081)
 # ═══════════════════════════════════════════════════════════
 
-PROJECT_DIR="/root/autodl-tmp/agent-system"
-OUT_DIR="/root/autodl-tmp/test-results/$(date +%Y%m%d_%H%M%S)"
+# ── 从脚本位置推导项目根目录（scripts/ → 上级即为项目根）──
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# ── 加载 .env 配置（敏感配置唯一源）──
+if [ -f "$PROJECT_DIR/.env" ]; then
+    set -o noglob
+    set -a
+    source "$PROJECT_DIR/.env"
+    set +a
+    set +o noglob
+else
+    echo "错误：未找到 $PROJECT_DIR/.env 配置文件"
+    echo "请确保项目根目录存在 .env 文件（参考 .env.example）"
+    exit 1
+fi
+
+# ── 强制校验必要环境变量 ──
+if [ -z "${JWT_KEY:-}" ] || [ -z "${DB_PASSWORD:-}" ]; then
+    echo "错误：JWT_KEY 和 DB_PASSWORD 必须在 .env 中设置"
+    exit 1
+fi
+
+# ── 输出目录（可通过 TEST_RESULTS_DIR 环境变量覆盖）──
+OUT_DIR="${TEST_RESULTS_DIR:-$PROJECT_DIR/test-results}/$(date +%Y%m%d_%H%M%S)"
 TIMEOUT=180
 START_TIME=$(date +%s)
 
@@ -18,7 +41,6 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; CY
 pass_cnt=0; fail_cnt=0; skip_cnt=0
 
 # ── 测试状态跟踪（供本地监控看板读取）──
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [ -f "$SCRIPT_DIR/test-status.sh" ]; then
     source "$SCRIPT_DIR/test-status.sh"
     test_status_init "$OUT_DIR"
@@ -38,7 +60,7 @@ run_test() {
 
     echo "$input" > /tmp/agent_test_input.txt
 
-    timeout "$TIMEOUT" bash -c "cd '$PROJECT_DIR' && DOTNET_ENVIRONMENT=Production JWT_KEY=qazwsxedcrfvtgbyhnujmikolpqazwsx DB_PASSWORD=7758521 dotnet run --project Agent1 -c Release --no-build < /tmp/agent_test_input.txt" > "$log" 2>&1
+    timeout "$TIMEOUT" bash -c "cd '$PROJECT_DIR' && dotnet run --project Agent1 -c Release --no-build < /tmp/agent_test_input.txt" > "$log" 2>&1
     local exit_code=$?
     local test_end=$(date +%s)
     local elapsed=$((test_end - test_start))
@@ -98,7 +120,7 @@ run_test_heartbeat() {
     echo "$input" > /tmp/agent_test_input.txt
 
     # 后台启动进程，不设 timeout
-    cd "$PROJECT_DIR" && DOTNET_ENVIRONMENT=Production JWT_KEY=qazwsxedcrfvtgbyhnujmikolpqazwsx DB_PASSWORD=7758521 dotnet run --project Agent1 -c Release --no-build < /tmp/agent_test_input.txt > "$log" 2>&1 &
+    cd "$PROJECT_DIR" && dotnet run --project Agent1 -c Release --no-build < /tmp/agent_test_input.txt > "$log" 2>&1 &
     local test_pid=$!
 
     # 心跳监控

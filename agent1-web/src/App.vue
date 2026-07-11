@@ -7,6 +7,7 @@ import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import AppSidebar from '@/components/layout/AppSidebar.vue';
 import GlobalLoadingBar from '@/components/common/GlobalLoadingBar.vue';
+import ErrorBoundary from '@/components/common/ErrorBoundary.vue';
 
 const route = useRoute();
 
@@ -22,13 +23,17 @@ const showSidebar = computed(() => {
   <GlobalLoadingBar />
 
   <!-- 无侧边栏: 登录页 / 403 等 -->
-  <router-view v-if="!showSidebar" />
+  <ErrorBoundary v-if="!showSidebar">
+    <router-view />
+  </ErrorBoundary>
 
   <!-- 有侧边栏: 业务页面布局 -->
-  <div v-else class="flex h-screen bg-gray-50">
-    <AppSidebar />
-    <main class="flex-1 overflow-y-auto p-6">
-      <router-view />
-    </main>
-  </div>
+  <ErrorBoundary v-else>
+    <div class="flex h-screen bg-gray-50">
+      <AppSidebar />
+      <main class="flex-1 overflow-y-auto p-6">
+        <router-view />
+      </main>
+    </div>
+  </ErrorBoundary>
 </template>

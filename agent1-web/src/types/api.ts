@@ -146,6 +146,33 @@ export interface InspectionRound {
   results: InspectionItemResult[];
 }
 
+/** 巡检轮次详情 — 对齐 GET /api/Inspection/rounds/:id，warnings 为计数而非数组 */
+export interface InspectionRoundDetail {
+  roundId: string;
+  planId: string;
+  complianceRate: number;
+  compliantCount: number;
+  nonCompliantCount: number;
+  ticketCount: number;
+  warningCount: number;
+  totalElapsedMs: number;
+  executedBy: string;
+  startedAt: string;
+  completedAt: string | null;
+  results: RoundDetailResult[];
+}
+
+export interface RoundDetailResult {
+  itemId: number;
+  isCompliant: boolean | null;
+  regulationRef: string;
+  conclusion: string;
+  warnings: number; // API 返回计数，非数组
+  tools: string[];
+  traceId: string;
+  elapsedMs: number;
+}
+
 export interface InspectionItemResult {
   itemId: number;
   isCompliant: boolean | null;
@@ -155,6 +182,22 @@ export interface InspectionItemResult {
   tools: string[];
   traceId: string;
   elapsedMs: number;
+}
+
+/** 巡检轮次列表项 — 对齐 GET /api/Inspection/rounds */
+export interface InspectionRoundListItem {
+  roundId: string;
+  planId: string;
+  planName: string;
+  complianceRate: number;
+  compliantCount: number;
+  nonCompliantCount: number;
+  ticketCount: number;
+  warningCount: number;
+  totalElapsedMs: number;
+  executedBy: string;
+  startedAt: string;
+  completedAt: string | null;
 }
 
 export interface InspectionReport {

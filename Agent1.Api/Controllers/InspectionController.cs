@@ -77,6 +77,34 @@ public class InspectionController : ControllerBase
         return Ok(plans);
     }
 
+    /// <summary>
+    /// 巡检轮次列表 — 供历史记录/合规率趋势使用。
+    /// 返回所有已执行轮次，含合规率、工单数等关键指标。
+    /// </summary>
+    [HttpGet("rounds")]
+    public IActionResult ListRounds()
+    {
+        var plans = _orchestrator.GetAllPlans().ToDictionary(p => p.PlanId, p => p.Name);
+        var rounds = _repo.GetAllRounds()
+            .OrderByDescending(r => r.StartedAt)
+            .Select(r => new
+            {
+                r.RoundId,
+                r.PlanId,
+                PlanName = plans.GetValueOrDefault(r.PlanId, "未知计划"),
+                r.ComplianceRate,
+                r.CompliantCount,
+                r.NonCompliantCount,
+                r.TicketCount,
+                r.WarningCount,
+                r.TotalElapsedMs,
+                r.ExecutedBy,
+                r.StartedAt,
+                r.CompletedAt
+            });
+        return Ok(rounds);
+    }
+
     [HttpGet("plans/{planId}")]
     public IActionResult GetPlan(string planId)
     {

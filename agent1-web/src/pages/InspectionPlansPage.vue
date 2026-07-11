@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import apiClient from '@/lib/axios';
 import type { InspectionPlanListItem, CreatePlanRequest } from '@/types/api';
 import SkeletonTable from '@/components/common/SkeletonTable.vue';
@@ -12,6 +13,7 @@ const error = ref('');
 const showCreate = ref(false);
 const submitting = ref(false);
 const executingId = ref<string | null>(null);
+const router = useRouter();
 
 // 新建表单
 const newPlan = ref({ name: '', area: '', type: 'DailyWeekly', notes: '', items: [{ query: '', capability: 'regulatory-audit' }] });
@@ -138,7 +140,7 @@ onMounted(fetchPlans);
         <div class="flex items-start justify-between">
           <div class="flex-1">
             <div class="flex items-center gap-3 mb-2">
-              <h3 class="text-sm font-semibold text-slate-800">{{ plan.name }}</h3>
+              <router-link :to="'/inspection/plans/' + plan.planId" class="text-sm font-semibold text-blue-700 hover:text-blue-900 hover:underline transition-colors">{{ plan.name }}</router-link>
               <span :class="statusBadge(plan.status).cls" class="inline-block text-xs px-1.5 py-0.5 rounded border">
                 {{ statusBadge(plan.status).label }}
               </span>
