@@ -55,7 +55,7 @@ const pagedRounds = computed(() => {
 
     <SkeletonTable v-if="loading" :rows="3" />
     <EmptyState v-else-if="error" icon="error" :title="error" @action="fetchHistory" />
-    <EmptyState v-else-if="rounds.length===0" icon="empty" title="暂无巡检记录，请先创建并执行巡检计划" />
+    <EmptyState v-else-if="rounds.length===0" icon="empty" title="暂无合规历史记录" description="执行合规检查或触发全库扫描后，结果将展示在此处" />
 
     <div v-else class="bg-white border border-slate-200 rounded overflow-hidden">
       <table class="w-full text-sm">

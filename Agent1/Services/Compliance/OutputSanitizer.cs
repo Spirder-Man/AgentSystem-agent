@@ -99,6 +99,9 @@ namespace Agent1.Services
             sanitized = Regex.Replace(sanitized, @"\n{3,}", "\n\n");
             sanitized = sanitized.Trim();
 
+            // 5b. 循环检测：截断 LLM 输出中重复的判定行（如 [判定:is_compliant=true] 重复 80+ 次）
+            sanitized = TruncateLoop(sanitized);
+
             // [P1 FIX] Bug C: 6. 硬校验 GB 编号的年代版本号
             sanitized = ValidateVersionYear(sanitized);
 
@@ -222,7 +225,52 @@ namespace Agent1.Services
             });
         }
 
-        /// <summary>从版本字符串（如 "现行2022版"）中提取年份</summary>
+        /// <summary>
+        /// 循环检测：截断 LLM 输出中重复出现的模式行。
+        /// 当同一行模式（如 [判定:is_compliant=true]）连续出现超过阈值时，
+        /// 截断到第一个出现位置，防止输出无限膨胀。
+        /// </summary>
+        private static string TruncateLoop(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return text;
+        
+            var lines = text.Split('\n');
+            if (lines.Length < 5)
+                return text;
+        
+            // 检测重复行模式：[判定:is_compliant=...]
+            var verdictPattern = new Regex(@"^\[判定:is_compliant=(?:true|false)\]$", RegexOptions.Compiled);
+            int verdictCount = 0;
+            int firstVerdictIndex = -1;
+            
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (verdictPattern.IsMatch(lines[i].Trim()))
+                {
+                    if (firstVerdictIndex == -1)
+                        firstVerdictIndex = i;
+                    verdictCount++;
+                }
+                else if (firstVerdictIndex != -1 && verdictCount >= 3)
+                {
+                    // 检测到非判定行且已有足够重复 → 确认是循环
+                    break;
+                }
+            }
+        
+            // 若判定行重复超过阈值（3次），截断到第一条判定行之前
+            if (verdictCount >= 3 && firstVerdictIndex > 0)
+            {
+                var truncated = string.Join("\n", lines.Take(firstVerdictIndex));
+                Console.WriteLine($"      🔁 [OutputSanitizer] 截断 LLM 循环输出: {verdictCount} 条重复判定 → 保留 {firstVerdictIndex} 行");
+                return truncated.TrimEnd() + "\n\n[判定:is_compliant=true]";
+            }
+        
+            return text;
+        }
+        
+        /// <summary>从版本字符串（如"现行2022版"）中提取年份</summary>
         private static int? ExtractYear(string versionText)
         {
             if (string.IsNullOrWhiteSpace(versionText))

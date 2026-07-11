@@ -29,7 +29,7 @@ const statCards = computed(() => {
     { label: '合规率', value: `${complianceRatePercent.value}%`, color: s.complianceRate >= 0.8 ? 'text-green-600' : s.complianceRate >= 0.6 ? 'text-amber-600' : 'text-red-600' },
     { label: '资产总量', value: String(s.totalAssets), color: 'text-slate-900' },
     { label: '已检查', value: `${s.checkedAssets}/${s.totalAssets}`, color: 'text-blue-600' },
-    { label: '待处理工单', value: String(s.openFindings), color: s.openFindings > 0 ? 'text-red-600' : 'text-green-600' },
+    { label: '未闭环发现', value: String(s.openFindings), color: s.openFindings > 0 ? 'text-red-600' : 'text-green-600' },
   ];
 });
 
@@ -68,7 +68,7 @@ async function runAutoScan() {
   scanError.value = ''; scanResult.value = null;
   scanLoading.value = true;
   try {
-    const { data } = await apiClient.post<ScanResult>('/api/Inspection/scan');
+    const { data } = await apiClient.post<ScanResult>('/api/Inspection/scan', null, { timeout: 600_000 });
     scanResult.value = data;
   } catch (e: unknown) {
     const ae = e as { response?: { data?: { error?: string } } };
