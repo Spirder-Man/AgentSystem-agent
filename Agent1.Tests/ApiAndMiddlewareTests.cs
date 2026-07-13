@@ -892,7 +892,145 @@ public class InspectionControllerTests
         // ExecuteQuickCheckAsync triggers LLM pipeline; skip complex integration test here
         // Covered by integration tests
     }
-}
+
+    // ═══════════════════════════════════════
+    // P0-1: 新增方法测试
+    // ═══════════════════════════════════════
+
+    [Fact]
+    public void DeletePlan_ExistingPlan_ShouldReturnOk()
+    {
+        var repo = CreateRepo();
+        var plan = new InspectionPlan { PlanId = "plan-del-1", Name = "待删除计划", Items = new List<InspectionItem>() };
+        repo.SavePlan(plan);
+        var orchestrator = CreateOrchestrator(repo);
+        var controller = CreateController(orchestrator: orchestrator, repo: repo);
+
+        var result = controller.DeletePlan("plan-del-1");
+        result.Should().BeOfType<OkObjectResult>();
+        var okResult = (OkObjectResult)result;
+        var deleted = okResult.Value!.GetType().GetProperty("deleted")!.GetValue(okResult.Value);
+        deleted.Should().Be(true);
+
+        // 验证计划已从存储中删除
+        var fromRepo = orchestrator.GetPlan("plan-del-1");
+        fromRepo.Should().BeNull();
+    }
+
+    [Fact]
+    public void DeletePlan_NonexistentPlan_ShouldReturnNotFound()
+    {
+        var controller = CreateController();
+        var result = controller.DeletePlan("nonexistent");
+        result.Should().BeOfType<NotFoundObjectResult>();
+    }
+
+    [Fact]
+    public void UpdatePlan_ExistingPlan_FullUpdate_ShouldReturnOk()
+    {
+        var repo = CreateRepo();
+        var plan = new InspectionPlan
+        {
+            PlanId = "plan-upd-1",
+            Name = "原计划名",
+            Area = "原区域",
+            Inspector = "原检查人",
+            Notes = "原备注",
+            Items = new List<InspectionItem> { new() { ItemId = 1, Query = "原检查项" } }
+        };
+        repo.SavePlan(plan);
+        var orchestrator = CreateOrchestrator(repo);
+        var controller = CreateController(orchestrator: orchestrator, repo: repo);
+
+        var request = new UpdatePlanRequest(
+            "新计划名", "新区域", "新检查人",
+            new List<InspectionItemRequest> { new("新检查项", "compliance-check") },
+            "新备注");
+
+        var result = controller.UpdatePlan("plan-upd-1", request);
+        result.Should().BeOfType<OkObjectResult>();
+
+        // 验证更新已持久化
+        var updated = orchestrator.GetPlan("plan-upd-1");
+        updated.Should().NotBeNull();
+        updated!.Name.Should().Be("新计划名");
+        updated.Area.Should().Be("新区域");
+        updated.Inspector.Should().Be("新检查人");
+        updated.Notes.Should().Be("新备注");
+        updated.Items.Should().HaveCount(1);
+        updated.Items[0].Query.Should().Be("新检查项");
+    }
+
+    [Fact]
+    public void UpdatePlan_ExistingPlan_PartialUpdate_ShouldKeepUnchangedFields()
+    {
+        var repo = CreateRepo();
+        var plan = new InspectionPlan
+        {
+            PlanId = "plan-upd-2",
+            Name = "保持不变",
+            Area = "原区域",
+            Items = new List<InspectionItem> { new() { ItemId = 1, Query = "Q1" } }
+        };
+        repo.SavePlan(plan);
+        var orchestrator = CreateOrchestrator(repo);
+        var controller = CreateController(orchestrator: orchestrator, repo: repo);
+
+        // 只更新 Name，其他字段传 null
+        var request = new UpdatePlanRequest("仅改名", null, null, null, null);
+        var result = controller.UpdatePlan("plan-upd-2", request);
+        result.Should().BeOfType<OkObjectResult>();
+
+        var updated = orchestrator.GetPlan("plan-upd-2");
+        updated.Should().NotBeNull();
+        updated!.Name.Should().Be("仅改名");
+        updated.Area.Should().Be("原区域");  // 未修改
+        updated.Items.Should().HaveCount(1);  // 未修改
+    }
+
+    [Fact]
+    public void UpdatePlan_NonexistentPlan_ShouldReturnNotFound()
+    {
+        var controller = CreateController();
+        var request = new UpdatePlanRequest("任意名", null, null, null, null);
+        var result = controller.UpdatePlan("nonexistent", request);
+        result.Should().BeOfType<NotFoundObjectResult>();
+    }
+
+    [Fact]
+    public void GetAsset_ExistingAsset_ShouldReturnOk()
+    {
+        var repo = CreateRepo();
+        var asset = new ChemicalAsset
+        {
+            AssetId = "asset-1",
+            Name = "甲类储罐A",
+            CasNumber = "67-64-1",
+            Location = "甲类仓库A区",
+            QuantityTons = 50.0,
+            StorageCondition = "阴凉通风",
+            ResponsiblePerson = "安全员张三",
+            IsMajorHazardSource = true,
+            LastCheckResult = "合格",
+            LastCheckedAt = new DateTime(2026, 6, 1)
+        };
+        repo.SaveAsset(asset);
+        var controller = CreateController(repo: repo);
+
+        var result = controller.GetAsset("asset-1");
+        result.Should().BeOfType<OkObjectResult>();
+        var okResult = (OkObjectResult)result;
+        var nameProp = okResult.Value!.GetType().GetProperty("name")!.GetValue(okResult.Value);
+        nameProp.Should().Be("甲类储罐A");
+    }
+
+    [Fact]
+    public void GetAsset_NonexistentAsset_ShouldReturnNotFound()
+    {
+        var controller = CreateController();
+        var result = controller.GetAsset("nonexistent");
+        result.Should().BeOfType<NotFoundObjectResult>();
+    }
 
 #endregion
 
