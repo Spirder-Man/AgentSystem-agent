@@ -44,6 +44,14 @@ namespace Agent1.Services.Orchestration
             Save();
         }
 
+        /// <summary>删除巡检计划，返回是否成功</summary>
+        public bool DeletePlan(string planId)
+        {
+            var removed = _cache.Plans.RemoveAll(p => p.PlanId == planId);
+            if (removed > 0) Save();
+            return removed > 0;
+        }
+
         // ═══════════════════════════════════════
         // 巡检轮次
         // ═══════════════════════════════════════

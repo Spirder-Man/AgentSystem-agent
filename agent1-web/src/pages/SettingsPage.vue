@@ -26,7 +26,7 @@ async function clearCache() {
 
 async function updateKB() {
   try {
-    const { data } = await apiClient.post<{ message: string }>('/knowledgebase/incremental-update');
+    const { data } = await apiClient.post<{ message: string }>('/api/KnowledgeBase/incremental-load');
     ElMessage.success(data.message);
   } catch { ElMessage.error('更新失败'); }
 }

@@ -119,6 +119,34 @@ public class InspectionController : ControllerBase
         });
     }
 
+    /// <summary>删除巡检计划</summary>
+    [HttpDelete("plans/{planId}")]
+    [Authorize(Policy = "Auditor")]
+    public IActionResult DeletePlan(string planId)
+    {
+        if (!_orchestrator.DeletePlan(planId))
+            return NotFound(new { error = "计划不存在" });
+        return Ok(new { planId, deleted = true });
+    }
+
+    /// <summary>编辑巡检计划</summary>
+    [HttpPut("plans/{planId}")]
+    [Authorize(Policy = "Auditor")]
+    public IActionResult UpdatePlan(string planId, [FromBody] UpdatePlanRequest request)
+    {
+        var items = request.Items?.Select(it => new InspectionItem
+        {
+            Query = it.Query,
+            CapabilityName = it.Capability ?? "storage-compliance"
+        }).ToList();
+
+        var plan = _orchestrator.UpdatePlan(planId, request.Name, request.Area,
+            request.Inspector, request.Notes, items);
+
+        if (plan == null) return NotFound(new { error = "计划不存在" });
+        return Ok(new { plan.PlanId, plan.Name, plan.Status, items = plan.Items.Count });
+    }
+
     // ═══════════════════════════════════════
     // 巡检执行
     // ═══════════════════════════════════════
@@ -238,6 +266,20 @@ public class InspectionController : ControllerBase
         return Ok(assets);
     }
 
+    /// <summary>获取单个资产详情</summary>
+    [HttpGet("assets/{assetId}")]
+    public IActionResult GetAsset(string assetId)
+    {
+        var asset = _repo.GetAsset(assetId);
+        if (asset == null) return NotFound(new { error = $"资产 {assetId} 不存在" });
+        return Ok(new
+        {
+            asset.AssetId, asset.Name, asset.CasNumber, asset.Location,
+            asset.QuantityTons, asset.StorageCondition, asset.ResponsiblePerson,
+            asset.IsMajorHazardSource, asset.LastCheckResult, asset.LastCheckedAt
+        });
+    }
+
     [HttpPost("scan")]
     [Authorize(Policy = "Auditor")]
     public async Task<IActionResult> RunAutoScan()
@@ -292,3 +334,6 @@ public record CreatePlanRequest(
 public record InspectionItemRequest(string Query, string? Capability);
 
 public record QuickCheckRequest(string Query);
+
+public record UpdatePlanRequest(string? Name, string? Area, string? Inspector,
+    List<InspectionItemRequest>? Items, string? Notes);

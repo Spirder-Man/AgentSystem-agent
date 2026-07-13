@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import apiClient from '@/lib/axios';
 import type { InspectionPlan } from '@/types/api';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { ArrowLeft } from '@element-plus/icons-vue';
 import SkeletonCard from '@/components/common/SkeletonCard.vue';
 import EmptyState from '@/components/common/EmptyState.vue';
@@ -16,6 +16,9 @@ const plan = ref<InspectionPlan | null>(null);
 const loading = ref(true);
 const error = ref('');
 const executing = ref(false);
+const deleting = ref(false);
+const editing = ref(false);
+const editForm = ref({ name: '', area: '', inspector: '', notes: '' });
 
 const statusBadge = computed(() => {
   const m: Record<string, { cls: string; label: string }> = {
@@ -55,6 +58,60 @@ async function executePlan() {
   } finally { executing.value = false; }
 }
 
+async function deletePlan() {
+  if (!plan.value) return;
+  try {
+    await ElMessageBox.confirm(`确认删除计划「${plan.value.name}」？此操作不可撤销。`, '删除确认', {
+      confirmButtonText: '确认删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    });
+  } catch { return; }
+  deleting.value = true;
+  try {
+    await apiClient.delete(`/api/Inspection/plans/${plan.value.planId}`);
+    ElMessage.success('计划已删除');
+    router.push('/inspection/plans');
+  } catch (e: unknown) {
+    const ae = e as { response?: { data?: { error?: string } } };
+    ElMessage.error(ae.response?.data?.error || '删除失败');
+  } finally { deleting.value = false; }
+}
+
+function startEdit() {
+  if (!plan.value) return;
+  editForm.value = {
+    name: plan.value.name,
+    area: plan.value.area,
+    inspector: plan.value.inspector,
+    notes: plan.value.notes || '',
+  };
+  editing.value = true;
+}
+
+async function saveEdit() {
+  if (!plan.value) return;
+  executing.value = true;
+  try {
+    await apiClient.put(`/api/Inspection/plans/${plan.value.planId}`, {
+      name: editForm.value.name,
+      area: editForm.value.area,
+      inspector: editForm.value.inspector,
+      notes: editForm.value.notes,
+    });
+    ElMessage.success('计划已更新');
+    editing.value = false;
+    await fetchPlan();
+  } catch (e: unknown) {
+    const ae = e as { response?: { data?: { error?: string } } };
+    ElMessage.error(ae.response?.data?.error || '更新失败');
+  } finally { executing.value = false; }
+}
+
+function cancelEdit() {
+  editing.value = false;
+}
+
 function goBack() { router.push('/inspection/plans'); }
 
 onMounted(fetchPlan);
@@ -90,12 +147,54 @@ onMounted(fetchPlan);
               <span class="text-sm text-slate-500">👤 {{ plan.inspector }}</span>
             </div>
           </div>
-          <button
-            v-if="plan.status === 'Draft' || plan.status === 'InProgress'"
-            @click="executePlan"
-            :disabled="executing"
-            class="px-4 py-2 rounded text-sm font-medium border border-green-200 text-green-700 bg-green-50 hover:bg-green-100 disabled:opacity-50 transition-colors"
-          >{{ executing ? '执行中…' : '▶ 执行巡检' }}</button>
+          <div class="flex items-center gap-2">
+            <button
+              v-if="plan.status === 'Draft'"
+              @click="startEdit"
+              class="px-3 py-1.5 rounded text-xs border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
+            >✏️ 编辑</button>
+            <button
+              v-if="plan.status === 'Draft' || plan.status === 'InProgress'"
+              @click="executePlan"
+              :disabled="executing"
+              class="px-4 py-2 rounded text-sm font-medium border border-green-200 text-green-700 bg-green-50 hover:bg-green-100 disabled:opacity-50 transition-colors"
+            >{{ executing ? '执行中…' : '▶ 执行巡检' }}</button>
+            <button
+              v-if="plan.status === 'Draft' || plan.status === 'Completed'"
+              @click="deletePlan"
+              :disabled="deleting"
+              class="px-3 py-1.5 rounded text-xs border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 disabled:opacity-50 transition-colors"
+            >{{ deleting ? '删除中…' : '🗑 删除' }}</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 编辑表单 -->
+      <div v-if="editing" class="bg-white border border-blue-200 rounded p-4 space-y-3">
+        <h3 class="text-sm font-semibold text-slate-700">编辑计划</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">计划名称</label>
+            <input v-model="editForm.name" class="w-full px-2 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:border-blue-400" />
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">巡检区域</label>
+            <input v-model="editForm.area" class="w-full px-2 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:border-blue-400" />
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">检查人</label>
+            <input v-model="editForm.inspector" class="w-full px-2 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:border-blue-400" />
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">备注</label>
+            <input v-model="editForm.notes" class="w-full px-2 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:border-blue-400" />
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button @click="saveEdit" :disabled="executing" class="text-sm px-4 py-1.5 rounded text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50">
+            {{ executing ? '保存中…' : '保存' }}
+          </button>
+          <button @click="cancelEdit" :disabled="executing" class="text-sm px-4 py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">取消</button>
         </div>
       </div>
 

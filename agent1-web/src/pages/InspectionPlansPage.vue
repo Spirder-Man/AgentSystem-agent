@@ -5,7 +5,7 @@ import apiClient from '@/lib/axios';
 import type { InspectionPlanListItem, CreatePlanRequest } from '@/types/api';
 import SkeletonTable from '@/components/common/SkeletonTable.vue';
 import EmptyState from '@/components/common/EmptyState.vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 
 const plans = ref<InspectionPlanListItem[]>([]);
 const loading = ref(true);
@@ -13,6 +13,7 @@ const error = ref('');
 const showCreate = ref(false);
 const submitting = ref(false);
 const executingId = ref<string | null>(null);
+const deletingId = ref<string | null>(null);
 const router = useRouter();
 
 // 新建表单
@@ -56,6 +57,25 @@ async function executePlan(plan: InspectionPlanListItem) {
     const ae = e as { response?: { data?: { error?: string } } };
     ElMessage.error(ae.response?.data?.error || '执行失败');
   } finally { executingId.value = null; }
+}
+
+async function deletePlan(plan: InspectionPlanListItem) {
+  try {
+    await ElMessageBox.confirm(`确认删除计划「${plan.name}」？此操作不可撤销。`, '删除确认', {
+      confirmButtonText: '确认删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    });
+  } catch { return; }
+  deletingId.value = plan.planId;
+  try {
+    await apiClient.delete(`/api/Inspection/plans/${plan.planId}`);
+    ElMessage.success('计划已删除');
+    await fetchPlans();
+  } catch (e: unknown) {
+    const ae = e as { response?: { data?: { error?: string } } };
+    ElMessage.error(ae.response?.data?.error || '删除失败');
+  } finally { deletingId.value = null; }
 }
 
 function addItem() { newPlan.value.items.push({ query: '', capability: 'regulatory-audit' }); }
@@ -158,7 +178,14 @@ onMounted(fetchPlans);
               @click="executePlan(plan)"
               :disabled="executingId === plan.planId"
               class="text-xs px-3 py-1.5 rounded border border-green-200 text-green-700 bg-green-50 hover:bg-green-100 disabled:opacity-50 whitespace-nowrap"
-            >{{ executingId === plan.planId ? '执行中…' : '▶ 执行' }}</button>
+            >{{ executingId === plan.planId ? '⏳ 执行中…' : '▶ 执行' }}</button>
+            <span v-if="executingId === plan.planId" class="text-xs text-slate-400">请耐心等待，正在后台执行巡检...</span>
+            <button
+              @click="deletePlan(plan)"
+              :disabled="deletingId === plan.planId"
+              class="text-xs px-2 py-1.5 rounded border border-red-200 text-red-500 hover:text-red-700 hover:bg-red-50 disabled:opacity-50 whitespace-nowrap"
+              title="删除计划"
+            >{{ deletingId === plan.planId ? '删除中…' : '🗑' }}</button>
           </div>
         </div>
       </div>

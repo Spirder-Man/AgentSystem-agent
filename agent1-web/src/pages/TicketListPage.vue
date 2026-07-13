@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import apiClient from '@/lib/axios';
 import type { TicketListResponse, TicketItem } from '@/types/api';
+import { useAuthStore } from '@/stores/auth';
 import {
   TICKET_ACTIONS_BY_STATUS,
   TICKET_STATUS_LABEL_MAP,
@@ -16,6 +17,8 @@ import EmptyState from '@/components/common/EmptyState.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 const router = useRouter();
+const auth = useAuthStore();
+const canOperate = computed(() => auth.role === 'admin' || auth.role === 'auditor');
 const data = ref<TicketListResponse | null>(null);
 const loading = ref(true);
 const error = ref('');
@@ -130,7 +133,7 @@ const actionBtnCls = (t: string) => {
             <th class="text-left px-4 py-2 text-xs font-medium text-slate-500 w-20">负责人</th>
             <th class="text-left px-4 py-2 text-xs font-medium text-slate-500 w-36">法规引用</th>
             <th class="text-left px-4 py-2 text-xs font-medium text-slate-500 w-28">建议期限</th>
-            <th class="text-left px-4 py-2 text-xs font-medium text-slate-500 w-52">操作</th>
+            <th v-if="canOperate" class="text-left px-4 py-2 text-xs font-medium text-slate-500 w-52">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -158,7 +161,7 @@ const actionBtnCls = (t: string) => {
             <td class="px-4 py-3 text-slate-500 text-xs">{{ t.assignee || '—' }}</td>
             <td class="px-4 py-3 font-mono text-xs text-slate-400">{{ t.regulationRef }}</td>
             <td class="px-4 py-3 text-xs text-slate-500">{{ new Date(t.suggestedDeadline).toLocaleDateString('zh-CN') }}</td>
-            <td class="px-4 py-3">
+            <td v-if="canOperate" class="px-4 py-3">
               <div class="flex gap-1 flex-wrap">
                 <button
                   v-for="a in TICKET_ACTIONS_BY_STATUS[t.status]"

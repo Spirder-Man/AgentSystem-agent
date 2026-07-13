@@ -138,9 +138,18 @@ function formatPct(v: number) { return (v * 100).toFixed(1) + '%'; }
           <div class="text-slate-400 mb-1">结论准确率</div>
           <div :class="report.conclusionAccuracy >= 0.8 ? 'text-green-600' : 'text-red-600'" class="font-bold text-lg">{{ formatPct(report.conclusionAccuracy) }}</div>
         </div>
+        <div v-if="report.casesCount != null" class="bg-slate-50 rounded p-3 text-center">
+          <div class="text-slate-400 mb-1">用例数</div>
+          <div class="text-slate-700 font-bold text-lg">{{ report.casesCount }}</div>
+        </div>
+        <div v-if="report.casesWithErrors != null" class="bg-slate-50 rounded p-3 text-center">
+          <div class="text-slate-400 mb-1">异常用例</div>
+          <div :class="report.casesWithErrors === 0 ? 'text-green-600' : 'text-red-600'" class="font-bold text-lg">{{ report.casesWithErrors }}</div>
+        </div>
       </div>
 
-      <details class="text-xs">
+      <!-- cases 详细结果 -->
+      <details v-if="report.cases?.length" class="text-xs">
         <summary class="cursor-pointer text-slate-500 hover:text-slate-700 font-medium">查看 {{ report.cases.length }} 条详细结果</summary>
         <div class="mt-3 space-y-2 max-h-96 overflow-y-auto">
           <div v-for="(c, i) in report.cases" :key="i"

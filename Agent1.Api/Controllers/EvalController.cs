@@ -117,7 +117,17 @@ public class EvalController : ControllerBase
                 status.Report.ParameterAccuracy,
                 status.Report.ConclusionAccuracy,
                 casesCount = status.Report.Cases.Count,
-                casesWithErrors = status.Report.Cases.Count(c => !string.IsNullOrEmpty(c.Error))
+                casesWithErrors = status.Report.Cases.Count(c => !string.IsNullOrEmpty(c.Error)),
+                cases = status.Report.Cases.Select(c => new
+                {
+                    query = c.Query,
+                    toolMatch = c.ToolMatch,
+                    paramMatch = c.ParamMatch,
+                    conclusionMatch = c.ConclusionMatch,
+                    expectedTools = new[] { c.ExpectedTool },
+                    actualTools = c.ActualTools?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>(),
+                    error = c.Error
+                })
             } : null
         });
     }

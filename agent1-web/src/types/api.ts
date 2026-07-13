@@ -429,6 +429,8 @@ export interface EvalReport {
   parameterAccuracy: number;
   conclusionAccuracy: number;
   cases: EvalCaseResult[];
+  casesCount?: number;
+  casesWithErrors?: number;
 }
 
 export interface EvalCaseResult {

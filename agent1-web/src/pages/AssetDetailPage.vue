@@ -46,13 +46,8 @@ async function fetchAsset() {
   loading.value = true;
   error.value = '';
   try {
-    const { data } = await apiClient.get<ChemicalAsset[]>('/api/Inspection/assets');
-    const found = data.find((a: ChemicalAsset) => a.assetId === assetId);
-    if (!found) {
-      error.value = `资产 ${assetId} 不存在`;
-      return;
-    }
-    asset.value = found;
+    const { data } = await apiClient.get<ChemicalAsset>(`/api/Inspection/assets/${assetId}`);
+    asset.value = data;
   } catch {
     error.value = '加载资产信息失败';
   } finally {
