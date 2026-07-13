@@ -1011,7 +1011,7 @@ public class InspectionControllerTests
             StorageCondition = "阴凉通风",
             ResponsiblePerson = "安全员张三",
             IsMajorHazardSource = true,
-            LastCheckResult = "合格",
+            LastCheckResult = true,
             LastCheckedAt = new DateTime(2026, 6, 1)
         };
         repo.SaveAsset(asset);
