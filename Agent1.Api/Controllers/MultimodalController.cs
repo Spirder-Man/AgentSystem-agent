@@ -78,7 +78,7 @@ public class MultimodalController : ControllerBase
                     break;
                 case "custom":
                     var prompt = string.IsNullOrWhiteSpace(customPrompt)
-                        ? "请详细描述这张图片的内容，重点关注安全相关信息"
+                        ? "你是化工安全专家。请详细分析这张图片，识别其中与化工安全、危化品管理、设备合规相关的内容。如果没有化工安全相关内容，请简要描述图片内容。必须使用中文回复。"
                         : customPrompt;
                     result = await multimodal.AnalyzeImageAsync(tempPath, prompt);
                     break;

@@ -62,6 +62,8 @@ namespace Agent1.Services
                 var mimeType = GetMimeType(imagePath);
 
                 // 构建 llama.cpp OpenAI-compatible /v1/chat/completions 请求体
+                // ⚠️ llava-llama-3 是英文模型，必须在 prompt 前附加中文输出指令
+                var chinesePrompt = $"【重要：请始终使用中文回复，不要使用英文。】\n\n{prompt}";
                 var request = new
                 {
                     model = _modelId,
@@ -72,7 +74,7 @@ namespace Agent1.Services
                             role = "user",
                             content = new object[]
                             {
-                                new { type = "text", text = prompt },
+                                new { type = "text", text = chinesePrompt },
                                 new
                                 {
                                     type = "image_url",
