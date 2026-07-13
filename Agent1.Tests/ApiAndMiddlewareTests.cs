@@ -1031,6 +1031,7 @@ public class InspectionControllerTests
         var result = controller.GetAsset("nonexistent");
         result.Should().BeOfType<NotFoundObjectResult>();
     }
+}
 
 #endregion
 
