@@ -1036,6 +1036,140 @@ public class InspectionControllerTests
 
 #endregion
 
+#region EvalController 评测 API (P0-2)
+
+public class EvalControllerTests
+{
+    private static EvalController CreateController(
+        AgentDialog? agentDialog = null,
+        ILlmService? llmService = null,
+        IKnowledgeBaseService? knowledgeBase = null)
+    {
+        agentDialog ??= new AgentDialog(
+            Mock.Of<ISessionService>(),
+            Mock.Of<IMemoryService>(),
+            Mock.Of<ILlmService>(),
+            Mock.Of<IToolService>(),
+            Mock.Of<IAuditService>(),
+            null);
+        llmService ??= Mock.Of<ILlmService>();
+        knowledgeBase ??= Mock.Of<IKnowledgeBaseService>();
+        var logger = Mock.Of<ILogger<EvalController>>();
+
+        var controller = new EvalController(agentDialog, llmService, knowledgeBase, logger);
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext()
+        };
+        return controller;
+    }
+
+    [Fact]
+    public void RunEval_ShouldReturnAccepted()
+    {
+        var controller = CreateController();
+        var result = controller.RunEval();
+
+        // 返回 202 Accepted，包含 taskId
+        result.Should().BeOfType<AcceptedResult>();
+        var acceptedResult = (AcceptedResult)result;
+        var valueType = acceptedResult.Value!.GetType();
+        var taskId = valueType.GetProperty("taskId")!.GetValue(acceptedResult.Value) as string;
+        taskId.Should().NotBeNullOrEmpty();
+        var status = valueType.GetProperty("status")!.GetValue(acceptedResult.Value) as string;
+        status.Should().Be("queued");
+    }
+
+    [Fact]
+    public void GetStatus_NonexistentTask_ShouldReturnNotFound()
+    {
+        var controller = CreateController();
+        var result = controller.GetStatus("no-such-task");
+        result.Should().BeOfType<NotFoundObjectResult>();
+    }
+
+    [Fact]
+    public void GetStatus_QueuedTask_ShouldReturnOk()
+    {
+        var controller = CreateController();
+        // 先启动评测，然后立即查询状态（后台任务异步运行，状态应为 queued）
+        var runResult = controller.RunEval();
+        var acceptedResult = (AcceptedResult)runResult;
+        var taskId = acceptedResult.Value!.GetType()
+            .GetProperty("taskId")!.GetValue(acceptedResult.Value) as string;
+
+        var result = controller.GetStatus(taskId!);
+        result.Should().BeOfType<OkObjectResult>();
+        var okResult = (OkObjectResult)result;
+        var statusProp = okResult.Value!.GetType()
+            .GetProperty("Status")!.GetValue(okResult.Value) as string;
+        // 状态可能是 queued 或 running（后台任务已启动）
+        (statusProp == "queued" || statusProp == "running" || statusProp == "failed")
+            .Should().BeTrue($"expected queued/running/failed, got {statusProp}");
+    }
+
+    [Fact]
+    public void RunEval_MultipleCalls_ShouldReturnUniqueTaskIds()
+    {
+        var controller = CreateController();
+        var result1 = (AcceptedResult)controller.RunEval();
+        var result2 = (AcceptedResult)controller.RunEval();
+
+        var taskId1 = result1.Value!.GetType()
+            .GetProperty("taskId")!.GetValue(result1.Value) as string;
+        var taskId2 = result2.Value!.GetType()
+            .GetProperty("taskId")!.GetValue(result2.Value) as string;
+
+        taskId1.Should().NotBe(taskId2, "每次调用应生成唯一 taskId");
+    }
+
+    [Fact]
+    public void CancelEval_NonexistentTask_ShouldReturnNotFound()
+    {
+        var controller = CreateController();
+        var result = controller.CancelEval("no-such-task");
+        result.Should().BeOfType<NotFoundObjectResult>();
+    }
+
+    [Fact]
+    public void CancelEval_ExistingTask_ShouldReturnOk()
+    {
+        var controller = CreateController();
+        var runResult = controller.RunEval();
+        var acceptedResult = (AcceptedResult)runResult;
+        var taskId = acceptedResult.Value!.GetType()
+            .GetProperty("taskId")!.GetValue(acceptedResult.Value) as string;
+
+        var result = controller.CancelEval(taskId!);
+        result.Should().BeOfType<OkObjectResult>();
+        var okResult = (OkObjectResult)result;
+        var cancelled = okResult.Value!.GetType()
+            .GetProperty("cancelled")!.GetValue(okResult.Value);
+        cancelled.Should().Be(true);
+
+        // 取消后再查询应 404
+        var statusResult = controller.GetStatus(taskId!);
+        statusResult.Should().BeOfType<NotFoundObjectResult>();
+    }
+
+    [Fact]
+    public void CancelEval_AlreadyCancelled_ShouldReturnNotFound()
+    {
+        var controller = CreateController();
+        var runResult = controller.RunEval();
+        var acceptedResult = (AcceptedResult)runResult;
+        var taskId = acceptedResult.Value!.GetType()
+            .GetProperty("taskId")!.GetValue(acceptedResult.Value) as string;
+
+        controller.CancelEval(taskId!);
+        // 第二次取消同一任务应返回 404
+        var result = controller.CancelEval(taskId!);
+        result.Should().BeOfType<NotFoundObjectResult>();
+    }
+}
+
+#endregion
+
 #region TicketsController 工单 API
 
 public class TicketsControllerTests
