@@ -903,7 +903,9 @@ public class TicketsControllerTests
     private static TicketsController CreateController(InspectionRepository? repo = null)
     {
         repo ??= new InspectionRepository();
-        var controller = new TicketsController(repo);
+        var moduleFactory = new Moq.Mock<IModuleFactory>().Object;
+        var logger = new Moq.Mock<ILogger<TicketsController>>().Object;
+        var controller = new TicketsController(repo, moduleFactory, logger);
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext
