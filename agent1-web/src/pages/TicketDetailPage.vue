@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import apiClient from '@/lib/axios';
-import type { TicketListResponse, TicketItem } from '@/types/api';
+import type { TicketListResponse, TicketItem, TicketFollowupResult } from '@/types/api';
 import {
   TICKET_ACTIONS_BY_STATUS,
   TICKET_STATUS_LABEL_MAP,
@@ -14,6 +14,7 @@ import {
 import SkeletonTable from '@/components/common/SkeletonTable.vue';
 import EmptyState from '@/components/common/EmptyState.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { useLoadingBar } from '@/lib/useLoadingBar';
 
 const route = useRoute();
 const router = useRouter();
@@ -59,6 +60,31 @@ async function handleAction(actionItem: (typeof TICKET_ACTIONS_BY_STATUS)[keyof 
     const ae = e as { response?: { data?: { error?: string } } };
     ElMessage.error(ae.response?.data?.error || '操作失败');
   } finally { updating.value = false; }
+}
+
+// ── 工单跟进 ──
+const followupResult = ref('');
+const followupTickets = ref<TicketItem[]>([]);
+const followupLoading = ref(false);
+const followupError = ref('');
+const { start: flStart, stop: flStop } = useLoadingBar();
+
+async function runFollowup() {
+  if (!followupResult.value.trim()) return;
+  followupError.value = '';
+  followupTickets.value = [];
+  followupLoading.value = true;
+  flStart('正在生成跟进工单…');
+  try {
+    const { data } = await apiClient.post<TicketFollowupResult>('/api/tickets/followup', {
+      complianceResult: followupResult.value.trim(),
+    });
+    followupTickets.value = data.tickets;
+    ElMessage.success(`生成 ${data.tickets.length} 个跟进工单`);
+  } catch (e: unknown) {
+    const ae = e as { response?: { data?: { error?: string } } };
+    followupError.value = ae.response?.data?.error || '跟进失败';
+  } finally { followupLoading.value = false; flStop(); }
 }
 
 onMounted(fetchTicket);
@@ -185,5 +211,40 @@ const actionBtnCls = (t: string) => {
         </div>
       </div>
     </template>
+
+    <!-- 工单跟进 (独立功能区) -->
+    <div class="bg-white border border-slate-200 rounded p-4 mt-6">
+      <h2 class="text-sm font-semibold text-slate-700 mb-3">工单跟进</h2>
+      <p class="text-xs text-slate-500 mb-3">输入合规审核结果文本，AI 自动解析并生成跟进工单</p>
+      <div class="flex gap-2 mb-3">
+        <textarea
+          v-model="followupResult"
+          :disabled="followupLoading"
+          rows="3"
+          class="flex-1 px-3 py-2 text-sm border border-slate-300 rounded focus:outline-none focus:border-blue-400 resize-none"
+          placeholder="粘贴合规审核结果，如：苯与丙酮同库储存违规 → GB 15603-2022 §4.2.2…"
+        />
+      </div>
+      <button
+        @click="runFollowup"
+        :disabled="followupLoading || !followupResult.trim()"
+        class="text-xs px-4 py-2 rounded border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 transition-colors"
+      >{{ followupLoading ? '解析中…' : '📋 生成跟进工单' }}</button>
+
+      <div v-if="followupError" class="mt-3 bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700">{{ followupError }}</div>
+
+      <div v-if="followupTickets.length" class="mt-4 space-y-2">
+        <div class="text-xs text-slate-400 mb-2">生成的工单：</div>
+        <div v-for="t in followupTickets" :key="t.id"
+          class="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded text-xs"
+        >
+          <div class="flex-1">
+            <span class="font-medium text-slate-800">#{{ t.id }} {{ t.issue }}</span>
+            <div class="text-slate-400 mt-0.5">{{ t.action }} · {{ t.regulationRef }}</div>
+          </div>
+          <router-link :to="`/tickets/${t.id}`" class="text-blue-600 hover:text-blue-800 ml-3 shrink-0">查看 →</router-link>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

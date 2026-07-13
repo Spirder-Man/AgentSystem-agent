@@ -23,6 +23,12 @@ import {
   Link,
   ChatDotRound,
   Odometer,
+  Cpu,
+  DataAnalysis,
+  Picture,
+  Aim,
+  FirstAidKit,
+  Connection,
 } from '@element-plus/icons-vue';
 
 const auth = useAuthStore();
@@ -47,6 +53,13 @@ const allNavItems: NavItem[] = [
   { path: '/hazard', title: '危化品查询', icon: Search, roles: ['admin', 'auditor'] },
   { path: '/storage/compatibility', title: '储存兼容性', icon: Link, roles: ['admin', 'auditor'] },
   { path: '/chat', title: 'AI 合规助手', icon: ChatDotRound, roles: ['admin', 'auditor'] },
+  { path: '/knowledgebase', title: '知识库', icon: DataAnalysis, roles: ['admin', 'auditor'] },
+  { path: '/diagnostics', title: '工具诊断', icon: Cpu, roles: ['admin', 'auditor'] },
+  { path: '/multimodal', title: '多模态分析', icon: Picture, roles: ['admin', 'auditor'] },
+  { path: '/regulatory', title: '法规审计', icon: Aim, roles: ['admin', 'auditor'] },
+  { path: '/emergency', title: '应急响应', icon: FirstAidKit, roles: ['admin', 'auditor'] },
+  { path: '/knowledgegraph', title: '知识图谱', icon: Connection, roles: ['admin', 'auditor'] },
+  { path: '/eval', title: '合规评测', icon: DataAnalysis, roles: ['admin', 'auditor'] },
   { path: '/audit', title: '审计日志', icon: Document, roles: ['admin'] },
   { path: '/system', title: '运维看板', icon: Odometer, roles: ['admin'] },
   { path: '/settings', title: '系统设置', icon: Setting, roles: ['admin'] },

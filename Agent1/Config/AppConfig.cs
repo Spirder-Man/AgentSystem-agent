@@ -89,6 +89,14 @@ namespace Agent1.Config
             if (!string.IsNullOrEmpty(llmEndpoint))
                 config.Llm.Endpoint = llmEndpoint;
 
+            var mmEndpoint = Environment.GetEnvironmentVariable("MULTIMODAL_ENDPOINT");
+            if (!string.IsNullOrEmpty(mmEndpoint))
+                config.Llm.MultimodalEndpoint = mmEndpoint;
+
+            var mmModel = Environment.GetEnvironmentVariable("MULTIMODAL_MODEL_ID");
+            if (!string.IsNullOrEmpty(mmModel))
+                config.Llm.MultimodalModelId = mmModel;
+
             // [P0-1] 知识库路径 — 支持环境变量覆盖（Linux 绝对路径 / Windows 相对路径）
             var kbPath = Environment.GetEnvironmentVariable("KNOWLEDGE_BASE_PATH");
             if (!string.IsNullOrEmpty(kbPath))
@@ -181,7 +189,8 @@ namespace Agent1.Config
     {
         public string ModelId { get; set; } = "deepseek-r1:local7b";
         public string Endpoint { get; set; } = "http://localhost:8080/v1";
-        public string MultimodalModelId { get; set; } = "qwen-vl:latest";
+        public string MultimodalModelId { get; set; } = "llava-v1.6-mistral-7b";
+        public string MultimodalEndpoint { get; set; } = "http://localhost:8082/v1";
 
         // Phase 2a 预留: 工具调用规划专用模型（可与 ModelId 相同）
         // 未来可分离为小模型做工具规划 + 大模型做合规结论生成

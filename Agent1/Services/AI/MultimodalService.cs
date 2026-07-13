@@ -6,10 +6,10 @@ using Agent1.Config;
 namespace Agent1.Services
 {
     /// <summary>
-    /// [P2] 多模态视觉分析服务 — 绕过 Semantic Kernel 高层 API 限制，
-    /// 直接通过 HttpClient 调用 Ollama 原生 /api/chat 端点，支持图片输入。
+    /// [P2] 多模态视觉分析服务 — 通过 llama.cpp 的 OpenAI 兼容 /v1/chat/completions 端点
+    /// 调用视觉模型（需单独启动 llama-server --mmproj 实例在 8082 端口）。
     /// 
-    /// 支持的模型：qwen-vl (Qwen2-VL)、llava 等 Ollama 支持的视觉模型。
+    /// API 格式：使用 content 数组中的 image_url 类型传递 Base64 图片。
     /// 适用场景：GHS 标签识别、储罐/管道照片分析、消防设施合规检查。
     /// </summary>
     public class MultimodalService : IDisposable
@@ -21,7 +21,7 @@ namespace Agent1.Services
         public MultimodalService()
         {
             _modelId = ModelConfig.MultimodalModelId;
-            _endpoint = ModelConfig.Endpoint;
+            _endpoint = ModelConfig.MultimodalEndpoint;
 
             _httpClient = new HttpClient(new SocketsHttpHandler
             {
@@ -41,8 +41,8 @@ namespace Agent1.Services
         }
 
         /// <summary>
-        /// 核心方法：传入图片路径和分析提示词，返回 Ollama 视觉模型的文本分析结果。
-        /// 图片自动转为 Base64 编码，通过 Ollama 原生 /api/chat 的 images 字段发送。
+        /// 核心方法：传入图片路径和分析提示词，返回视觉模型的文本分析结果。
+        /// 图片自动转为 Base64 编码，通过 llama.cpp OpenAI 兼容 API 的 image_url 发送。
         /// </summary>
         /// <param name="imagePath">本地图片文件路径（支持 jpg/png/webp）</param>
         /// <param name="prompt">分析提示词（中文即可）</param>
@@ -58,7 +58,10 @@ namespace Agent1.Services
                 var imageBytes = await File.ReadAllBytesAsync(imagePath);
                 var imageBase64 = Convert.ToBase64String(imageBytes);
 
-                // 构建 Ollama 原生 /api/chat 请求体（带 images 字段）
+                // 推断 MIME 类型
+                var mimeType = GetMimeType(imagePath);
+
+                // 构建 llama.cpp OpenAI-compatible /v1/chat/completions 请求体
                 var request = new
                 {
                     model = _modelId,
@@ -67,18 +70,25 @@ namespace Agent1.Services
                         new
                         {
                             role = "user",
-                            content = prompt,
-                            images = new[] { imageBase64 }
+                            content = new object[]
+                            {
+                                new { type = "text", text = prompt },
+                                new
+                                {
+                                    type = "image_url",
+                                    image_url = new { url = $"data:{mimeType};base64,{imageBase64}" }
+                                }
+                            }
                         }
                     },
                     stream = false,
-                    options = new { temperature = 0.1 }  // 低温度提高准确性
+                    temperature = 0.1  // 低温度提高准确性
                 };
 
                 var json = JsonSerializer.Serialize(request);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var response = await _httpClient.PostAsync("/api/chat", content);
+                var response = await _httpClient.PostAsync("/v1/chat/completions", content);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -88,8 +98,13 @@ namespace Agent1.Services
 
                 var responseJson = await response.Content.ReadAsStringAsync();
                 using var doc = JsonDocument.Parse(responseJson);
-                var result = doc.RootElement.GetProperty("message").GetProperty("content").GetString();
-                return result ?? "(模型返回空内容)";
+                var choices = doc.RootElement.GetProperty("choices");
+                if (choices.GetArrayLength() > 0)
+                {
+                    var result = choices[0].GetProperty("message").GetProperty("content").GetString();
+                    return result ?? "(模型返回空内容)";
+                }
+                return "(模型未返回结果)";
             }
             catch (TaskCanceledException)
             {
@@ -99,6 +114,19 @@ namespace Agent1.Services
             {
                 return $"视觉分析异常: {ex.Message}";
             }
+        }
+
+        private static string GetMimeType(string path)
+        {
+            var ext = Path.GetExtension(path).ToLowerInvariant();
+            return ext switch
+            {
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".png" => "image/png",
+                ".webp" => "image/webp",
+                ".gif" => "image/gif",
+                _ => "image/jpeg"
+            };
         }
 
         /// <summary>

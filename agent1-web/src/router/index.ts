@@ -48,6 +48,13 @@ const HazardQueryPage = () => import('@/pages/HazardQueryPage.vue');
 const StorageCompatibilityPage = () => import('@/pages/StorageCompatibilityPage.vue');
 const AIChatPage = () => import('@/pages/AIChatPage.vue');
 const SystemMonitorPage = () => import('@/pages/SystemMonitorPage.vue');
+const KnowledgeBasePage = () => import('@/pages/KnowledgeBasePage.vue');
+const DiagnosticsPage = () => import('@/pages/DiagnosticsPage.vue');
+const EvalPage = () => import('@/pages/EvalPage.vue');
+const MultimodalPage = () => import('@/pages/MultimodalPage.vue');
+const RegulatoryAuditPage = () => import('@/pages/RegulatoryAuditPage.vue');
+const EmergencyPage = () => import('@/pages/EmergencyPage.vue');
+const KnowledgeGraphPage = () => import('@/pages/KnowledgeGraphPage.vue');
 
 // ═══════════════════════════════════════
 // 路由表
@@ -182,6 +189,50 @@ const routes: RouteRecordRaw[] = [
     name: 'SystemMonitor',
     component: SystemMonitorPage,
     meta: { title: '运维看板', requiresAuth: true, roles: ['admin'] },
+  },
+
+  // ── 新增：控制台功能 API 前端页面 ──
+  {
+    path: '/knowledgebase',
+    name: 'KnowledgeBase',
+    component: KnowledgeBasePage,
+    meta: { title: '知识库管理', requiresAuth: true, roles: ['admin', 'auditor'] },
+  },
+  {
+    path: '/diagnostics',
+    name: 'Diagnostics',
+    component: DiagnosticsPage,
+    meta: { title: '工具诊断', requiresAuth: true, roles: ['admin', 'auditor'] },
+  },
+  {
+    path: '/eval',
+    name: 'Eval',
+    component: EvalPage,
+    meta: { title: '合规评测', requiresAuth: true, roles: ['admin', 'auditor'] },
+  },
+  {
+    path: '/multimodal',
+    name: 'Multimodal',
+    component: MultimodalPage,
+    meta: { title: '多模态分析', requiresAuth: true, roles: ['admin', 'auditor'] },
+  },
+  {
+    path: '/regulatory',
+    name: 'RegulatoryAudit',
+    component: RegulatoryAuditPage,
+    meta: { title: '法规审计', requiresAuth: true, roles: ['admin', 'auditor'] },
+  },
+  {
+    path: '/emergency',
+    name: 'Emergency',
+    component: EmergencyPage,
+    meta: { title: '应急响应', requiresAuth: true, roles: ['admin', 'auditor'] },
+  },
+  {
+    path: '/knowledgegraph',
+    name: 'KnowledgeGraph',
+    component: KnowledgeGraphPage,
+    meta: { title: '知识图谱', requiresAuth: true, roles: ['admin', 'auditor'] },
   },
 
   // ── 404 兜底 ──

@@ -344,6 +344,185 @@ export interface AuditStatsResponse {
   lastLogAt: string | null;
 }
 
+// ── KnowledgeBase 知识库 ──
+
+export interface SearchModeResponse {
+  mode: 'Bm25' | 'Vector' | 'Hybrid';
+  available: string[];
+  description: string;
+}
+
+export interface SearchModeUpdateRequest {
+  mode: 'Bm25' | 'Vector' | 'Hybrid';
+}
+
+export interface RagTestRequest {
+  query: string;
+  topK?: number;
+}
+
+export interface RagTestResponse {
+  query: string;
+  mode: string;
+  totalResults: number;
+  elapsedMs: number;
+  results: RagChunk[];
+  summary: string;
+}
+
+export interface RagChunk {
+  id: string;
+  content: string;
+  score: number;
+  rank: number;
+  retrievalMethod: string;
+}
+
+export interface IncrementalLoadResponse {
+  message: string;
+  addedDocuments: number;
+  removedDocuments: number;
+  totalDocuments: number;
+}
+
+// ── Diagnostics 工具诊断 ──
+
+export interface DiagnosticsRunResponse {
+  model: string;
+  total: number;
+  pass: number;
+  passRate: string;
+  elapsedMs: number;
+  results: DiagnosticsTestResult[];
+}
+
+export interface DiagnosticsTestResult {
+  index: number;
+  query: string;
+  description: string;
+  expectedTools: string;
+  toolCalls: string[];
+  triggered: boolean;
+  elapsedMs: number;
+  error?: string;
+}
+
+// ── Eval 合规评测 ──
+
+export interface EvalRunResponse {
+  taskId: string;
+  message: string;
+}
+
+export interface EvalTaskStatus {
+  taskId: string;
+  status: 'running' | 'completed' | 'failed';
+  progress: string;
+  report?: EvalReport;
+}
+
+export interface EvalReport {
+  model: string;
+  timestamp: string;
+  total: number;
+  toolCallRate: number;
+  parameterAccuracy: number;
+  conclusionAccuracy: number;
+  cases: EvalCaseResult[];
+}
+
+export interface EvalCaseResult {
+  query: string;
+  toolMatch: boolean;
+  paramMatch: boolean;
+  conclusionMatch: boolean;
+  expectedTools: string[];
+  actualTools: string[];
+  error?: string;
+}
+
+// ── Multimodal 多模态 ──
+
+export type AnalysisType = 'hazard-label' | 'storage-scene' | 'custom';
+
+export interface MultimodalResult {
+  analysisType: AnalysisType;
+  result: string;
+  fileName?: string;
+}
+
+// ── Regulatory 法规审计 ──
+
+export interface RegulatoryAuditRequest {
+  query: string;
+}
+
+export interface RegulatoryAuditResult {
+  query: string;
+  success: boolean;
+  warnings: string[];
+  intent: string;
+  elapsedMs: number;
+  output: string;
+  auditRecord: unknown;
+}
+
+// ── Emergency 应急响应 ──
+
+export interface EmergencyRequest {
+  scenario: 'leak' | 'fire' | 'explosion' | 'poisoning';
+  substance: string;
+  location?: string;
+}
+
+export interface EmergencyResult {
+  scenario: string;
+  success: boolean;
+  warnings: string[];
+  intent: string;
+  elapsedMs: number;
+  output: string;
+  auditRecord: unknown;
+}
+
+// ── KnowledgeGraph 知识图谱 ──
+
+export interface KnowledgeGraphRequest {
+  query: string;
+}
+
+export interface KnowledgeGraphResult {
+  query: string;
+  success: boolean;
+  warnings: string[];
+  intent: string;
+  elapsedMs: number;
+  output: string;
+  auditRecord: unknown;
+}
+
+// ── Alerts 告警 ──
+
+export interface AlertTestRequest {
+  title: string;
+  message: string;
+}
+
+export interface AlertTestResult {
+  sent: boolean;
+  recipient: string;
+}
+
+// ── Ticket Followup 工单跟进 ──
+
+export interface TicketFollowupRequest {
+  complianceResult: string;
+}
+
+export interface TicketFollowupResult {
+  tickets: TicketItem[];
+}
+
 // ── Generic ──
 
 export interface ApiError {

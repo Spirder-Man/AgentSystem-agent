@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import apiClient from '@/lib/axios';
-import type { HealthStatus } from '@/types/api';
+import type { HealthStatus, AlertTestResult } from '@/types/api';
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage } from 'element-plus';
 import SkeletonCard from '@/components/common/SkeletonCard.vue';
@@ -29,6 +29,22 @@ async function updateKB() {
     const { data } = await apiClient.post<{ message: string }>('/knowledgebase/incremental-update');
     ElMessage.success(data.message);
   } catch { ElMessage.error('更新失败'); }
+}
+
+const alertLoading = ref(false);
+const alertResult = ref<AlertTestResult | null>(null);
+
+async function sendTestAlert() {
+  alertResult.value = null;
+  alertLoading.value = true;
+  try {
+    const { data } = await apiClient.post<AlertTestResult>('/api/alerts/test', {
+      title: 'Agent1 告警测试',
+      message: '这是一条来自系统设置的测试告警邮件',
+    });
+    alertResult.value = data;
+  } catch { alertResult.value = { sent: false, recipient: '' }; }
+  finally { alertLoading.value = false; }
 }
 
 onMounted(fetchHealth);
@@ -80,6 +96,18 @@ onMounted(fetchHealth);
         <button @click="updateKB" class="text-xs px-3 py-1.5 rounded border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100">
           📚 增量更新知识库
         </button>
+      </div>
+    </div>
+
+    <!-- 告警测试 -->
+    <div class="bg-white border border-slate-200 rounded p-4">
+      <h3 class="text-sm font-semibold text-slate-700 mb-3">告警测试</h3>
+      <p class="text-xs text-slate-500 mb-3">发送测试告警邮件，验证告警通道是否正常</p>
+      <button @click="sendTestAlert" :disabled="alertLoading" class="text-xs px-4 py-2 rounded border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 disabled:opacity-50 transition-colors">
+        {{ alertLoading ? '发送中…' : '✉️ 发送测试告警邮件' }}
+      </button>
+      <div v-if="alertResult" class="mt-3 text-xs p-2 rounded" :class="alertResult.sent ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'">
+        {{ alertResult.sent ? '✅ 邮件已发送至 ' + alertResult.recipient : '❌ 发送失败' }}
       </div>
     </div>
 
