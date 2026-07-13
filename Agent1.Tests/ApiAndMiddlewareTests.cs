@@ -1020,7 +1020,8 @@ public class InspectionControllerTests
         var result = controller.GetAsset("asset-1");
         result.Should().BeOfType<OkObjectResult>();
         var okResult = (OkObjectResult)result;
-        var nameProp = okResult.Value!.GetType().GetProperty("name")!.GetValue(okResult.Value);
+        // 验证返回的结构包含资产信息
+        var nameProp = okResult.Value!.GetType().GetProperty("Name")!.GetValue(okResult.Value);
         nameProp.Should().Be("甲类储罐A");
     }
 

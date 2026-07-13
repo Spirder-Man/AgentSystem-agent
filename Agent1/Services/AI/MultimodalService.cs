@@ -63,6 +63,7 @@ namespace Agent1.Services
 
                 // 构建 llama.cpp OpenAI-compatible /v1/chat/completions 请求体
                 // ⚠️ llava-llama-3 是英文模型，必须在 prompt 前附加中文输出指令
+                // ⚠️ int4 量化 + 低温度会导致无限重复循环 → 温度 0.3 + repeat_penalty 1.1 + max_tokens 500
                 var chinesePrompt = $"【重要：请始终使用中文回复，不要使用英文。】\n\n{prompt}";
                 var request = new
                 {
@@ -84,7 +85,9 @@ namespace Agent1.Services
                         }
                     },
                     stream = false,
-                    temperature = 0.1  // 低温度提高准确性
+                    temperature = 0.3,
+                    repeat_penalty = 1.1,
+                    max_tokens = 500
                 };
 
                 var json = JsonSerializer.Serialize(request);

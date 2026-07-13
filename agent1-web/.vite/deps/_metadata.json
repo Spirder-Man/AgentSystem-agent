@@ -2,42 +2,42 @@
   "hash": "2dcdaf6a",
   "configHash": "58e4574a",
   "lockfileHash": "6c7a73ab",
-  "browserHash": "69e31ecb",
+  "browserHash": "9f7adb6d",
   "optimized": {
     "vue": {
       "src": "../../node_modules/vue/dist/vue.runtime.esm-bundler.js",
       "file": "vue.js",
-      "fileHash": "e3196841",
+      "fileHash": "58b93023",
       "needsInterop": false
     },
     "pinia": {
       "src": "../../node_modules/pinia/dist/pinia.mjs",
       "file": "pinia.js",
-      "fileHash": "8f45d36c",
+      "fileHash": "f5d7c355",
       "needsInterop": false
     },
     "element-plus": {
       "src": "../../node_modules/element-plus/es/index.mjs",
       "file": "element-plus.js",
-      "fileHash": "e9a8a568",
+      "fileHash": "4004b08d",
       "needsInterop": false
     },
     "element-plus/es/locale/lang/zh-cn": {
       "src": "../../node_modules/element-plus/es/locale/lang/zh-cn.mjs",
       "file": "element-plus_es_locale_lang_zh-cn.js",
-      "fileHash": "f4459b12",
-      "needsInterop": false
-    },
-    "axios": {
-      "src": "../../node_modules/axios/index.js",
-      "file": "axios.js",
-      "fileHash": "c86ccd48",
+      "fileHash": "d50fe6bb",
       "needsInterop": false
     },
     "vue-router": {
       "src": "../../node_modules/vue-router/dist/vue-router.mjs",
       "file": "vue-router.js",
-      "fileHash": "3ef2134c",
+      "fileHash": "bc45ade7",
+      "needsInterop": false
+    },
+    "axios": {
+      "src": "../../node_modules/axios/index.js",
+      "file": "axios.js",
+      "fileHash": "ae29f2c9",
       "needsInterop": false
     }
   },

@@ -1,7 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using Agent1.Models;
-using Agent1.Modules;
 using Agent1.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -17,12 +16,12 @@ namespace Agent1.Api.Controllers;
 [Authorize(Policy = "Viewer")]
 public class KnowledgeGraphController : ControllerBase
 {
-    private readonly IModuleFactory _moduleFactory;
+    private readonly IKnowledgeBaseService _kbService;
     private readonly ILogger<KnowledgeGraphController> _logger;
 
-    public KnowledgeGraphController(IModuleFactory moduleFactory, ILogger<KnowledgeGraphController> logger)
+    public KnowledgeGraphController(IKnowledgeBaseService kbService, ILogger<KnowledgeGraphController> logger)
     {
-        _moduleFactory = moduleFactory;
+        _kbService = kbService;
         _logger = logger;
     }
 
@@ -34,23 +33,14 @@ public class KnowledgeGraphController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(request.Query))
         {
-            return BadRequest(new
-            {
-                error = "请输入化学品或法规关键词",
-                examples = new[]
-                {
-                    new { query = "苯 相关法规 事故", description = "查询苯相关的法规与历史事故" },
-                    new { query = "甲类仓库 储存条件", description = "查询甲类仓库相关法规要求" },
-                    new { query = "硝化反应 爆炸", description = "查询硝化反应相关爆炸案例" }
-                }
-            });
+            return BadRequest(new { error = "请输入化学品或法规关键词" });
         }
 
         var sw = Stopwatch.StartNew();
         try
         {
-            var module = _moduleFactory.CreateModule(ModuleType.KnowledgeGraph);
-            var result = await module.RunWithResultAsync(request.Query);
+            var graph = KnowledgeGraphFactory.GetOrBuild(_kbService);
+            var output = await graph.QueryAsync(request.Query);
             sw.Stop();
 
             _logger.LogInformation("知识图谱查询完成: 查询={Query}, 耗时={Elapsed}ms",
@@ -59,12 +49,11 @@ public class KnowledgeGraphController : ControllerBase
             return Ok(new
             {
                 query = request.Query,
-                success = result.Success,
-                warnings = result.Warnings,
-                intent = result.Intent.ToString(),
+                success = true,
                 elapsedMs = sw.ElapsedMilliseconds,
-                output = result.DisplayOutput,
-                auditRecord = result.AuditRecord
+                entityCount = graph.EntityCount,
+                relationCount = graph.RelationCount,
+                output
             });
         }
         catch (Exception ex)

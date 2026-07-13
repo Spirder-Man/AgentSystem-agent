@@ -41,12 +41,39 @@ public class RegulatoryController : ControllerBase
         try
         {
             var module = _moduleFactory.CreateModule(ModuleType.RegulatoryAudit);
+
+            // RegulatoryAuditModule 的 RunWithResultAsync 是占位实现，
+            // 实际审计逻辑在 GenerateAuditReportAsync 中。
+            // 将用户查询按换行符拆分为核查清单项，作为单条或多条审计。
+            var checklistItems = request.Query
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(l => !string.IsNullOrWhiteSpace(l))
+                .ToList();
+
+            if (checklistItems.Count == 0)
+                return BadRequest(new { error = "核查清单为空" });
+
+            if (module is RegulatoryAuditModule auditModule)
+            {
+                var report = await auditModule.GenerateAuditReportAsync(checklistItems);
+                sw.Stop();
+
+                _logger.LogInformation("监管核查完成: 耗时={Elapsed}ms, 项数={Count}",
+                    sw.ElapsedMilliseconds, checklistItems.Count);
+
+                return Ok(new
+                {
+                    query = request.Query,
+                    success = true,
+                    itemCount = checklistItems.Count,
+                    elapsedMs = sw.ElapsedMilliseconds,
+                    output = report
+                });
+            }
+
+            // 降级：非 RegulatoryAuditModule 类型时走原逻辑
             var result = await module.RunWithResultAsync(request.Query);
             sw.Stop();
-
-            _logger.LogInformation("监管核查完成: 耗时={Elapsed}ms, 成功={Success}",
-                sw.ElapsedMilliseconds, result.Success);
-
             return Ok(new
             {
                 query = request.Query,
