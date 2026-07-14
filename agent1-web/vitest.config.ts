@@ -18,7 +18,6 @@ export default defineConfig({
       reportsDirectory: './coverage',
       exclude: [
         'node_modules/',
-        'src/mocks/',
         'src/env.d.ts',
         'vitest.config.ts',
         'src/test-setup.ts',

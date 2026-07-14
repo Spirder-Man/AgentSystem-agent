@@ -653,7 +653,8 @@ public class ComplianceControllerTests
     public async Task CheckStorageCompatibility_CacheHit_ShouldReturnCached()
     {
         var cache = new ResponseCacheService();
-        cache.Set("storage:苯+丙酮", new CachedComplianceResponse
+        // 控制器按字母序排序："丙酮" < "苯"，所以 key 为 "storage:丙酮+苯"
+        cache.Set("storage:丙酮+苯", new CachedComplianceResponse
         {
             Query = "苯/丙酮",
             Response = "不可同储",

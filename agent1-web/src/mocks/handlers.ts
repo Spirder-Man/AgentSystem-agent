@@ -42,7 +42,7 @@ interface MockAuth {
 // JWT 模拟校验
 // ═══════════════════════════════════════
 
-function parseAuth(request: Request): MockAuth | null {
+export function parseAuth(request: Request): MockAuth | null {
   const auth = request.headers.get('Authorization');
   if (!auth || !auth.startsWith('Bearer ')) return null;
 
@@ -63,7 +63,7 @@ function parseAuth(request: Request): MockAuth | null {
 // 错误模拟 (通过 x-simulate-error Header 按需触发)
 // ═══════════════════════════════════════
 
-function checkSimulatedError(request: Request) {
+export function checkSimulatedError(request: Request) {
   const code = request.headers.get('x-simulate-error');
   if (!code) return null;
 
@@ -89,7 +89,7 @@ function checkSimulatedError(request: Request) {
 //   adminAuthGuard = [Authorize(Policy = "Admin")]   → admin only
 // ═══════════════════════════════════════
 
-function readAuthGuard(request: Request) {
+export function readAuthGuard(request: Request) {
   const auth = parseAuth(request);
   if (!auth) {
     return HttpResponse.json<ApiError>(
@@ -106,7 +106,7 @@ function readAuthGuard(request: Request) {
   return null;
 }
 
-function writeAuthGuard(request: Request) {
+export function writeAuthGuard(request: Request) {
   const base = readAuthGuard(request);
   if (base) return base;
   const auth = parseAuth(request)!;
@@ -119,7 +119,7 @@ function writeAuthGuard(request: Request) {
   return null;
 }
 
-function adminAuthGuard(request: Request) {
+export function adminAuthGuard(request: Request) {
   const base = readAuthGuard(request);
   if (base) return base;
   const auth = parseAuth(request)!;

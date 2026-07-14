@@ -96,7 +96,8 @@ public class PromptSanitizerTests
 
         var result = PromptSanitizer.SanitizeSystemPrompt(systemPrompt);
 
-        result.Should().Be(systemPrompt);
+        // SanitizeSystemPrompt 会追加合规约束指令，原始内容应保留
+        result.Should().Contain(systemPrompt);
     }
 
     [Fact]
