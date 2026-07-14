@@ -919,9 +919,9 @@
 | **影响模块** | `Agent1/Services/Dialog/AgentDialog.cs` L31-L38（构造函数新增第7参数）；`Agent1.Tests/ArchitectureConvergenceTests.cs` L251-L253（CreateModuleFactory 只传6参数） |
 | **根因** | **增量修改时调用链路未同步**。前一轮迭代（生产环境加固）为 AgentDialog 新增了第 7 个构造参数 `DeterministicRuleEngine? ruleEngine = null`（LLM 不可用时的规则引擎降级兜底）。虽带 C# 默认值 `= null`，但 **Moq 对 class（非接口）的代理构造要求参数数量精确匹配**——C# 可选参数是编译器语法糖，对反射/Moq 不透明。测试的 `CreateModuleFactory()` 仍只传 6 个参数：`new Moq.Mock<AgentDialog>(sessionService, memoryService, llmService, toolService, auditService, (MemoryCoordinator?)null).Object`，缺少第 7 个 `(DeterministicRuleEngine?)null`，导致 Castle DynamicProxy 无法找到匹配的构造函数 → `MissingMethodException` |
 | **修复** | 在 `CreateModuleFactory()` 中补传第 7 参数：`(DeterministicRuleEngine?)null`。同时建议将 `AgentDialog` 依赖注入方式从构造函数直接实例化改为接口代理，从架构层面消除此类脆弱性 |
-| **修复提交** | 待提交 |
+| **修复提交** | ca4fb3ae |
 | **关联 Bug** | — |
-| **验证方法** | `dotnet test --filter "ArchitectureConvergenceTests.All_ModuleType_Values_Are_In_ModuleFactory"` 通过 |
+| **验证方法** | `dotnet test --filter "All_ModuleType_Values_Are_In_ModuleFactory"` 远程通过 |
 | **教训** | **增量修改构造函数签名时，必须同步遍历所有反射调用点 + Moq Mock 构造点**。C# 可选参数 ≠ 运行时可选——反射视角下每个参数都是必需的。建议用 IDE 的「查找所有引用」+ 搜索 `new Mock<ClassName>(` 做变更影响分析 |
 | **追问深度** | 3 层（现象：Moq MissingMethodException → 机制：Castle DynamicProxy 不认默认参数 → 架构：DeterministicRuleEngine 的增量引入原因与设计意图） |
 
@@ -945,9 +945,9 @@
 | **影响模块** | `Agent1/Services/Compliance/ConclusionVerifier.cs` L22-L24（RegulationPattern 正则定义）；`Agent1/Services/Eval/EvalEngine.cs` L1145-L1160（CheckConclusion 的法规匹配逻辑）；`Agent1.Tests/EvalEngineTests.cs` L127-L134（测试用例） |
 | **根因** | **正则提取与匹配验证之间的归一化断层**。完整调用链分析：① `ConclusionVerifier.ExtractRegulations(response)` 用正则 `GB\s*/?T?\s*(\d{4,5})[.\-](\d+(?:\.\d+)?)` 提取 → 匹配值 = `"GB 30000.2"`（**年份 `-2013` 不在正则捕获范围内**，这是 Bug-028 三层约束中 L2 输出校验层的设计意图——剥离年份防止 LLM 版本幻觉）；② `ExtractRegulations` 返回 `["GB 30000.2"]`，`allRegs.Count > 0` 为 true，进入提取路径；③ `CheckRegulationMatch("GB 30000.2", "GB 30000.2-2013")` → GB 前缀归一化后 `"GB30000.2".Contains("GB30000.2-2013")` → **短串不可包含长串** → 返回 `false` → 测试断言 `.BeTrue()` 失败。**若正则未命中（allRegs.Count=0），则会走 L1162 降级路径直接对原始 response 做 `Contains` → 能匹配成功**——因此行为取决于正则是否能从输入中提取出值，而正则设计决定了一定会提取出来（提取成功则必定因年份断层而失败） |
 | **修复** | 两种方案：① **(推荐) 修改测试预期值**：将 `"GB 30000.2-2013"` 改为 `"GB 30000.2"`（去掉年份后缀），因为评测系统的设计意图就是忽略年份只匹配主干编号；② 修改 `CheckRegulationMatch` 增加年份剥离逻辑：双方在匹配前都去掉 `-\d{4}` 后缀。方案①改动最小且符合设计意图 |
-| **修复提交** | 待提交 |
+| **修复提交** | ca4fb3ae |
 | **关联 Bug** | [Bug-028](#bug-028) — 三层约束中 L2 正则剥离年份是同一设计决策的产物；[Bug-013](#bug-013) — 同为 GB 编号处理相关的系统性问题 |
-| **验证方法** | `dotnet test --filter "EvalEngineTests.CheckConclusion_InfoQuery_RegulationMatch_ReturnsTrue"` 通过 |
+| **验证方法** | `dotnet test --filter "CheckConclusion_InfoQuery_RegulationMatch_ReturnsTrue"` 远程通过 |
 | **教训** | **正则提取（Extract）和匹配验证（Match）必须共享相同的归一化策略**。ExtractRegulations 剥离了年份，但 CheckRegulationMatch 保留了年份 → 两个组件对"GB 30000.2-2013"的理解不一致。建议在 `EvalEngine` 中统一一个 `NormalizeGbNumber()` 方法，Extract 和 Match 都调用它，确保归一化逻辑唯一 |
 | **追问深度** | 4 层（现象：CheckConclusion 返回 false → 代码：正则匹配值不含年份 → 设计：Bug-028 三层约束的设计意图 → 断层：Extract 与 Match 归一化不一致的根因） |
 

@@ -206,6 +206,7 @@ public class EvalEngine
 
                 result.actual_response = response ?? "";
 
+                ExtractedFacts? extractedFacts = null;
                 var llmSvc = _llmService as LlmService;
                 if (llmSvc != null && llmSvc.LastFunctionCalls.Count > 0)
                 {
@@ -230,7 +231,8 @@ public class EvalEngine
                         {
                             // [P1 FIX] 安全距离：工具结果中含距离数值，LLM回答可能丢失数值 → 传工具结果供后备检查
                             var toolResult = matchedCall?.Result;
-                            result.conclusion_match = CheckConclusion(response, tc.ExpectedConclusion, result.tool_match, tc.Category, tc.Intent, toolResult);
+                            extractedFacts = ComplianceFactExtractor.Extract(llmSvc.LastFunctionCalls, isInfoQuery);
+                            result.conclusion_match = CheckConclusion(response, tc.ExpectedConclusion, result.tool_match, tc.Category, tc.Intent, toolResult, extractedFacts);
                             var isInfoQ = (tc.Intent ?? "") == "info_query";
                             var regDisplay = tc.ExpectedConclusion.ExpectedRegulationNumbers.Count > 1
                                 ? $"reg=[{string.Join(", ", tc.ExpectedConclusion.ExpectedRegulationNumbers)}]"
@@ -242,7 +244,7 @@ public class EvalEngine
                             {
                                 try
                                 {
-                                    var allRegs = ConclusionVerifier.ExtractRegulations(response);
+                                    var allRegs = extractedFacts?.RegulationRefs ?? ConclusionVerifier.ExtractRegulations(response);
                                     var expectedRegs = tc.ExpectedConclusion.ExpectedRegulationNumbers;
                                     var extraRegs = allRegs.Where(r => !expectedRegs.Any(e => CheckRegulationMatch(r, e))).ToList();
 
@@ -310,8 +312,7 @@ public class EvalEngine
                 {
                     try
                     {
-                        var evalToolCalls = llmSvc?.LastFunctionCalls ?? new List<FunctionCallRecord>();
-                        var evalFacts = ComplianceFactExtractor.Extract(evalToolCalls, isInfoQuery);
+                        var evalFacts = extractedFacts ?? ComplianceFactExtractor.Extract(llmSvc?.LastFunctionCalls ?? new List<FunctionCallRecord>(), isInfoQuery);
                         if (evalFacts.HasAnyToolResult || evalFacts.RegulationRefs.Count > 0)
                         {
                             var sanitized = OutputSanitizer.Sanitize(response ?? "", evalFacts.RegulationRefs);
@@ -1107,7 +1108,7 @@ public class EvalEngine
     ///   3. "不合规" 出现在免责声明中而非结论句中（如"若不采取隔离则不合规"）
     ///   待验证项见 docs/FunctionCalling模型评测BUG记录.md 第6.3/7.4节
     /// </summary>
-    public static bool CheckConclusion(string? response, EvalConclusion? expected, bool toolTriggered, string? category = null, string? intent = null, string? toolResult = null)
+    public static bool CheckConclusion(string? response, EvalConclusion? expected, bool toolTriggered, string? category = null, string? intent = null, string? toolResult = null, ExtractedFacts? extractedFacts = null)
     {
         if (string.IsNullOrEmpty(response) || expected == null)
             return false;
@@ -1131,6 +1132,16 @@ public class EvalEngine
 
             if (category == "安全距离" && expected.ExpectedDistance.HasValue)
             {
+                // Priority 1: structured facts from tool results (ground truth)
+                if (extractedFacts?.SafetyDistances != null)
+                {
+                    foreach (var dist in extractedFacts.SafetyDistances.Values)
+                    {
+                        if (CheckSafetyDistanceMatch(dist, expected.ExpectedDistance.Value))
+                            return true;
+                    }
+                }
+                // Priority 2: raw text fallback
                 if (CheckSafetyDistanceMatch(response, expected.ExpectedDistance.Value))
                     return true;
                 if (!string.IsNullOrEmpty(toolResult) && CheckSafetyDistanceMatch(toolResult, expected.ExpectedDistance.Value))
@@ -1141,8 +1152,8 @@ public class EvalEngine
             if (expected.ExpectedRegulationNumbers.Count > 0)
             {
                 // [P1 FIX] Level 4: 反向幻觉扣除（支持数组格式预期值）
-                // 提取回答中所有 GB 编号，验证预期编号列表中至少一个在回答中
-                var allRegs = ConclusionVerifier.ExtractRegulations(response);
+                // 优先使用工具返回的结构化法规编号（真值源），降级时从 LLM 文本提取
+                var allRegs = extractedFacts?.RegulationRefs ?? ConclusionVerifier.ExtractRegulations(response);
                 var expectedRegs = expected.ExpectedRegulationNumbers;
                 if (allRegs.Count > 0)
                 {
