@@ -129,13 +129,19 @@ public class DashboardApiIntegrationTests : IClassFixture<CustomApiWebApplicatio
     }
 
     [Fact]
-    public async Task Dashboard_Scan_Auditor_EmptyAssets_ReturnsBadRequest()
+    public async Task Dashboard_Scan_Auditor_StubAssets_Success()
     {
-        // 没有化学资产时应返回 400
+        // Stub 数据库包含预置化学资产，扫描应成功返回 200
         var client = await LoginAndGetClient("auditor", "Audit@456");
         var response = await client.PostAsync("/api/Dashboard/scan", null);
-        // 初始状态无资产，预期 400
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        json.TryGetProperty("newFindings", out _).Should().BeTrue();
+        json.TryGetProperty("totalFindings", out _).Should().BeTrue();
+        json.TryGetProperty("scannedAt", out _).Should().BeTrue();
+        json.TryGetProperty("overview", out _).Should().BeTrue();
     }
 
     [Fact]

@@ -6,14 +6,25 @@ if (args.Length < 4)
 {
     Console.Error.WriteLine("Usage: SshRunner <host> <port> <user> <password> <command...>");
     Console.Error.WriteLine("       SshRunner --stream <host> <port> <user> <password> <command...>");
+    Console.Error.WriteLine("       SshRunner --upload <host> <port> <user> <password> <local_path> <remote_path>");
     return 1;
 }
 
+// ── --upload 模式：通过 SFTP 上传文件 ──
+bool uploadMode = args[0] == "--upload";
 // ── --stream 模式：创建伪终端，实时逐行回传输出 ──
-bool streamMode = args[0] == "--stream";
-int argOffset = streamMode ? 1 : 0;
+bool streamMode = !uploadMode && args[0] == "--stream";
+int argOffset = (uploadMode || streamMode) ? 1 : 0;
 
-if (streamMode && args.Length < 5)
+if (uploadMode)
+{
+    if (args.Length < 6 + argOffset)
+    {
+        Console.Error.WriteLine("Usage: SshRunner --upload <host> <port> <user> <password> <local_path> <remote_path>");
+        return 1;
+    }
+}
+else if (streamMode && args.Length < 5)
 {
     Console.Error.WriteLine("Usage: SshRunner --stream <host> <port> <user> <password> <command...>");
     return 1;
@@ -23,7 +34,6 @@ var host = args[argOffset];
 var port = int.Parse(args[argOffset + 1]);
 var user = args[argOffset + 2];
 var password = args[argOffset + 3];
-var command = string.Join(" ", args.Skip(argOffset + 4));
 
 // ═══════════════════════════════════════════════════════════
 // 企业级 SSH 连接配置
@@ -35,6 +45,64 @@ const int CONNECTION_TIMEOUT_SEC = 30;
 const int KEEPALIVE_INTERVAL_SEC = 15;
 const int COMMAND_TIMEOUT_SEC = 30;
 const int MAX_CONNECTION_RETRIES = 3;
+
+// ── 上传模式：本地路径 + 远程路径 ──
+if (uploadMode)
+{
+    var localPath = args[argOffset + 4];
+    var remotePath = args[argOffset + 5];
+    if (!File.Exists(localPath))
+    {
+        Console.Error.WriteLine($"SSH_ERROR: 本地文件不存在: {localPath}");
+        return 5;
+    }
+
+    var authMethod = new PasswordAuthenticationMethod(user, password);
+    var uploadConnInfo = new ConnectionInfo(host, port, user, authMethod)
+    {
+        Timeout = TimeSpan.FromSeconds(CONNECTION_TIMEOUT_SEC),
+        MaxSessions = 2
+    };
+
+    using var sftp = new SftpClient(uploadConnInfo);
+    for (int attempt2 = 1; attempt2 <= MAX_CONNECTION_RETRIES; attempt2++)
+    {
+        try
+        {
+            sftp.Connect();
+            break;
+        }
+        catch when (attempt2 < MAX_CONNECTION_RETRIES)
+        {
+            var delaySec = (int)Math.Pow(2, attempt2);
+            Console.Error.WriteLine($"[SSHRUNNER] SFTP 连接失败，{delaySec}s 后重试 ({attempt2}/{MAX_CONNECTION_RETRIES})...");
+            Thread.Sleep(delaySec * 1000);
+        }
+    }
+
+    if (!sftp.IsConnected)
+    {
+        Console.Error.WriteLine("SSH_CONNECT_FAILED: SFTP 重试耗尽");
+        return 4;
+    }
+
+    // 确保远程目录存在
+    var remoteDir = Path.GetDirectoryName(remotePath)?.Replace('\\', '/');
+    if (!string.IsNullOrEmpty(remoteDir) && !remoteDir.StartsWith("/"))
+        remoteDir = "/" + remoteDir;
+    if (!string.IsNullOrEmpty(remoteDir))
+    {
+        try { sftp.CreateDirectory(remoteDir); } catch { /* 目录已存在 */ }
+    }
+
+    using var fs = File.OpenRead(localPath);
+    sftp.UploadFile(fs, remotePath, true);
+    sftp.Disconnect();
+    Console.WriteLine($"UPLOAD_OK: {localPath} -> {remotePath} ({fs.Length} bytes)");
+    return 0;
+}
+
+var command = string.Join(" ", args.Skip(argOffset + 4));
 
 try
 {
