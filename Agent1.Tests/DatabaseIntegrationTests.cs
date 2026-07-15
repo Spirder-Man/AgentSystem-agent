@@ -6,7 +6,6 @@ using Agent1.Config;
 using Agent1.Models;
 using Agent1.Services;
 using FluentAssertions;
-using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace Agent1.Tests;
@@ -32,29 +31,20 @@ public class DatabaseIntegrationTests : IAsyncLifetime
     /// <summary>测试前: 创建 DatabaseService 实例 + 建表</summary>
     public async Task InitializeAsync()
     {
-        // 从环境变量构建最小配置
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
+        // 直接从环境变量构建 DatabaseConfig，不依赖 AppConfig 单例
+        // 避免与 ApiIntegrationTests 的 WebApplicationFactory 并行时发生单例竞争
+        var port = int.TryParse(Environment.GetEnvironmentVariable("DB_PORT"), out var p) ? p : 5432;
+        _config = new AppConfig
+        {
+            Database = new DatabaseConfig
             {
-                ["Database:Host"] = Environment.GetEnvironmentVariable("DB_HOST") ?? "localhost",
-                ["Database:Port"] = Environment.GetEnvironmentVariable("DB_PORT") ?? "5432",
-                ["Database:DatabaseName"] = Environment.GetEnvironmentVariable("DB_NAME") ?? "chemical_park_ai_agent",
-                ["Database:Username"] = Environment.GetEnvironmentVariable("DB_USERNAME") ?? "postgres",
-                ["Database:Password"] = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "7758521",
-                // 以下为 AppConfig.Validate() 必需字段（集成测试不关心具体值）
-                ["Llm:ModelId"] = "test-model",
-                ["Llm:Endpoint"] = "http://localhost:11434",
-                ["VectorSearch:EmbeddingModelId"] = "test-embed",
-                ["PromptTemplates:SystemRole"] = "test",
-                ["PromptTemplates:EvalFastPrompt"] = "test {SystemRole} {UserInput}",
-                ["PromptTemplates:EvalFastQueryPrompt"] = "test {SystemRole} {UserInput}"
-            })
-            .Build();
-
-        try { AppConfig.Load(configuration); }
-        catch (InvalidOperationException) { /* 已被其他测试初始化 */ }
-
-        _config = AppConfig.Instance;
+                Host = Environment.GetEnvironmentVariable("DB_HOST") ?? "localhost",
+                Port = port,
+                DatabaseName = Environment.GetEnvironmentVariable("DB_NAME") ?? "chemical_park_ai_agent",
+                Username = Environment.GetEnvironmentVariable("DB_USERNAME") ?? "postgres",
+                Password = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "7758521"
+            }
+        };
         _db = new DatabaseService(_config);
 
         // 确保表存在

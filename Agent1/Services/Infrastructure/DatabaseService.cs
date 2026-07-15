@@ -33,8 +33,11 @@ namespace Agent1.Services
                 await connection.OpenAsync();
                 return connection.State == ConnectionState.Open;
             }
-            catch
+            catch (Exception ex)
             {
+                Console.Error.WriteLine($"[TestConnectionAsync] 连接失败: {ex.GetType().Name}: {ex.Message}");
+                if (ex.InnerException != null)
+                    Console.Error.WriteLine($"[TestConnectionAsync] 内部异常: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
                 return false;
             }
         }
