@@ -2,7 +2,7 @@
 
 > **目的**：结构化记录每个 Bug 的根因/修复/影响模块，实现跨批次知识累积，避免同类问题反复出现。
 > **使用方式**：每次修复 Bug 后按模板录入；每次分析日志前浏览「系统弱点了然表」确定重点监控项。
-> **文档版本**：v2.1 | **创建日期**：2026-06-30 | **最后更新**：2026-07-10（新增 Bug-029/030：AgentDialog构造参数未同步导致Moq失败 + 法规编号提取正则剥离年份致评测断言不匹配）
+> **文档版本**：v2.0 | **创建日期**：2026-06-30 | **最后更新**：2026-07-03（新增 Bug-026/027/028：评测集GB数据错误 + Citation Accuracy误判 + 版本幻觉三层约束）
 
 ---
 
@@ -30,8 +30,6 @@
 | W16 | **评测集 expected_regulation_number 与数据库不同步** | 评测人手动填写GB编号可能与ChemicalSubstanceDatabase实际映射不一致 | `Level4 幻觉扣除` / 危险类别结论准确率异常低（<50%） | [Bug-026](#bug-026) |
 | W17 | **Citation Accuracy 未区分数据源** | RAG文档检索不到的值被误判为幻觉，实际来源是C#硬编码字典 | `Citation Accuracy` = 0% / 大量 `🔍 Level4 KB验证: ✗` | [Bug-027](#bug-027) |
 | W18 | **LLM 自推断法规版本年份** | Qwen3:8b 在无工具调用时自行编造年代版本号（如 GB 15603-2023） | 回答含 `GB XXXX-YYYY` 但YYYY与数据库不一致 / `🔧 版本校正` | [Bug-028](#bug-028) |
-| W19 | **构造函数签名变更未同步调用链** | 新增可选参数后，Moq/反射调用方参数数量不匹配导致测试崩溃 | `MissingMethodException` / `Can not instantiate proxy` | [Bug-029](#bug-029) |
-| W20 | **正则提取与匹配验证归一化不一致** | 正则提取时剥离了年份后缀，但匹配验证时代入带年份的期望值，Contains 短串不包含长串 | `allRegs` 值与期望值长度不匹配 / `CheckRegulationMatch` 返回 false 但肉眼比对一致 | [Bug-030](#bug-030) |
 
 ---
 
@@ -43,8 +41,6 @@
 | [Bug-026](#bug-026) | 07-03 | P0 | 评测数据 | 评测集7条危险类别expected_regulation_number与数据库不对齐（结论准确率仅40%） |
 | [Bug-027](#bug-027) | 07-03 | P0 | 评测引擎 | Citation Accuracy 误判数据库源GB编号为幻觉（42条中仅8-12条为真实幻觉） |
 | [Bug-028](#bug-028) | 07-03 | P1 | LLM幻觉 | Qwen3:8b 自行编造法规年代版本号（GB 15603-2023实际为2022）+ 三层约束修复 |
-| [Bug-029](#bug-029) | 07-10 | P2 | 测试/构造同步 | AgentDialog 构造函数新增可选参数导致 ArchitectureConvergence Moq Mock 失败 |
-| [Bug-030](#bug-030) | 07-10 | P2 | 评测/正则 | 法规编号提取正则剥离年份后缀导致 EvalEngine 评测断言不匹配 |
 | [Bug-018](#bug-018) | 07-02 | P0 | LLM配置 | FunctionChoiceBehavior.Required() 导致评测死循环 |
 | [Bug-024](#bug-024) | 07-03 | P1 | 评测 | 结论提取器数据源误匹配 — A 类15条中9条结论虚报⚠️，LLM实际输出正确 |
 | [Bug-025](#bug-025) | 07-03 | P1 | 评测 | Answer Relevance 评估器 FC Required() 导致重复输出+流式截断（I001 66+条重复） |
@@ -906,59 +902,6 @@
 | N1 | 现象确认 | I001 回答 `GB 15603-2023` 但数据库记录为 2022 | 不是 T13 系统级问题，是 LLM 输出级幻觉 | 定位为 LLM 幻觉而非评测框架错误 | — |
 | N2 | L1→L2 追问 | 为什么 LLM 会知道 2023？模型训练数据中有这个年份吗？ | Qwen3-8B 训练数据截止 2024 年中，可能包含网络讨论中错误引用的"GB 15603-2023" | 确认根因是训练数据污染，非系统 Bug | 怀疑数据库版本记录过时 → 查证国标官网确认 2022 为最新版 |
 | N3 | 方案分支 | Prompt 约束（"禁止输出年份"）vs 代码硬校验（正则+DB替换） vs 两者都要 | 只做 Prompt 约束无法保证 100% 生效（LLM 可能忽略指令）；只做代码校验对用户不友好（悄悄替换但不告知） | 三层防御：Prompt 约束 → 正则提取 → DB 校验替换 | 单层方案：化工安全系统要求 0 失误，必须冗余防御 |
-
----
-
-### Bug-029：AgentDialog 构造函数新增可选参数导致 ArchitectureConvergence Moq Mock 失败 {#bug-029}
-
-| 字段 | 内容 |
-|------|------|
-| **发现日期** | 2026-07-10 |
-| **严重等级** | 🔵 P2 — 仅测试失败，生产代码不受影响 |
-| **发现场景** | P5 后端测试补齐阶段 — 远程 `dotnet test` 发现 `ArchitectureConvergenceTests.All_ModuleType_Values_Are_In_ModuleFactory` 失败，报 `System.ArgumentException: Can not instantiate proxy of class: Agent1.Services.AgentDialog. Could not find a constructor that would match given arguments` |
-| **影响模块** | `Agent1/Services/Dialog/AgentDialog.cs` L31-L38（构造函数新增第7参数）；`Agent1.Tests/ArchitectureConvergenceTests.cs` L251-L253（CreateModuleFactory 只传6参数） |
-| **根因** | **增量修改时调用链路未同步**。前一轮迭代（生产环境加固）为 AgentDialog 新增了第 7 个构造参数 `DeterministicRuleEngine? ruleEngine = null`（LLM 不可用时的规则引擎降级兜底）。虽带 C# 默认值 `= null`，但 **Moq 对 class（非接口）的代理构造要求参数数量精确匹配**——C# 可选参数是编译器语法糖，对反射/Moq 不透明。测试的 `CreateModuleFactory()` 仍只传 6 个参数：`new Moq.Mock<AgentDialog>(sessionService, memoryService, llmService, toolService, auditService, (MemoryCoordinator?)null).Object`，缺少第 7 个 `(DeterministicRuleEngine?)null`，导致 Castle DynamicProxy 无法找到匹配的构造函数 → `MissingMethodException` |
-| **修复** | 在 `CreateModuleFactory()` 中补传第 7 参数：`(DeterministicRuleEngine?)null`。同时建议将 `AgentDialog` 依赖注入方式从构造函数直接实例化改为接口代理，从架构层面消除此类脆弱性 |
-| **修复提交** | ca4fb3ae |
-| **关联 Bug** | — |
-| **验证方法** | `dotnet test --filter "All_ModuleType_Values_Are_In_ModuleFactory"` 远程通过 |
-| **教训** | **增量修改构造函数签名时，必须同步遍历所有反射调用点 + Moq Mock 构造点**。C# 可选参数 ≠ 运行时可选——反射视角下每个参数都是必需的。建议用 IDE 的「查找所有引用」+ 搜索 `new Mock<ClassName>(` 做变更影响分析 |
-| **追问深度** | 3 层（现象：Moq MissingMethodException → 机制：Castle DynamicProxy 不认默认参数 → 架构：DeterministicRuleEngine 的增量引入原因与设计意图） |
-
-### 思维链路（Bug-029）
-
-| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
-|:---:|------|------|------|------|------|
-| N1 | 现象确认 | P5 补齐后远程跑测试，ArchitectureConvergence 报 `Can not instantiate proxy` | 不是代码逻辑错误——Moq 代理构造阶段就崩了 | 聚焦 Mock 构造参数匹配问题 | 怀疑是依赖注入容器配置错误 |
-| N2 | L1→L2 追问 | AgentDialog 构造参数什么时候变的？为什么？ | 前一轮「生产环境加固」新增 `DeterministicRuleEngine? ruleEngine = null`——LLM 不可用时的规则引擎降级兜底。`= null` 是 C# 语法糖，Moq/Castle 不认 | 确认是增量修改导致的调用链断裂 | — |
-| N3 | L2→L3 追问 | DeterministicRuleEngine 的设计意图是什么？为什么加为可选参数？ | 规则引擎处理确定性问题（查表/数值比对/布尔检查），LLM 处理模糊推理。加为可选参数是为了向后兼容——不传时系统走纯 LLM 路径，传了则开启规则兜底 | 从架构层面理解了新增参数的合理性，但确认同步机制缺失 | 长期方案：将 AgentDialog 改为接口 `IAgentDialog`，消除对具体类的 Moq 依赖 |
-
----
-
-### Bug-030：法规编号提取正则剥离年份后缀导致 EvalEngine 评测断言不匹配 {#bug-030}
-
-| 字段 | 内容 |
-|------|------|
-| **发现日期** | 2026-07-10 |
-| **严重等级** | 🔵 P2 — 仅评测断言失败，生产评测逻辑正确 |
-| **发现场景** | P5 后端测试补齐阶段 — 远程 `dotnet test` 发现 `EvalEngineTests.CheckConclusion_InfoQuery_RegulationMatch_ReturnsTrue` 失败：测试传入 `response = "适用标准 GB 30000.2-2013，该物质属于易燃液体"`，期望 `expected = ["GB 30000.2-2013"]`，但 `CheckConclusion` 返回 `false` |
-| **影响模块** | `Agent1/Services/Compliance/ConclusionVerifier.cs` L22-L24（RegulationPattern 正则定义）；`Agent1/Services/Eval/EvalEngine.cs` L1145-L1160（CheckConclusion 的法规匹配逻辑）；`Agent1.Tests/EvalEngineTests.cs` L127-L134（测试用例） |
-| **根因** | **正则提取与匹配验证之间的归一化断层**。完整调用链分析：① `ConclusionVerifier.ExtractRegulations(response)` 用正则 `GB\s*/?T?\s*(\d{4,5})[.\-](\d+(?:\.\d+)?)` 提取 → 匹配值 = `"GB 30000.2"`（**年份 `-2013` 不在正则捕获范围内**，这是 Bug-028 三层约束中 L2 输出校验层的设计意图——剥离年份防止 LLM 版本幻觉）；② `ExtractRegulations` 返回 `["GB 30000.2"]`，`allRegs.Count > 0` 为 true，进入提取路径；③ `CheckRegulationMatch("GB 30000.2", "GB 30000.2-2013")` → GB 前缀归一化后 `"GB30000.2".Contains("GB30000.2-2013")` → **短串不可包含长串** → 返回 `false` → 测试断言 `.BeTrue()` 失败。**若正则未命中（allRegs.Count=0），则会走 L1162 降级路径直接对原始 response 做 `Contains` → 能匹配成功**——因此行为取决于正则是否能从输入中提取出值，而正则设计决定了一定会提取出来（提取成功则必定因年份断层而失败） |
-| **修复** | 两种方案：① **(推荐) 修改测试预期值**：将 `"GB 30000.2-2013"` 改为 `"GB 30000.2"`（去掉年份后缀），因为评测系统的设计意图就是忽略年份只匹配主干编号；② 修改 `CheckRegulationMatch` 增加年份剥离逻辑：双方在匹配前都去掉 `-\d{4}` 后缀。方案①改动最小且符合设计意图 |
-| **修复提交** | ca4fb3ae |
-| **关联 Bug** | [Bug-028](#bug-028) — 三层约束中 L2 正则剥离年份是同一设计决策的产物；[Bug-013](#bug-013) — 同为 GB 编号处理相关的系统性问题 |
-| **验证方法** | `dotnet test --filter "CheckConclusion_InfoQuery_RegulationMatch_ReturnsTrue"` 远程通过 |
-| **教训** | **正则提取（Extract）和匹配验证（Match）必须共享相同的归一化策略**。ExtractRegulations 剥离了年份，但 CheckRegulationMatch 保留了年份 → 两个组件对"GB 30000.2-2013"的理解不一致。建议在 `EvalEngine` 中统一一个 `NormalizeGbNumber()` 方法，Extract 和 Match 都调用它，确保归一化逻辑唯一 |
-| **追问深度** | 4 层（现象：CheckConclusion 返回 false → 代码：正则匹配值不含年份 → 设计：Bug-028 三层约束的设计意图 → 断层：Extract 与 Match 归一化不一致的根因） |
-
-### 思维链路（Bug-030）
-
-| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
-|:---:|------|------|------|------|------|
-| N1 | 现象确认 | P5 补齐后 EvalEngine 断言失败，肉眼比对 response 和 expected 看起来一致 | 表面上应该匹配的内容却没匹配——必定是某个中间步骤改变了输入 | 逐行追踪 CheckConclusion 调用链 | — |
-| N2 | L1→L2 追问 | ExtractRegulations 返回了什么？和 expected 一样吗？ | 返回 `"GB 30000.2"`，丢失了 `-2013`。正则 `(\d+(?:\.\d+)?)` 只匹配到子编号，未设计年份捕获组 | 正则设计是有意为之（Bug-028 L2 输出校验层剥离年份） | 怀疑是正则 bug → 否决：是设计意图 |
-| N3 | L2→L3 追问 | CheckRegulationMatch 做了什么处理？年份在哪个环节丢失的？ | CheckRegulationMatch 只归一化 GB 前缀（空格、/T），不处理年份。年份丢失发生在 ExtractRegulations 阶段，Match 阶段不做补偿 | 确认断层位置在 Extract → Match 之间 | 在 CheckRegulationMatch 中加年份剥离 → 虽可行但违背"归一化统一入口"原则 |
-| N4 | 方案分支 | 改测试预期（去年份）vs 改 CheckRegulationMatch（加年份剥离）vs 改正则（保留年份） | 改正则保留年份：违反 Bug-028 的年份防幻觉设计 | 选方案①：测试预期去年份，符合评测系统设计意图 | 方案②：Match 加年份剥离 → 可行但引入第二处归一化逻辑，违反 DRY |
 
 ---
 
