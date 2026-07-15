@@ -13,6 +13,7 @@ namespace Agent1.Tests;
 /// InspectionRepository CRUD 测试 — 覆盖巡检计划、轮次、资产、合规发现的持久化操作。
 /// 测试通过公开 API 的 roundtrip（Save → Get）验证数据完整性。
 /// </summary>
+[Collection("InspectionRepository")]
 public class InspectionRepositoryTests : IDisposable
 {
     private readonly string _dataFile;
