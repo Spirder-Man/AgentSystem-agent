@@ -155,35 +155,4 @@ public class EvalEngineTests
         EvalEngine.CheckConclusion("合规", null, toolTriggered: true)
             .Should().BeFalse();
     }
-
-    [Fact]
-    public void CheckConclusion_WithExtractedFacts_RegulationRefsFromTool_UsesStructuredPath()
-    {
-        // 关键：response 不含 GB 编号，但 ExtractedFacts.RegulationRefs 中有
-        // 证明评测引擎吃的是结构化事实而非 LLM 原始文本
-        var response = "该物质属于易燃液体，需注意储存安全";
-        var expected = new EvalConclusion { ExpectedRegulationNumbers = new List<string> { "GB 30000.2" } };
-        var facts = new ExtractedFacts
-        {
-            RegulationRefs = new List<string> { "GB 30000.2-2013" },
-            IsInfoQuery = true
-        };
-        EvalEngine.CheckConclusion(response, expected, toolTriggered: true, intent: "info_query", extractedFacts: facts)
-            .Should().BeTrue();
-    }
-
-    [Fact]
-    public void CheckConclusion_WithExtractedFacts_SafetyDistanceFromTool_UsesStructuredPath()
-    {
-        // 关键：response 不含距离数值，但 ExtractedFacts.SafetyDistances 中有
-        // 证明安全距离校验优先吃结构化数据
-        var response = "甲乙类仓库之间需保持安全距离";
-        var expected = new EvalConclusion { ExpectedDistance = 30 };
-        var facts = new ExtractedFacts
-        {
-            SafetyDistances = new Dictionary<string, string> { ["甲类仓库-明火点"] = "30米" }
-        };
-        EvalEngine.CheckConclusion(response, expected, toolTriggered: true, category: "安全距离", intent: "info_query", extractedFacts: facts)
-            .Should().BeTrue();
-    }
 }

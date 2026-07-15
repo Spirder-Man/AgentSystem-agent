@@ -7,6 +7,10 @@
     <CollectCoverage>true</CollectCoverage>
     <CoverletOutputFormat>cobertura</CoverletOutputFormat>
     <CoverletOutput>../TestResults/coverage.cobertura.xml</CoverletOutput>
+    <!-- 覆盖率门禁：低于阈值则构建失败 -->
+    <CoverletThreshold>60</CoverletThreshold>
+    <CoverletThresholdType>line,branch,method</CoverletThresholdType>
+    <CoverletThresholdStat>average</CoverletThresholdStat>
   </PropertyGroup>
 
   <ItemGroup>
