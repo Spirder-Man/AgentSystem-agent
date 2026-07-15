@@ -34,6 +34,18 @@ public class CustomApiWebApplicationFactory : WebApplicationFactory<Agent1.Api.P
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        // 补充测试环境所需的环境变量（绕过 AppConfig.Validate() 的启动校验）
+        // 仅在环境变量未设置时才写入，避免覆盖 ModuleInitializer 从 .env 加载的真实凭据
+        // （DatabaseIntegrationTests 需要真实 PostgreSQL 连接）
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DB_PASSWORD")))
+        {
+            Environment.SetEnvironmentVariable("DB_PASSWORD", "test_pwd_7758521");
+            Environment.SetEnvironmentVariable("DB_HOST", "localhost");
+            Environment.SetEnvironmentVariable("DB_PORT", "5432");
+            Environment.SetEnvironmentVariable("DB_NAME", "chemical_park_ai_agent");
+            Environment.SetEnvironmentVariable("DB_USERNAME", "postgres");
+        }
+
         // 注入测试账号（明文密码，AuthController 会自动 BCrypt 升级）
         Environment.SetEnvironmentVariable("AUTH_ACCOUNTS_JSON", JsonSerializer.Serialize(new[]
         {
