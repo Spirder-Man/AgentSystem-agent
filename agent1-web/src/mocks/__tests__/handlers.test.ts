@@ -8,7 +8,7 @@
  *   - parseAuth — JWT Token 解析 (角色推导/过期判定)
  *   - readAuthGuard / writeAuthGuard / adminAuthGuard — 三层授权
  *   - checkSimulatedError — 7 种错误码注入
- *   - handlers 数组 — 23 条路由的 method/path 完整性
+ *   - handlers 数组 — 49 条路由的 method/path 完整性
  */
 import { describe, it, expect, vi } from 'vitest';
 import {
@@ -321,8 +321,8 @@ describe('checkSimulatedError — x-simulate-error 错误注入', () => {
 // ═══════════════════════════════════════
 
 describe('handlers 数组 — 路由配置完整性', () => {
-  it('共 33 条路由', () => {
-    expect(handlers.length).toBe(33);
+  it('共 54 条路由', () => {
+    expect(handlers.length).toBe(54);
   });
 
   it('每条 handler 都有 method 和 path 信息', () => {
@@ -349,17 +349,39 @@ describe('handlers 数组 — 路由配置完整性', () => {
     { method: 'GET', path: '/api/Inspection/plans' },
     { method: 'POST', path: '/api/Inspection/plans' },
     { method: 'GET', path: '/api/Inspection/plans/:id' },
+    { method: 'PUT', path: '/api/Inspection/plans/:id' },
+    { method: 'DELETE', path: '/api/Inspection/plans/:id' },
     { method: 'POST', path: '/api/Inspection/plans/:id/execute' },
     { method: 'GET', path: '/api/Inspection/rounds' },
     { method: 'GET', path: '/api/Inspection/rounds/:id' },
     { method: 'GET', path: '/api/Inspection/reports/:id' },
     { method: 'GET', path: '/api/Inspection/reports/:id/export' },
     { method: 'GET', path: '/api/Inspection/assets' },
+    { method: 'GET', path: '/api/Inspection/assets/:assetId' },
     { method: 'POST', path: '/api/Inspection/scan' },
     { method: 'POST', path: '/api/Inspection/quick-check' },
     // Tickets
     { method: 'GET', path: '/api/Tickets' },
     { method: 'PUT', path: '/api/Tickets/:id/status' },
+    { method: 'POST', path: '/api/tickets/followup' },
+    // Regulatory Audit
+    { method: 'POST', path: '/api/regulatory/audit' },
+    // Emergency
+    { method: 'POST', path: '/api/emergency/response' },
+    // Knowledge Graph
+    { method: 'POST', path: '/api/knowledgegraph/query' },
+    // Multimodal
+    { method: 'POST', path: '/api/multimodal/analyze' },
+    // Eval
+    { method: 'POST', path: '/api/eval/run' },
+    { method: 'GET', path: '/api/eval/status/:taskId' },
+    { method: 'DELETE', path: '/api/eval/status/:taskId' },
+    // Dashboard
+    { method: 'GET', path: '/api/Dashboard/overview' },
+    { method: 'POST', path: '/api/Dashboard/scan' },
+    { method: 'GET', path: '/api/Dashboard/findings' },
+    { method: 'GET', path: '/api/Dashboard/history' },
+    { method: 'GET', path: '/api/Dashboard/report/hazard' },
     // Audit
     { method: 'GET', path: '/api/Audit/logs' },
     { method: 'GET', path: '/api/Audit/integrity' },
@@ -375,7 +397,14 @@ describe('handlers 数组 — 路由配置完整性', () => {
     { method: 'GET', path: '/cache/stats' },
     { method: 'POST', path: '/cache/clear' },
     // KnowledgeBase
-    { method: 'POST', path: '/knowledgebase/incremental-update' },
+    { method: 'GET', path: '/api/knowledgebase/search-mode' },
+    { method: 'PUT', path: '/api/knowledgebase/search-mode' },
+    { method: 'POST', path: '/api/knowledgebase/rag-test' },
+    { method: 'POST', path: '/api/knowledgebase/incremental-load' },
+    // Diagnostics
+    { method: 'POST', path: '/api/diagnostics/tool-calling' },
+    // Alerts
+    { method: 'POST', path: '/api/alerts/test' },
     // Memory
     { method: 'GET', path: '/memory/stats' },
     { method: 'GET', path: '/memory/long-term/search' },

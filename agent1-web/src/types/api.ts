@@ -525,6 +525,160 @@ export interface TicketFollowupResult {
   tickets: TicketItem[];
 }
 
+// ── Dashboard 合规总览 (DashboardController 6 端点) ──
+
+/** GET /api/Dashboard/overview */
+export interface DashboardOverview {
+  totalAssets: number;
+  checkedAssets: number;
+  compliantAssets: number;
+  nonCompliantAssets: number;
+  complianceRate: number;
+  totalFindings: number;
+  openFindings: number;
+  remediationRate: number;
+  lastAutoScanAt: string | null;
+  hasInventory: boolean;
+  findingsBySeverity: Record<string, number>;
+  findingsByStatus: Record<string, number>;
+}
+
+/** GET /api/Dashboard/assets */
+export interface DashboardAssetItem {
+  assetId: string;
+  name: string;
+  casNumber: string;
+  location: string;
+  quantityTons: number;
+  storageCondition: string;
+  responsiblePerson: string;
+  isMajorHazardSource: boolean;
+  lastCheckedAt: string | null;
+  lastCheckResult: boolean | null;
+  status: string;
+  openFindings: number;
+  totalFindings: number;
+  applicableRegulations: string[];
+}
+
+/** GET /api/Dashboard/findings */
+export interface DashboardFinding {
+  findingId: string;
+  description: string;
+  regulationRef: string;
+  assetId: string;
+  assetName: string;
+  assetLocation: string;
+  severity: string;
+  status: string;
+  isOpen: boolean;
+  assignee: string;
+  remediationPlan: string;
+  deadline: string | null;
+  discoveredAt: string;
+  lastStatusChangeAt: string | null;
+  verifiedBy: string | null;
+  verifiedAt: string | null;
+}
+
+export interface DashboardFindingsResponse {
+  items: DashboardFinding[];
+  total: number;
+  summary: {
+    totalFindings: number;
+    openFindings: number;
+    bySeverity: Record<string, number>;
+    byStatus: Record<string, number>;
+  };
+  appliedFilter: {
+    severity: string;
+    status: string;
+    openOnly: boolean;
+  };
+}
+
+/** POST /api/Dashboard/scan */
+export interface DashboardScanResult {
+  newFindings: number;
+  totalFindings: number;
+  scannedAt: string;
+  overview: {
+    totalAssets: number;
+    checkedAssets: number;
+    complianceRate: number;
+    openFindings: number;
+    remediationRate: number;
+  };
+}
+
+/** GET /api/Dashboard/history */
+export interface DashboardHistoryRound {
+  roundId: string;
+  startedAt: string;
+  completedAt: string | null;
+  totalItems: number;
+  compliantCount: number;
+  nonCompliantCount: number;
+  uncertainCount: number;
+  complianceRate: number;
+  duration: string | null;
+  executedBy: string;
+}
+
+export interface DashboardHistoryPlan {
+  planId: string;
+  name: string;
+  area: string;
+  type: string;
+  inspector: string;
+  status: string;
+  scheduledDate: string;
+  createdAt: string;
+  notes: string;
+  itemCount: number;
+  roundCount: number;
+  rounds: DashboardHistoryRound[];
+}
+
+export interface DashboardHistoryResponse {
+  items: DashboardHistoryPlan[];
+  total: number;
+  statusBreakdown: Record<string, number>;
+}
+
+/** GET /api/Dashboard/report/hazard */
+export interface DashboardHazardItem {
+  findingId: string;
+  description: string;
+  regulationRef: string;
+  severity: string;
+  status: string;
+  assignee: string;
+  remediationPlan: string;
+  deadline: string | null;
+  discoveredAt: string;
+  asset: {
+    assetId: string;
+    name: string;
+    location: string;
+    casNumber: string;
+    isMajorHazardSource: boolean;
+  } | null;
+}
+
+export interface DashboardHazardReport {
+  generatedAt: string;
+  disclaimer: string;
+  summary: {
+    totalAssets: number;
+    totalFindings: number;
+    openFindings: number;
+    closedFindings: number;
+    bySeverity: Record<string, number>;
+  };
+  items: DashboardHazardItem[];
+}
+
 // ── Generic ──
 
 export interface ApiError {
