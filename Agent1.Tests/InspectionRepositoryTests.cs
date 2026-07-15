@@ -20,9 +20,8 @@ public class InspectionRepositoryTests : IDisposable
 
     public InspectionRepositoryTests()
     {
-        _dataFile = Path.Combine(AppContext.BaseDirectory, "Data", "inspection-store.json");
-        // 清理前一���测试的残留文件，确保每个测试从干净状态开始
-        CleanupFile();
+        // 每个测试实例使用唯一临时文件，彻底隔离并行竞态
+        _dataFile = Path.Combine(Path.GetTempPath(), $"inspection-test-{Guid.NewGuid():N}.json");
     }
 
     public void Dispose()
@@ -36,6 +35,8 @@ public class InspectionRepositoryTests : IDisposable
         catch { /* 忽略清理失败 */ }
     }
 
+    private InspectionRepository CreateRepo() => new InspectionRepository(_dataFile);
+
     // ═══════════════════════════════════════════════════════
     // 巡检计划 CRUD
     // ═══════════════════════════════════════════════════════
@@ -43,7 +44,7 @@ public class InspectionRepositoryTests : IDisposable
     [Fact]
     public void SavePlan_NewPlan_ShouldStore()
     {
-        var repo = new InspectionRepository();
+        var repo = CreateRepo();
         var plan = new InspectionPlan
         {
             Name = "甲类仓库周检",
@@ -70,7 +71,7 @@ public class InspectionRepositoryTests : IDisposable
     [Fact]
     public void SavePlan_UpdateExisting_ShouldOverwrite()
     {
-        var repo = new InspectionRepository();
+        var repo = CreateRepo();
         var plan = new InspectionPlan { Name = "原计划", Area = "B区" };
         repo.SavePlan(plan);
 
@@ -88,7 +89,7 @@ public class InspectionRepositoryTests : IDisposable
     [Fact]
     public void GetPlan_NonexistentId_ShouldReturnNull()
     {
-        var repo = new InspectionRepository();
+        var repo = CreateRepo();
         var result = repo.GetPlan("nonexistent-id");
         result.Should().BeNull();
     }
@@ -96,7 +97,7 @@ public class InspectionRepositoryTests : IDisposable
     [Fact]
     public void GetAllPlans_MultiplePlans_ShouldReturnAll()
     {
-        var repo = new InspectionRepository();
+        var repo = CreateRepo();
         repo.SavePlan(new InspectionPlan { Name = "计划A" });
         repo.SavePlan(new InspectionPlan { Name = "计划B" });
         repo.SavePlan(new InspectionPlan { Name = "计划C" });
@@ -113,7 +114,7 @@ public class InspectionRepositoryTests : IDisposable
     [Fact]
     public void SaveRound_NewRound_ShouldStore()
     {
-        var repo = new InspectionRepository();
+        var repo = CreateRepo();
         var round = new InspectionRound
         {
             PlanId = "plan-001",
@@ -137,7 +138,7 @@ public class InspectionRepositoryTests : IDisposable
     [Fact]
     public void GetRoundsByPlan_MultipleRounds_ShouldFilterByPlanId()
     {
-        var repo = new InspectionRepository();
+        var repo = CreateRepo();
         repo.SaveRound(new InspectionRound { PlanId = "plan-X", ExecutedBy = "A" });
         repo.SaveRound(new InspectionRound { PlanId = "plan-X", ExecutedBy = "B" });
         repo.SaveRound(new InspectionRound { PlanId = "plan-Y", ExecutedBy = "C" });
@@ -150,7 +151,7 @@ public class InspectionRepositoryTests : IDisposable
     [Fact]
     public void GetRound_NonexistentId_ShouldReturnNull()
     {
-        var repo = new InspectionRepository();
+        var repo = CreateRepo();
         var result = repo.GetRound("nonexistent-round");
         result.Should().BeNull();
     }
@@ -158,7 +159,7 @@ public class InspectionRepositoryTests : IDisposable
     [Fact]
     public void SaveRound_UpdateExisting_ShouldOverwrite()
     {
-        var repo = new InspectionRepository();
+        var repo = CreateRepo();
         var round = new InspectionRound { PlanId = "plan-001", ExecutedBy = "A" };
         repo.SaveRound(round);
 
@@ -179,7 +180,7 @@ public class InspectionRepositoryTests : IDisposable
     [Fact]
     public void GetAllAssets_FirstCall_ShouldReturnDemoData()
     {
-        var repo = new InspectionRepository();
+        var repo = CreateRepo();
 
         var assets = repo.GetAllAssets();
 
@@ -191,7 +192,7 @@ public class InspectionRepositoryTests : IDisposable
     [Fact]
     public void SaveAsset_NewAsset_ShouldStore()
     {
-        var repo = new InspectionRepository();
+        var repo = CreateRepo();
         var asset = new ChemicalAsset
         {
             AssetId = "ASSET-001",
@@ -212,7 +213,7 @@ public class InspectionRepositoryTests : IDisposable
     [Fact]
     public void GetAsset_NonexistentId_ShouldReturnNull()
     {
-        var repo = new InspectionRepository();
+        var repo = CreateRepo();
         // 先加载演示数据，确保 Assets 列表已初始化
         repo.GetAllAssets();
 
@@ -227,7 +228,7 @@ public class InspectionRepositoryTests : IDisposable
     [Fact]
     public void SaveFinding_NewFinding_ShouldStore()
     {
-        var repo = new InspectionRepository();
+        var repo = CreateRepo();
         var finding = new ComplianceFinding
         {
             FindingId = "F-001",
@@ -244,7 +245,7 @@ public class InspectionRepositoryTests : IDisposable
     [Fact]
     public void GetOpenFindings_ShouldFilterClosedOnes()
     {
-        var repo = new InspectionRepository();
+        var repo = CreateRepo();
         repo.SaveFinding(new ComplianceFinding { FindingId = "F1", Status = FindingStatus.New });
         repo.SaveFinding(new ComplianceFinding { FindingId = "F2", Status = FindingStatus.Closed });
         repo.SaveFinding(new ComplianceFinding { FindingId = "F3", Status = FindingStatus.Confirmed });
@@ -257,7 +258,7 @@ public class InspectionRepositoryTests : IDisposable
     [Fact]
     public void SaveFindings_Batch_ShouldUpsert()
     {
-        var repo = new InspectionRepository();
+        var repo = CreateRepo();
         // 先存一条
         repo.SaveFinding(new ComplianceFinding { FindingId = "F1", Description = "旧描述", Status = FindingStatus.New });
 
@@ -281,14 +282,14 @@ public class InspectionRepositoryTests : IDisposable
     [Fact]
     public void GetLastScanTime_NewRepo_ShouldReturnNull()
     {
-        var repo = new InspectionRepository();
+        var repo = CreateRepo();
         repo.GetLastScanTime().Should().BeNull();
     }
 
     [Fact]
     public void SetLastScanTime_ShouldPersist()
     {
-        var repo = new InspectionRepository();
+        var repo = CreateRepo();
         var now = new DateTime(2026, 7, 10, 14, 30, 0);
 
         repo.SetLastScanTime(now);
@@ -302,7 +303,7 @@ public class InspectionRepositoryTests : IDisposable
     [Fact]
     public void GetStats_ShouldReflectCurrentState()
     {
-        var repo = new InspectionRepository();
+        var repo = CreateRepo();
         repo.SavePlan(new InspectionPlan { Name = "P1" });
         repo.SaveRound(new InspectionRound { PlanId = "any" });
         repo.SaveFinding(new ComplianceFinding { FindingId = "F1", Status = FindingStatus.New });

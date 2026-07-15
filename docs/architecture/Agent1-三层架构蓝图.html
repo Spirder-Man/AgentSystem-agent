@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent1 三层架构蓝图 — 选项A vs 选项B</title>
+    <style>
+      :root {
+        --c-bg: #f8fafc;
+        --c-canvas: #ffffff;
+        --c-border: #cbd5e1;
+        --c-text-main: #0f172a;
+        --c-text-sub: #64748b;
+        --c-red: #dc2626;
+        --c-amber: #d97706;
+        --c-green: #16a34a;
+        --c-blue: #2563eb;
+        --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+        --font-mono: 'SF Mono', Monaco, Consolas, monospace;
+      }
+
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      body {
+        background: var(--c-bg);
+        font-family: var(--font-ui);
+        color: var(--c-text-main);
+        padding: 40px;
+      }
+
+      .diagram-canvas {
+        background: var(--c-canvas);
+        border: 2px solid var(--c-border);
+        padding: 32px;
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+
+      .diagram-header {
+        border-bottom: 1px solid var(--c-border);
+        padding-bottom: 16px;
+        margin-bottom: 24px;
+      }
+
+      .diagram-title {
+        font-size: 24px;
+        font-weight: 600;
+        color: var(--c-text-main);
+      }
+
+      .diagram-subtitle {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--c-text-sub);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 4px;
+      }
+
+      /* ── 三层架构图 ── */
+      .arch-layers { display: flex; flex-direction: column; gap: 16px; margin-bottom: 32px; }
+
+      .layer {
+        border: 2px solid var(--c-border);
+        padding: 20px;
+        position: relative;
+      }
+
+      .layer-header {
+        display: flex; align-items: center; gap: 10px;
+        margin-bottom: 14px;
+      }
+
+      .layer-num {
+        width: 24px; height: 24px;
+        border: 2px solid var(--c-text-main);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 13px; font-weight: 700; font-family: var(--font-mono);
+      }
+
+      .layer-title {
+        font-size: 16px; font-weight: 600;
+      }
+
+      .layer-subtitle {
+        font-size: 11px; color: var(--c-text-sub); font-family: var(--font-mono);
+        margin-left: auto;
+      }
+
+      /* ── 节点网格 ── */
+      .node-grid {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 8px;
+      }
+
+      .node {
+        background: var(--c-canvas);
+        border: 1px solid var(--c-border);
+        padding: 8px 10px;
+        font-size: 12px;
+      }
+
+      .node-name { font-weight: 600; color: var(--c-text-main); }
+
+      .node-path {
+        font-family: var(--font-mono); font-size: 10px; color: var(--c-text-sub);
+        margin-top: 2px; word-break: break-all;
+      }
+
+      .node--done { border-left: 3px solid var(--c-green); }
+
+      .node--pending { border-left: 3px solid var(--c-amber); }
+
+      .node--missing { border-left: 3px solid var(--c-red); }
+
+      .node--highlight { background: #f0fdf4; border-color: var(--c-green); }
+
+      .node--highlight-missing { background: #fef2f2; border-color: var(--c-red); }
+
+      /* ── 连线层 ── */
+      .connector-area {
+        display: flex; justify-content: center; align-items: center;
+        height: 40px; position: relative;
+      }
+
+      .connector {
+        width: 2px; height: 100%; background: var(--c-border);
+      }
+
+      .connector-label-left, .connector-label-right {
+        position: absolute; top: 50%; transform: translateY(-50%);
+        font-size: 10px; font-family: var(--font-mono); color: var(--c-text-sub);
+        background: var(--c-canvas); padding: 2px 6px;
+      }
+
+      .connector-label-left { left: 30%; }
+      .connector-label-right { right: 30%; }
+
+      /* ── 分隔区域 ── */
+      .section-title {
+        font-size: 14px; font-weight: 600;
+        border-bottom: 1px solid var(--c-border);
+        padding-bottom: 6px; margin: 28px 0 14px;
+        display: flex; align-items: center; gap: 8px;
+      }
+
+      .section-badge {
+        font-size: 10px; font-family: var(--font-mono);
+        padding: 2px 6px; border: 1px solid var(--c-text-main);
+      }
+
+      /* ── 对比表 ── */
+      .compare-grid {
+        display: grid; grid-template-columns: 1fr 1fr;
+        gap: 16px; margin-bottom: 24px;
+      }
+
+      .compare-card {
+        border: 2px solid var(--c-border); padding: 20px;
+      }
+
+      .compare-card--a { border-top: 4px solid var(--c-blue); }
+      .compare-card--b { border-top: 4px solid var(--c-amber); }
+
+      .compare-head {
+        display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+      }
+
+      .compare-id {
+        width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+        font-size: 15px; font-weight: 700; color: var(--c-canvas);
+      }
+
+      .compare-card--a .compare-id { background: var(--c-blue); }
+      .compare-card--b .compare-id { background: var(--c-amber); }
+
+      .compare-label { font-size: 15px; font-weight: 600; }
+
+      .compare-detail { font-size: 12px; color: var(--c-text-sub); line-height: 1.7; }
+
+      .compare-detail strong { color: var(--c-text-main); }
+
+      /* ── 状态表 ── */
+      .status-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+
+      .status-table th {
+        text-align: left; font-weight: 600; font-size: 10px;
+        text-transform: uppercase; color: var(--c-text-sub);
+        padding: 8px 10px; border-bottom: 2px solid var(--c-border);
+      }
+
+      .status-table td {
+        padding: 8px 10px; border-bottom: 1px solid var(--c-border);
+        vertical-align: top;
+      }
+
+      .status-table .mono { font-family: var(--font-mono); font-size: 11px; }
+
+      .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+
+      .dot--green { background: var(--c-green); }
+      .dot--amber { background: var(--c-amber); }
+      .dot--red { background: var(--c-red); }
+
+      .flow-arrow { text-align: center; font-size: 12px; color: var(--c-text-sub); margin: 12px 0; font-family: var(--font-mono); }
+
+      /* ── legend ── */
+      .legend { display: flex; gap: 20px; font-size: 11px; margin-bottom: 16px; flex-wrap: wrap; }
+
+      .legend-item { display: flex; align-items: center; gap: 5px; }
+
+      .legend-box {
+        width: 16px; height: 16px; border: 1px solid var(--c-border);
+        display: flex; align-items: center; justify-content: center;
+      }
+
+      .legend-box--done { border-left: 3px solid var(--c-green); }
+      .legend-box--pending { border-left: 3px solid var(--c-amber); }
+      .legend-box--missing { border-left: 3px solid var(--c-red); }
+
+    </style>
+  </head>
+  <body>
+    <div class="diagram-canvas">
+
+      <!-- ═══════════ HEADER ═══════════ -->
+      <div class="diagram-header">
+        <h1 class="diagram-title">Agent1 项目三层架构蓝图</h1>
+        <p class="diagram-subtitle">ARCHITECTURE OVERVIEW — 选项 A vs 选项 B — 2026-07-15</p>
+      </div>
+
+      <!-- ═══════════ 图例 ═══════════ -->
+      <div class="legend">
+        <div class="legend-item"><span class="legend-box legend-box--done"></span> 已完成 / API 就绪</div>
+        <div class="legend-item"><span class="legend-box legend-box--pending"></span> 后端就绪，前端待对接</div>
+        <div class="legend-item"><span class="legend-box legend-box--missing"></span> 仅 CLI，缺少 API</div>
+      </div>
+
+      <!-- ═══════════ 三层架构 ═══════════ -->
+
+      <!-- LAYER 1: 前端 -->
+      <div class="layer">
+        <div class="layer-header">
+          <span class="layer-num">1</span>
+          <span class="layer-title">前端 · agent1-web</span>
+          <span class="layer-subtitle">Vue 3 + TypeScript · 37 Pages</span>
+        </div>
+        <div class="node-grid">
+          <div class="node node--done">
+            <div class="node-name">Login / Auth</div>
+            <div class="node-path">/login → AuthController</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">AI 合规助手</div>
+            <div class="node-path">/compliance → ComplianceController</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">巡检计划</div>
+            <div class="node-path">/inspection/* → InspectionController</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">工单台账</div>
+            <div class="node-path">/tickets → TicketsController</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">审计页面</div>
+            <div class="node-path">/audit → AuditController</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">应急响应</div>
+            <div class="node-path">/emergency → EmergencyController</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">法规审计</div>
+            <div class="node-path">/regulatory → RegulatoryController</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">知识图谱</div>
+            <div class="node-path">/kg → KnowledgeGraphController</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">系统监控</div>
+            <div class="node-path">/monitor → Health + Metrics</div>
+          </div>
+          <div class="node node--pending">
+            <div class="node-name">⚡ 仪表盘</div>
+            <div class="node-path">/dashboard → DashboardController</div>
+          </div>
+          <div class="node node--pending">
+            <div class="node-name">诊断 / 多模态</div>
+            <div class="node-path">diagnostics / multimodal</div>
+          </div>
+          <div class="node node--pending">
+            <div class="node-name">知识库管理</div>
+            <div class="node-path">/kb → KnowledgeBaseController</div>
+          </div>
+        </div>
+        <div style="font-size:11px; color: var(--c-text-sub); margin-top:10px;">
+          DashboardPage.vue 已存在但仅调用 /api/Compliance/summary，<strong style="color:#dc2626;">未消费 P0.1 新建的 DashboardController 6 个端点</strong>
+        </div>
+      </div>
+
+      <!-- 连线 -->
+      <div class="connector-area">
+        <span class="connector-label-left">HTTP REST</span>
+        <div class="connector"></div>
+        <span class="connector-label-right">axios → /api/*</span>
+      </div>
+
+      <!-- LAYER 2: API -->
+      <div class="layer">
+        <div class="layer-header">
+          <span class="layer-num">2</span>
+          <span class="layer-title">API 层 · Agent1.Api</span>
+          <span class="layer-subtitle">14 Controllers · ~60+ Endpoints · Role-Gated</span>
+        </div>
+        <div class="node-grid">
+          <div class="node node--done">
+            <div class="node-name">AuthController</div>
+            <div class="node-path">login / refresh / logout</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">ComplianceController</div>
+            <div class="node-path">check / hazard / storage / summary</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">InspectionController</div>
+            <div class="node-path">plans / rounds / assets / execute</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">TicketsController</div>
+            <div class="node-path">list / detail / followup</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">AuditController</div>
+            <div class="node-path">logs / stats / integrity</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">EvalController</div>
+            <div class="node-path">run / results</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">DiagnosticsController</div>
+            <div class="node-path">tool-calling / status</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">KnowledgeBaseController</div>
+            <div class="node-path">search / mode / incremental</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">KnowledgeGraphController</div>
+            <div class="node-path">query / traverse</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">MultimodalController</div>
+            <div class="node-path">analyze / upload</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">RegulatoryController</div>
+            <div class="node-path">audit / report</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">EmergencyController</div>
+            <div class="node-path">response / plan</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">AlertsController</div>
+            <div class="node-path">test / config</div>
+          </div>
+          <div class="node node--highlight">
+            <div class="node-name">⚡ DashboardController</div>
+            <div class="node-path">overview / assets / scan / findings</div>
+            <div style="font-size:10px;color:var(--c-green);margin-top:3px;">← P0.1 本次新建 · 6 端点</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 连线 -->
+      <div class="connector-area">
+        <span class="connector-label-left">方法调用 / DI</span>
+        <div class="connector"></div>
+        <span class="connector-label-right">Service Layer</span>
+      </div>
+
+      <!-- LAYER 3: CLI -->
+      <div class="layer">
+        <div class="layer-header">
+          <span class="layer-num">3</span>
+          <span class="layer-title">CLI 层 · Agent1 (控制台)</span>
+          <span class="layer-subtitle">18 Commands · 开发演示 & 运维入口</span>
+        </div>
+        <div class="node-grid">
+          <div class="node node--done">
+            <div class="node-name">DashboardCommand</div>
+            <div class="node-path">5 控制台视图 → 已有 API 映射</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">ComplianceCheckCommand</div>
+            <div class="node-path">→ ComplianceController</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">InspectionWorkbench</div>
+            <div class="node-path">→ InspectionController</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">TicketFollowupCommand</div>
+            <div class="node-path">→ TicketsController</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">RegulatoryAuditCommand</div>
+            <div class="node-path">→ RegulatoryController</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">KnowledgeGraphCommand</div>
+            <div class="node-path">→ KnowledgeGraphController</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">EmergencyResponse</div>
+            <div class="node-path">→ EmergencyController</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">MultimodalCommand</div>
+            <div class="node-path">→ MultimodalController</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">EvalCommand</div>
+            <div class="node-path">→ EvalController</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">FunctionCallingDiag</div>
+            <div class="node-path">→ DiagnosticsController</div>
+          </div>
+          <div class="node node--missing">
+            <div class="node-name">❌ AdminMenuCommand</div>
+            <div class="node-path">审计日志 / KB 增量加载 / 向量搜索 / 数据库验证 / 搜索模式切换</div>
+          </div>
+          <div class="node node--missing">
+            <div class="node-name">❌ ChemicalRagTest</div>
+            <div class="node-path">RAG 检索测试 → 无独立 API</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ A vs B 对比 ═══════════ -->
+      <div class="section-title">
+        <span class="section-badge">COMPARISON</span>
+        选项 A vs 选项 B：区别与联系
+      </div>
+
+      <div class="compare-grid">
+
+        <!-- A 卡片 -->
+        <div class="compare-card compare-card--a">
+          <div class="compare-head">
+            <span class="compare-id">A</span>
+            <span class="compare-label">前端 Dashboard 对接</span>
+          </div>
+          <div class="compare-detail">
+            <strong>操作方向：</strong>🔽 向下消费（前端 → 后端）<br><br>
+            <strong>后端状态：</strong>✅ DashboardController 已完成（P0.1 交付）<br>
+            <strong>前端现状：</strong>DashboardPage.vue 存在但仅调用 /api/Compliance/summary<br>
+            <strong>工作内容：</strong>改写 DashboardPage.vue，对接 6 个新端点：<br>
+            <span class="mono">· GET  /api/dashboard/overview</span><br>
+            <span class="mono">· GET  /api/dashboard/assets</span><br>
+            <span class="mono">· POST /api/dashboard/scan</span><br>
+            <span class="mono">· GET  /api/dashboard/findings</span><br>
+            <span class="mono">· GET  /api/dashboard/history</span><br>
+            <span class="mono">· GET  /api/dashboard/report/hazard</span><br>
+            <strong>交付产物：</strong>修改 1 个 Vue 文件 + Mock 数据 + 测试用例<br>
+            <strong>技术难度：</strong>🟢 低 (纯前端，后端已就绪)
+          </div>
+        </div>
+
+        <!-- B 卡片 -->
+        <div class="compare-card compare-card--b">
+          <div class="compare-head">
+            <span class="compare-id">B</span>
+            <span class="compare-label">API 缺口补全</span>
+          </div>
+          <div class="compare-detail">
+            <strong>操作方向：</strong>🔼 向上暴露（CLI → API）<br><br>
+            <strong>CLI 现状：</strong>AdminCommands 子命令仅控制台可访问<br>
+            <strong>API 现状：</strong>❌ 缺少对应 Controller<br>
+            <strong>工作内容：</strong>新建 1-2 个 Controller，如：<br>
+            <span class="mono">· GET  /api/admin/audit-logs</span><br>
+            <span class="mono">· POST /api/admin/kb/reload</span><br>
+            <span class="mono">· POST /api/admin/vector/search</span><br>
+            <span class="mono">· POST /api/admin/db/validate</span><br>
+            <span class="mono">· PUT  /api/knowledgebase/search-mode</span><br>
+            <strong>交付产物：</strong>新建 Controller + Service 改造 + 测试 + 权限策略<br>
+            <strong>技术难度：</strong>🟡 中 (需后端开发，API 设计决策)
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ═══════════ 联系 ═══════════ -->
+      <div class="section-title">
+        <span class="section-badge">RELATION</span>
+        两者的联系：同属 P0 交付卡口
+      </div>
+
+      <div style="font-size:13px; line-height:1.8; color: var(--c-text-sub);">
+        <p style="margin-bottom:12px;">
+          根据项目记忆 <strong>"API 编排端点为 P0 交付卡口"</strong>：
+          CLI 仅用于开发演示，<strong>API 才是安监部门及外部系统集成的必要入口</strong>，无 API 即不可交付。
+        </p>
+
+        <p style="margin-bottom:12px;">
+          <strong>A 和 B 本质上是同一条交付链路的上下游：</strong>
+        </p>
+
+        <div style="display:flex; align-items:center; gap:12px; margin:16px 0; font-family: var(--font-mono); font-size:13px;">
+          <span style="background:#fef2f2; border:1px solid var(--c-red); padding:4px 10px;">CLI 命令</span>
+          <span style="color:var(--c-text-sub);">→</span>
+          <span style="background:#fefce8; border:1px solid var(--c-amber); padding:4px 10px;">选项 B：新建 API</span>
+          <span style="color:var(--c-text-sub);">→</span>
+          <span style="background:#eff6ff; border:1px solid var(--c-blue); padding:4px 10px;">选项 A：前端对接</span>
+          <span style="color:var(--c-text-sub);">→</span>
+          <span style="background:#f0fdf4; border:1px solid var(--c-green); padding:4px 10px;">业务闭环可交付</span>
+        </div>
+
+        <p>
+          当前 DashboardController 已经走完了 B→A 的上半程（API 已建），现在缺的是 A 的下半程（前端对接）。
+          AdminCommands 的子命令则连 B 都还没开始，仍在纯 CLI 阶段。
+        </p>
+      </div>
+
+      <!-- ═══════════ 项目整体状态矩阵 ═══════════ -->
+      <div class="section-title">
+        <span class="section-badge">STATUS</span>
+        业务能力交付状态矩阵
+      </div>
+
+      <table class="status-table">
+        <thead>
+          <tr>
+            <th>业务领域</th>
+            <th>CLI 入口</th>
+            <th>API Controller</th>
+            <th>前端页面</th>
+            <th>交付状态</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>合规检查</strong></td>
+            <td class="mono">ComplianceCheckCommand</td>
+            <td class="mono">ComplianceController</td>
+            <td class="mono">ComplianceCheckPage</td>
+            <td><span class="dot dot--green"></span> ✅ 可交付</td>
+          </tr>
+          <tr>
+            <td><strong>巡检管理</strong></td>
+            <td class="mono">InspectionWorkbench</td>
+            <td class="mono">InspectionController</td>
+            <td class="mono">InspectionPlansPage</td>
+            <td><span class="dot dot--green"></span> ✅ 可交付</td>
+          </tr>
+          <tr>
+            <td><strong>工单台账</strong></td>
+            <td class="mono">TicketFollowupCommand</td>
+            <td class="mono">TicketsController</td>
+            <td class="mono">TicketListPage</td>
+            <td><span class="dot dot--green"></span> ✅ 可交付</td>
+          </tr>
+          <tr>
+            <td><strong>法规审计</strong></td>
+            <td class="mono">RegulatoryAuditCommand</td>
+            <td class="mono">RegulatoryController</td>
+            <td class="mono">RegulatoryAuditPage</td>
+            <td><span class="dot dot--green"></span> ✅ 可交付</td>
+          </tr>
+          <tr>
+            <td><strong>应急响应</strong></td>
+            <td class="mono">EmergencyResponseCmd</td>
+            <td class="mono">EmergencyController</td>
+            <td class="mono">EmergencyPage</td>
+            <td><span class="dot dot--green"></span> ✅ 可交付</td>
+          </tr>
+          <tr>
+            <td><strong>知识图谱</strong></td>
+            <td class="mono">KnowledgeGraphCommand</td>
+            <td class="mono">KnowledgeGraphController</td>
+            <td class="mono">KnowledgeGraphPage</td>
+            <td><span class="dot dot--green"></span> ✅ 可交付</td>
+          </tr>
+          <tr style="background: #f0fdf4;">
+            <td><strong>⚡ 合规总览仪表盘</strong></td>
+            <td class="mono">DashboardCommand</td>
+            <td class="mono">DashboardController ✓</td>
+            <td class="mono">DashboardPage ⚠</td>
+            <td><span class="dot dot--amber"></span> 🟡 <strong>← 选项 A 就在这里</strong></td>
+          </tr>
+          <tr>
+            <td><strong>审计日志管理</strong></td>
+            <td class="mono">AdminMenuCommand</td>
+            <td class="mono">AuditController (stats)</td>
+            <td class="mono">AuditPage</td>
+            <td><span class="dot dot--amber"></span> 🟡 基本可用</td>
+          </tr>
+          <tr>
+            <td><strong>知识库运维</strong></td>
+            <td class="mono">AdminMenuCommand</td>
+            <td class="mono" style="color:var(--c-red);">❌ 缺失</td>
+            <td class="mono" style="color:var(--c-red);">❌ 缺失</td>
+            <td><span class="dot dot--red"></span> 🔴 <strong>← 选项 B 在这里</strong></td>
+          </tr>
+          <tr>
+            <td><strong>向量搜索管理</strong></td>
+            <td class="mono">AdminMenuCommand</td>
+            <td class="mono" style="color:var(--c-red);">❌ 缺失</td>
+            <td class="mono" style="color:var(--c-red);">❌ 缺失</td>
+            <td><span class="dot dot--red"></span> 🔴 <strong>← 选项 B 在这里</strong></td>
+          </tr>
+          <tr>
+            <td><strong>数据库验证</strong></td>
+            <td class="mono">AdminMenuCommand</td>
+            <td class="mono" style="color:var(--c-red);">❌ 缺失</td>
+            <td class="mono" style="color:var(--c-red);">❌ 缺失</td>
+            <td><span class="dot dot--red"></span> 🔴 <strong>← 选项 B 在这里</strong></td>
+          </tr>
+          <tr>
+            <td><strong>化工 RAG 测试</strong></td>
+            <td class="mono">ChemicalRagTestCmd</td>
+            <td class="mono" style="color:var(--c-red);">❌ 缺失</td>
+            <td class="mono" style="color:var(--c-red);">❌ 缺失</td>
+            <td><span class="dot dot--red"></span> 🔴 <strong>← 选项 B 在这里</strong></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style="font-size:11px; color: var(--c-text-sub); margin-top: 12px;">
+        <span class="dot dot--green"></span> 6 项 · 8 项 ✅ · <span class="dot dot--amber"></span> 2 项 🟡 · <span class="dot dot--red"></span> 4 项 🔴 · 总计 12 业务领域
+      </div>
+
+    </div>
+  </body>
+</html>
