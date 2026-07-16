@@ -14,7 +14,7 @@ namespace Agent1.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "Auditor")]
+[Authorize(Policy = "Viewer")]
 public class EvalController : ControllerBase
 {
     private readonly AgentDialog _agentDialog;
@@ -42,6 +42,7 @@ public class EvalController : ControllerBase
     /// 立即返回 taskId，前端轮询 GET /api/eval/status/{taskId} 获取进度。
     /// </summary>
     [HttpPost("run")]
+    [Authorize(Policy = "Auditor")]
     public IActionResult RunEval()
     {
         var taskId = Guid.NewGuid().ToString("N")[..8];
@@ -134,6 +135,7 @@ public class EvalController : ControllerBase
 
     /// <summary>取消正在运行的评测任务</summary>
     [HttpDelete("status/{taskId}")]
+    [Authorize(Policy = "Auditor")]
     public IActionResult CancelEval(string taskId)
     {
         if (!TaskStore.TryRemove(taskId, out var status))

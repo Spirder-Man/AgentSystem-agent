@@ -11,7 +11,7 @@ namespace Agent1.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "Auditor")]
+[Authorize(Policy = "Viewer")]
 public class AlertsController : ControllerBase
 {
     private readonly AlertDispatcher _alertDispatcher;
@@ -28,6 +28,7 @@ public class AlertsController : ControllerBase
     /// 支持自定义收件人，默认使用配置中的收件人列表。
     /// </summary>
     [HttpPost("test")]
+    [Authorize(Policy = "Auditor")]
     public async Task<IActionResult> SendTestAlert([FromBody] TestAlertRequest request)
     {
         try

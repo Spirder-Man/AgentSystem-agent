@@ -46,15 +46,15 @@ const allGroups: NavGroup[] = [
   {
     title: '合规管理', icon: Checked,
     items: [
-      { path: '/compliance', title: '合规检查', icon: Document, roles: ['admin', 'auditor'] },
+      { path: '/compliance', title: '合规检查', icon: Document, roles: ['admin', 'auditor', 'viewer'] },
       { path: '/compliance/history', title: '合规历史', icon: Clock, roles: ['admin', 'auditor', 'viewer'] },
-      { path: '/eval', title: '合规评测', icon: DataAnalysis, roles: ['admin', 'auditor'] },
+      { path: '/eval', title: '合规评测', icon: DataAnalysis, roles: ['admin', 'auditor', 'viewer'] },
     ],
   },
   {
     title: '巡检与资产', icon: FolderOpened,
     items: [
-      { path: '/inspection/plans', title: '巡检计划', icon: List, roles: ['admin', 'auditor'] },
+      { path: '/inspection/plans', title: '巡检计划', icon: List, roles: ['admin', 'auditor', 'viewer'] },
       { path: '/inspection/rounds', title: '巡检记录', icon: Clock, roles: ['admin', 'auditor', 'viewer'] },
       { path: '/tickets', title: '工单管理', icon: Warning, roles: ['admin', 'auditor', 'viewer'] },
       { path: '/assets', title: '资产台账', icon: Box, roles: ['admin', 'auditor', 'viewer'] },
@@ -63,25 +63,25 @@ const allGroups: NavGroup[] = [
   {
     title: '危化品管理', icon: Search,
     items: [
-      { path: '/hazard', title: '危化品查询', icon: Search, roles: ['admin', 'auditor'] },
-      { path: '/storage/compatibility', title: '储存兼容性', icon: Link, roles: ['admin', 'auditor'] },
+      { path: '/hazard', title: '危化品查询', icon: Search, roles: ['admin', 'auditor', 'viewer'] },
+      { path: '/storage/compatibility', title: '储存兼容性', icon: Link, roles: ['admin', 'auditor', 'viewer'] },
     ],
   },
   {
     title: 'AI 智能工具', icon: MagicStick,
     items: [
-      { path: '/chat', title: 'AI 合规助手', icon: ChatDotRound, roles: ['admin', 'auditor'] },
-      { path: '/regulatory', title: '法规审计', icon: Aim, roles: ['admin', 'auditor'] },
-      { path: '/emergency', title: '应急响应', icon: FirstAidKit, roles: ['admin', 'auditor'] },
-      { path: '/knowledgegraph', title: '知识图谱', icon: Connection, roles: ['admin', 'auditor'] },
-      { path: '/multimodal', title: '多模态分析', icon: Picture, roles: ['admin', 'auditor'] },
+      { path: '/chat', title: 'AI 合规助手', icon: ChatDotRound, roles: ['admin', 'auditor', 'viewer'] },
+      { path: '/regulatory', title: '法规审计', icon: Aim, roles: ['admin', 'auditor', 'viewer'] },
+      { path: '/emergency', title: '应急响应', icon: FirstAidKit, roles: ['admin', 'auditor', 'viewer'] },
+      { path: '/knowledgegraph', title: '知识图谱', icon: Connection, roles: ['admin', 'auditor', 'viewer'] },
+      { path: '/multimodal', title: '多模态分析', icon: Picture, roles: ['admin', 'auditor', 'viewer'] },
     ],
   },
   {
     title: '系统管理', icon: Tools,
     items: [
-      { path: '/knowledgebase', title: '知识库', icon: FolderOpened, roles: ['admin', 'auditor'] },
-      { path: '/diagnostics', title: '工具诊断', icon: Cpu, roles: ['admin', 'auditor'] },
+      { path: '/knowledgebase', title: '知识库', icon: FolderOpened, roles: ['admin', 'auditor', 'viewer'] },
+      { path: '/diagnostics', title: '工具诊断', icon: Cpu, roles: ['admin', 'auditor', 'viewer'] },
       { path: '/audit', title: '审计日志', icon: Document, roles: ['admin'] },
       { path: '/settings', title: '系统设置', icon: Setting, roles: ['admin'] },
     ],

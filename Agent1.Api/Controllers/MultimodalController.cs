@@ -13,7 +13,7 @@ namespace Agent1.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "Auditor")]
+[Authorize(Policy = "Viewer")]
 public class MultimodalController : ControllerBase
 {
     private readonly ILogger<MultimodalController> _logger;
@@ -31,6 +31,7 @@ public class MultimodalController : ControllerBase
     /// <param name="analysisType">分析类型: hazard-label | storage-scene | custom</param>
     /// <param name="customPrompt">自定义分析提示词 (仅 analysisType=custom 时使用)</param>
     [HttpPost("analyze")]
+    [Authorize(Policy = "Auditor")]
     [RequestSizeLimit(20_000_000)] // 20MB max
     public async Task<IActionResult> Analyze(
         [Required] IFormFile image,

@@ -6,9 +6,8 @@
 //   Auditor = admin + auditor (业务 Controller 实际策略)
 //   Viewer  = admin + auditor + viewer (已定义，待后端启用)
 //
-// viewer 当前只能访问:
-//   /login  (登录页)
-//   /403    (无权限提示)
+// viewer 可访问所有只读页面（对应后端 GET 端点），
+// 仅 Admin 独占页面（/audit /settings /system）对 viewer 不可见
 // ============================================================
 
 import { createRouter, createWebHistory } from 'vue-router';
@@ -80,8 +79,8 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '无权限' },
   },
 
-  // ── 业务路由 (admin / auditor 可访问) ──
-  // ⚠️ viewer 不在 roles 中 → 后端 401/403，前端导航守卫拦截
+// ── 业务路由 (admin / auditor / viewer 可访问) ──
+  // viewer 可访问所有 GET 端点页面；POST/PUT/DELETE 按钮通过 v-permission 指令隐藏
   {
     path: '/dashboard',
     name: 'Dashboard',
@@ -92,7 +91,7 @@ const routes: RouteRecordRaw[] = [
     path: '/compliance',
     name: 'Compliance',
     component: CompliancePage,
-    meta: { title: '合规检查', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: '合规检查', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
     path: '/compliance/history',
@@ -104,13 +103,13 @@ const routes: RouteRecordRaw[] = [
     path: '/inspection/plans/:planId',
     name: 'InspectionPlanDetail',
     component: InspectionPlanDetailPage,
-    meta: { title: '计划详情', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: '计划详情', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
     path: '/inspection/plans',
     name: 'InspectionPlans',
     component: InspectionPlansPage,
-    meta: { title: '巡检计划', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: '巡检计划', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
     path: '/inspection/rounds/:roundId',
@@ -140,7 +139,7 @@ const routes: RouteRecordRaw[] = [
     path: '/tickets/:id',
     name: 'TicketDetail',
     component: TicketDetailPage,
-    meta: { title: '工单详情', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: '工单详情', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
     path: '/assets',
@@ -170,19 +169,19 @@ const routes: RouteRecordRaw[] = [
     path: '/hazard',
     name: 'HazardQuery',
     component: HazardQueryPage,
-    meta: { title: '危化品查询', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: '危化品查询', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
     path: '/storage/compatibility',
     name: 'StorageCompatibility',
     component: StorageCompatibilityPage,
-    meta: { title: '储存兼容性', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: '储存兼容性', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
     path: '/chat',
     name: 'AIChat',
     component: AIChatPage,
-    meta: { title: 'AI 合规助手', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: 'AI 合规助手', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
     path: '/system',
@@ -196,43 +195,43 @@ const routes: RouteRecordRaw[] = [
     path: '/knowledgebase',
     name: 'KnowledgeBase',
     component: KnowledgeBasePage,
-    meta: { title: '知识库管理', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: '知识库管理', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
     path: '/diagnostics',
     name: 'Diagnostics',
     component: DiagnosticsPage,
-    meta: { title: '工具诊断', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: '工具诊断', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
     path: '/eval',
     name: 'Eval',
     component: EvalPage,
-    meta: { title: '合规评测', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: '合规评测', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
     path: '/multimodal',
     name: 'Multimodal',
     component: MultimodalPage,
-    meta: { title: '多模态分析', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: '多模态分析', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
     path: '/regulatory',
     name: 'RegulatoryAudit',
     component: RegulatoryAuditPage,
-    meta: { title: '法规审计', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: '法规审计', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
     path: '/emergency',
     name: 'Emergency',
     component: EmergencyPage,
-    meta: { title: '应急响应', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: '应急响应', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
   {
     path: '/knowledgegraph',
     name: 'KnowledgeGraph',
     component: KnowledgeGraphPage,
-    meta: { title: '知识图谱', requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { title: '知识图谱', requiresAuth: true, roles: ['admin', 'auditor', 'viewer'] },
   },
 
   // ── 404 兜底 ──

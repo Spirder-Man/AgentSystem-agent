@@ -14,7 +14,7 @@ namespace Agent1.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "Auditor")]
+[Authorize(Policy = "Viewer")]
 public class RegulatoryController : ControllerBase
 {
     private readonly IModuleFactory _moduleFactory;
@@ -30,6 +30,7 @@ public class RegulatoryController : ControllerBase
     /// 监管核查辅助 — 输入核查要求或场景描述，AI 逐条对照法规进行评估。
     /// </summary>
     [HttpPost("audit")]
+    [Authorize(Policy = "Auditor")]
     public async Task<IActionResult> Audit([FromBody] RegulatoryAuditRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Query))
