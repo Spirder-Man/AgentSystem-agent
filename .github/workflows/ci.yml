@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, feature/partner-dev]
+    branches: [main, develop, feature/partner-dev, linux原生编译模型llama.cpp]
   pull_request:
     branches: [main]
   workflow_dispatch:  # 手动触发测试
