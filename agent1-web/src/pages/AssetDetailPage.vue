@@ -8,12 +8,17 @@ import {
   ArrowLeft, Box, MapLocation, User, Warning, CircleCheck, CircleClose,
   QuestionFilled, Search,
 } from '@element-plus/icons-vue';
+import { useAuthStore } from '@/stores/auth';
 import SkeletonCard from '@/components/common/SkeletonCard.vue';
 import EmptyState from '@/components/common/EmptyState.vue';
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
 const assetId = route.params.assetId as string;
+
+// viewer 角色不能查询化学品属性
+const canQueryProperty = computed(() => auth.hasPermission(['auditor', 'admin']));
 
 const asset = ref<ChemicalAsset | null>(null);
 const loading = ref(true);
@@ -169,12 +174,21 @@ onMounted(fetchAsset);
             化学品属性
           </h2>
 
-          <div v-if="!propertyResult && !propertyError" class="py-8 text-center">
+          <!-- viewer 权限不足提示 -->
+          <div v-if="!canQueryProperty" class="py-8 text-center">
+            <el-icon :size="28" class="text-slate-300 mb-2"><Warning /></el-icon>
+            <p class="text-sm text-slate-400">需要 auditor 或更高权限才能查询化学品属性</p>
+            <p class="text-xs text-slate-400 mt-1">请联系管理员升级权限</p>
+          </div>
+
+          <!-- 查询入口 (auditor+) -->
+          <div v-else-if="!propertyResult && !propertyError" class="py-8 text-center">
             <p class="text-sm text-slate-400 mb-4">查询该化学品的危险类别和适用国标</p>
             <el-button
               type="primary"
               :loading="queryingProperty"
               @click="queryProperties"
+              v-permission="['auditor', 'admin']"
             >
               {{ queryingProperty ? '查询中…' : '查询化学品属性' }}
             </el-button>
