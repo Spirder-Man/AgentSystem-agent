@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, feature/partner-dev, linux原生编译模型llama.cpp]
+    branches: [main, develop, feature/partner-dev]
   pull_request:
     branches: [main]
   workflow_dispatch:  # 手动触发测试
@@ -119,6 +119,32 @@ jobs:
       - name: Architecture Convergence Test
         run: dotnet run --project ArchitectureTest --configuration Release
         continue-on-error: true
+
+  # ════════════════════════════════════════
+  # Job 1b: 前端单元测试 (Vitest + MSW Mock)
+  # - 纯 Node 环境，不依赖后端/DB/GPU，与后端测试并行
+  # - vitest run （非 watch 模式）确保跑完退出
+  # ════════════════════════════════════════
+  frontend-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent1-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: agent1-web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: '🧪 前端单元测试 (Vitest)'
+        run: npx vitest run
 
   # ═══════════════════════════════════════
   # Job 2: 数据库集成测试（CI 自动提供临时 PostgreSQL）
@@ -336,7 +362,7 @@ jobs:
   # 所需 Secrets: QQ_EMAIL, QQ_SMTP_CODE
   # ═══════════════════════════════════════
   notify:
-    needs: [build-and-test, integration-test, benchmark, docker]
+    needs: [build-and-test, frontend-test, integration-test, benchmark, docker]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -352,6 +378,7 @@ jobs:
         id: status
         run: |
           if [ "${{ needs.build-and-test.result }}" = "failure" ] || \
+             [ "${{ needs.frontend-test.result }}" = "failure" ] || \
              [ "${{ needs.integration-test.result }}" = "failure" ] || \
              [ "${{ needs.benchmark.result }}" = "failure" ]; then
             echo "ci_status=failure" >> $GITHUB_OUTPUT
@@ -410,6 +437,7 @@ jobs:
             🔴 失败 Job:
             ──────────────────────────────
             build-and-test:    ${{ needs.build-and-test.result }}
+            frontend-test:     ${{ needs.frontend-test.result }}
             integration-test:  ${{ needs.integration-test.result }}
             benchmark:         ${{ needs.benchmark.result }}
             docker:            ${{ needs.docker.result }}
