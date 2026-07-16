@@ -130,12 +130,24 @@ onMounted(() => {
     </div>
 
     <!-- 统计卡片 -->
-    <div v-if="stats" class="grid grid-cols-4 gap-3">
-      <div class="bg-white border border-slate-200 rounded px-4 py-3">
-        <div class="text-xs text-slate-500 mb-1">总记录</div>
-        <div class="text-2xl font-bold text-slate-800">{{ stats.totalCount }}</div>
+    <div v-if="stats" class="space-y-3">
+      <!-- 总览行 -->
+      <div class="grid grid-cols-3 gap-3">
+        <div class="bg-white border border-slate-200 rounded px-4 py-3">
+          <div class="text-xs text-slate-500 mb-1">总记录</div>
+          <div class="text-2xl font-bold text-slate-800">{{ stats.totalCount }}</div>
+        </div>
+        <div class="bg-white border border-slate-200 rounded px-4 py-3">
+          <div class="text-xs text-slate-500 mb-1">活跃用户</div>
+          <div class="text-2xl font-bold text-slate-800">{{ Object.keys(stats.byUser || {}).length }}</div>
+        </div>
+        <div class="bg-white border border-slate-200 rounded px-4 py-3">
+          <div class="text-xs text-slate-500 mb-1">最后记录</div>
+          <div class="text-sm font-medium text-slate-700">{{ stats.lastLogAt || '—' }}</div>
+        </div>
       </div>
-      <div class="bg-white border border-slate-200 rounded px-4 py-3 col-span-3">
+      <!-- 操作分布 -->
+      <div class="bg-white border border-slate-200 rounded px-4 py-3">
         <div class="text-xs text-slate-500 mb-2">操作分布</div>
         <div class="flex flex-wrap gap-2">
           <el-tag
@@ -145,6 +157,20 @@ onMounted(() => {
             type="info"
           >
             {{ op }}: {{ count }}
+          </el-tag>
+        </div>
+      </div>
+      <!-- 用户活跃 -->
+      <div v-if="stats.byUser && Object.keys(stats.byUser).length" class="bg-white border border-slate-200 rounded px-4 py-3">
+        <div class="text-xs text-slate-500 mb-2">用户活跃</div>
+        <div class="flex flex-wrap gap-2">
+          <el-tag
+            v-for="(count, user) in stats.byUser"
+            :key="user"
+            size="small"
+            :type="user === 'admin' ? '' : user === 'auditor' ? 'success' : 'info'"
+          >
+            {{ user }}: {{ count }}
           </el-tag>
         </div>
       </div>
@@ -221,9 +247,15 @@ onMounted(() => {
             <td class="px-4 py-3 text-xs text-slate-500 font-mono">{{ log.timestamp }}</td>
             <td class="px-4 py-3 text-xs text-slate-700">{{ log.user }}</td>
             <td class="px-4 py-3">
-              <el-tag size="small" :type="log.isSensitive ? 'warning' : ''">
-                {{ log.operation }}
-              </el-tag>
+              <div class="flex items-center gap-1.5">
+                <el-tag size="small" :type="log.isSensitive ? 'warning' : ''">
+                  {{ log.operation }}
+                </el-tag>
+                <span
+                  v-if="log.isSensitive"
+                  class="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-1 leading-none py-0.5"
+                >敏感</span>
+              </div>
             </td>
             <td class="px-4 py-3 text-xs text-slate-600 max-w-xs truncate">
               {{ log.details }}
