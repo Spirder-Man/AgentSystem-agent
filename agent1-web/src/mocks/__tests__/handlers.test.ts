@@ -321,8 +321,8 @@ describe('checkSimulatedError — x-simulate-error 错误注入', () => {
 // ═══════════════════════════════════════
 
 describe('handlers 数组 — 路由配置完整性', () => {
-  it('共 54 条路由', () => {
-    expect(handlers.length).toBe(54);
+  it('共 56 条路由', () => {
+    expect(handlers.length).toBe(56);
   });
 
   it('每条 handler 都有 method 和 path 信息', () => {
@@ -403,6 +403,9 @@ describe('handlers 数组 — 路由配置完整性', () => {
     { method: 'POST', path: '/api/knowledgebase/incremental-load' },
     // Diagnostics
     { method: 'POST', path: '/api/diagnostics/tool-calling' },
+    // Admin 数据库诊断
+    { method: 'GET', path: '/api/admin/db/info' },
+    { method: 'GET', path: '/api/admin/db/validate' },
     // Alerts
     { method: 'POST', path: '/api/alerts/test' },
     // Memory

@@ -687,3 +687,36 @@ export interface ApiError {
   retryAfter?: number;
   details?: Record<string, string[]>; // 字段级校验详情
 }
+
+// ── Admin 数据库诊断 ──
+
+export interface DbInfoResponse {
+  info: {
+    host: string;
+    port: number;
+    database: string;
+    version: string;
+  };
+  tables: string[];
+  retrievedAt: string;
+}
+
+export interface DbValidateResponse {
+  connected: boolean;
+  server: {
+    host: string;
+    port: number;
+    database: string;
+    user: string;
+  };
+  info: {
+    host: string;
+    port: number;
+    database: string;
+    version: string;
+  };
+  tableCount: number;
+  tables: string[];
+  elapsedMs: number;
+  verifiedAt: string;
+}

@@ -81,6 +81,7 @@ const allGroups: NavGroup[] = [
     title: '系统管理', icon: Tools,
     items: [
       { path: '/knowledgebase', title: '知识库', icon: FolderOpened, roles: ['admin', 'auditor', 'viewer'] },
+      { path: '/database', title: '数据库诊断', icon: Odometer, roles: ['admin'] },
       { path: '/diagnostics', title: '工具诊断', icon: Cpu, roles: ['admin', 'auditor', 'viewer'] },
       { path: '/audit', title: '审计日志', icon: Document, roles: ['admin'] },
       { path: '/settings', title: '系统设置', icon: Setting, roles: ['admin'] },

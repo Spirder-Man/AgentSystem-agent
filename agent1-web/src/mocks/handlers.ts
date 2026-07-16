@@ -29,6 +29,7 @@ import type {
   MultimodalResult,
   SearchModeResponse, RagTestRequest, RagTestResponse, IncrementalLoadResponse,
   AlertTestRequest, AlertTestResult,
+  DbInfoResponse, DbValidateResponse,
 } from '../types/api';
 import { mockComplianceSummary, getComplianceResponse, getHazardResponse, getStorageCompatibilityResponse } from './data/compliance';
 import { mockPlans, getMockRound, getMockReport, mockAssets, mockScanResult, getMockQuickCheck } from './data/inspection';
@@ -866,6 +867,43 @@ export const handlers = [
         { index: 5, query: '应急 苯泄漏', description: '应急响应', expectedTools: 'EmergencyResponse', toolCalls: ['EmergencyResponse'], triggered: true, elapsedMs: 2800 },
       ],
     });
+  }),
+
+  // ═══════════════════════════════════════
+  // Admin 数据库诊断 (Admin only)
+  // ═══════════════════════════════════════
+
+  http.get('/api/admin/db/info', async ({ request }) => {
+    const g = adminAuthGuard(request); if (g) return g;
+    await delay(200);
+    return HttpResponse.json({
+      info: { host: 'localhost', port: 5432, database: 'chemical_park_ai_agent', version: 'PostgreSQL 16.3' },
+      tables: [
+        'chemical_substances', 'chemical_substance_categories', 'chemical_substance_aliases',
+        'chemical_substance_incompatibilities', 'chemical_documents', 'audit_log',
+        'inspection_plans', 'inspection_items', 'inspection_rounds', 'inspection_round_items',
+      ],
+      retrievedAt: new Date().toISOString(),
+    } as DbInfoResponse);
+  }),
+
+  http.get('/api/admin/db/validate', async ({ request }) => {
+    const g = adminAuthGuard(request); if (g) return g;
+    const e = checkSimulatedError(request); if (e) return e;
+    await delay(800);
+    return HttpResponse.json({
+      connected: true,
+      server: { host: 'localhost', port: 5432, database: 'chemical_park_ai_agent', user: 'agent_admin' },
+      info: { host: 'localhost', port: 5432, database: 'chemical_park_ai_agent', version: 'PostgreSQL 16.3' },
+      tableCount: 10,
+      tables: [
+        'chemical_substances', 'chemical_substance_categories', 'chemical_substance_aliases',
+        'chemical_substance_incompatibilities', 'chemical_documents', 'audit_log',
+        'inspection_plans', 'inspection_items', 'inspection_rounds', 'inspection_round_items',
+      ],
+      elapsedMs: 35,
+      verifiedAt: new Date().toISOString(),
+    } as DbValidateResponse);
   }),
 
   // ═══════════════════════════════════════

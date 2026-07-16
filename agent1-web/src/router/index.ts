@@ -48,6 +48,7 @@ const StorageCompatibilityPage = () => import('@/pages/StorageCompatibilityPage.
 const AIChatPage = () => import('@/pages/AIChatPage.vue');
 const SystemMonitorPage = () => import('@/pages/SystemMonitorPage.vue');
 const KnowledgeBasePage = () => import('@/pages/KnowledgeBasePage.vue');
+const DatabaseDiagnosticsPage = () => import('@/pages/DatabaseDiagnosticsPage.vue');
 const DiagnosticsPage = () => import('@/pages/DiagnosticsPage.vue');
 const EvalPage = () => import('@/pages/EvalPage.vue');
 const MultimodalPage = () => import('@/pages/MultimodalPage.vue');
@@ -190,7 +191,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '运维看板', requiresAuth: true, roles: ['admin'] },
   },
 
-  // ── 新增：控制台功能 API 前端页面 ──
+  {
+    path: '/database',
+    name: 'DatabaseDiagnostics',
+    component: DatabaseDiagnosticsPage,
+    meta: { title: '数据库诊断', requiresAuth: true, roles: ['admin'] },
+  },
   {
     path: '/knowledgebase',
     name: 'KnowledgeBase',
