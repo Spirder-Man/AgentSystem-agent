@@ -226,7 +226,7 @@
       <!-- ═══════════ HEADER ═══════════ -->
       <div class="diagram-header">
         <h1 class="diagram-title">Agent1 项目三层架构蓝图</h1>
-        <p class="diagram-subtitle">ARCHITECTURE OVERVIEW — 选项 A 已完成 · 选项 B 待推进 — 2026-07-10</p>
+        <p class="diagram-subtitle">ARCHITECTURE OVERVIEW — Sprint 0 完成 · 选项 A 已完成 · 选项 B 已完成 — 2026-07-10</p>
       </div>
 
       <!-- ═══════════ 图例 ═══════════ -->
@@ -291,13 +291,19 @@
             <div class="node-name">诊断 / 多模态</div>
             <div class="node-path">diagnostics / multimodal</div>
           </div>
-          <div class="node node--pending">
+          <div class="node node--done">
             <div class="node-name">知识库管理</div>
             <div class="node-path">/kb → KnowledgeBaseController</div>
+            <div style="font-size:10px;color:var(--c-green);margin-top:3px;">← 搜索模式 · 增量加载 · RAG 测试</div>
+          </div>
+          <div class="node node--done">
+            <div class="node-name">数据库诊断</div>
+            <div class="node-path">/database → AdminController</div>
+            <div style="font-size:10px;color:var(--c-green);margin-top:3px;">← P2.1 新建 · db/info + db/validate</div>
           </div>
         </div>
         <div style="font-size:11px; color: var(--c-text-sub); margin-top:10px;">
-          DashboardPage.vue <strong style="color:#16a34a;">已完成重构</strong>，对接 DashboardController 全部 6 端点 (overview / assets / scan / findings / history / report)，264 条 vitest 用例全部通过
+          DashboardPage.vue <strong style="color:#16a34a;">已完成重构</strong>（6 端点，264 vitest）· KnowledgeBasePage.vue <strong style="color:#16a34a;">已完成</strong>（搜索模式/增量加载/RAG 测试）· DatabaseDiagnosticsPage.vue <strong style="color:#16a34a;">新建</strong>（db/info + db/validate，14 vitest）· 前端合计 <strong>307 条 vitest</strong> 通过
         </div>
       </div>
 
@@ -489,8 +495,10 @@
             <span class="mono">· KnowledgeBaseController → PUT /api/knowledgebase/search-mode</span><br>
             <span class="mono">· KnowledgeBaseController → POST /api/knowledgebase/incremental-load</span><br>
             <span class="mono">· KnowledgeBaseController → POST /api/knowledgebase/rag-test</span><br>
-            <strong>剩余缺口：</strong>仅前端页面（知识库管理页、RAG 测试页、数据库诊断页）<br>
-            <strong>状态：</strong>🟢 选项 B 已完成，无 CLI-only 功能遗留
+            <strong>前端对接：</strong>全部完成<br>
+            <span class="mono">· KnowledgeBasePage.vue → search-mode / incremental-load / rag-test</span><br>
+            <span class="mono">· DatabaseDiagnosticsPage.vue → db/info + db/validate（P2.1 新建）</span><br>
+            <strong>状态：</strong>🟢 选项 B 全部完成，零 CLI-only 功能遗留，前端 307 vitest 通过
           </div>
         </div>
 
@@ -523,8 +531,8 @@
         </div>
 
         <p>
-          选项 A 和 B 均已基本完成。所有 CLI 命令背后都有对应的 API Controller，零 CLI-only 功能遗留。
-          当前阶段的核心任务是<strong>前端对接</strong>——将已有 API 端点消费到 Vue 页面中，完成业务闭环。
+          Sprint 0 已全部完成：选项 A（Dashboard 前端对接）、选项 B（CLI→API 补全）、前端 🟡 补齐（知识库运维/向量搜索/数据库诊断/RAG 测试）全部交付。
+          所有 CLI 命令背后都有对应的 API Controller <strong>和前端页面</strong>，零 CLI-only 功能遗留，业务闭环已达成。
         </p>
       </div>
 
@@ -601,39 +609,39 @@
             <td class="mono">AuditPage</td>
             <td><span class="dot dot--amber"></span> 🟡 基本可用</td>
           </tr>
-          <tr>
+          <tr style="background: #f0fdf4;">
             <td><strong>知识库运维</strong></td>
             <td class="mono">AdminMenuCommand</td>
             <td class="mono">KnowledgeBaseController ✓</td>
-            <td class="mono" style="color:var(--c-amber);">前端待建</td>
-            <td><span class="dot dot--amber"></span> 🟡 API 就绪，需前端</td>
+            <td class="mono">KnowledgeBasePage ✓</td>
+            <td><span class="dot dot--green"></span> ✅ <strong>← 搜索模式 / 增量加载</strong></td>
           </tr>
-          <tr>
+          <tr style="background: #f0fdf4;">
             <td><strong>向量搜索管理</strong></td>
             <td class="mono">AdminMenuCommand</td>
             <td class="mono">KnowledgeBaseController ✓</td>
-            <td class="mono" style="color:var(--c-amber);">前端待建</td>
-            <td><span class="dot dot--amber"></span> 🟡 API 就绪，需前端</td>
+            <td class="mono">KnowledgeBasePage ✓</td>
+            <td><span class="dot dot--green"></span> ✅ <strong>← 同 KnowledgeBasePage</strong></td>
           </tr>
-          <tr>
-            <td><strong>数据库验证</strong></td>
+          <tr style="background: #f0fdf4;">
+            <td><strong>数据库诊断</strong></td>
             <td class="mono">AdminMenuCommand</td>
             <td class="mono">AdminController ✓</td>
-            <td class="mono" style="color:var(--c-amber);">前端待建</td>
-            <td><span class="dot dot--amber"></span> 🟡 API 就绪，需前端</td>
+            <td class="mono">DatabaseDiagnosticsPage ✓</td>
+            <td><span class="dot dot--green"></span> ✅ <strong>← P2.1 新建 (14 vitest)</strong></td>
           </tr>
-          <tr>
+          <tr style="background: #f0fdf4;">
             <td><strong>化工 RAG 测试</strong></td>
             <td class="mono">ChemicalRagTestCmd</td>
             <td class="mono">KnowledgeBaseController ✓</td>
-            <td class="mono" style="color:var(--c-amber);">前端待建</td>
-            <td><span class="dot dot--amber"></span> 🟡 API 就绪，需前端</td>
+            <td class="mono">KnowledgeBasePage ✓</td>
+            <td><span class="dot dot--green"></span> ✅ <strong>← 同 KnowledgeBasePage</strong></td>
           </tr>
         </tbody>
       </table>
 
       <div style="font-size:11px; color: var(--c-text-sub); margin-top: 12px;">
-        <span class="dot dot--green"></span> 7 项 ✅ · <span class="dot dot--amber"></span> 5 项 🟡 · <span class="dot dot--red"></span> 0 项 🔴 · 总计 12 业务领域 (CLI→API 全贯通)
+        <span class="dot dot--green"></span> 11 项 ✅ · <span class="dot dot--amber"></span> 1 项 🟡 · <span class="dot dot--red"></span> 0 项 🔴 · 总计 12 业务领域 (CLI→API→Frontend 全贯通) · Sprint 0 完成</span>
       </div>
 
     </div>
