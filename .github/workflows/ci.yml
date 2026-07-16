@@ -244,7 +244,8 @@ jobs:
       - name: '⏱️ Run Performance Benchmark'
         id: bench-run
         run: |
-          dotnet run --project Benchmark --configuration Release -- 5 20 http://localhost:5000 --json --light --output ./bench-baseline.json 2>&1 | tee /tmp/bench-output.txt
+          dotnet build Benchmark --configuration Release --no-restore
+          dotnet exec Benchmark/bin/Release/net8.0/Benchmark.dll 5 20 http://localhost:5000 --json --light --output ./bench-baseline.json 2>&1 | tee /tmp/bench-output.txt
           
           if [ -f "./bench-baseline.json" ]; then
             echo "✅ Baseline saved: $(wc -c < ./bench-baseline.json) bytes"
