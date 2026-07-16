@@ -8,14 +8,23 @@ on:
 
 jobs:
   # ═══════════════════════════════════════
-  # Job 1: 编译 + 纯单元测试 + API集成测试（存根架构, 零外部依赖）
+  # Job 1: 编译 + 单元测试 + 覆盖率门禁 (硬卡口)
+  # - 排除 Integration 类别 (DB 集成测试由 Job 2 独立运行)
+  # - coverlet 阈值门禁直接阻断：低于 60% → 构建失败
+  # - 覆盖率历史回归检测：相比上次下降 >2% → 构建失败
   # ═══════════════════════════════════════
   build-and-test:
     runs-on: ubuntu-latest
     env:
-      DOTNET_USE_POLLING_FILE_WATCHER: 1     # 绕过 Ubuntu inotify 限制
-      ASPNETCORE_ENVIRONMENT: Development     # 禁止 Production（否则 WebApplicationFactory 启动失败）
-      JWT_KEY: Agent1-CI-JWT-Key-2026        # JWT 签名密钥（CI 专用，非生产密钥）
+      DOTNET_USE_POLLING_FILE_WATCHER: 1
+      ASPNETCORE_ENVIRONMENT: Development
+      JWT_KEY: Agent1-CI-JWT-Key-2026
+
+    outputs:
+      coverage_line: ${{ steps.coverage-parse.outputs.coverage_line }}
+      coverage_branch: ${{ steps.coverage-parse.outputs.coverage_branch }}
+      tests_passed: ${{ steps.test-run.outputs.tests_passed }}
+      tests_total: ${{ steps.test-run.outputs.tests_total }}
 
     steps:
       - uses: actions/checkout@v4
@@ -31,23 +40,83 @@ jobs:
       - name: Build
         run: dotnet build --configuration Release --no-restore
 
-      - name: Unit Tests + API Integration Tests (Stub-based, no DB/LLM)
-        run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./TestResults
+      - name: '🧪 Unit + API Tests (覆盖率门禁: 60%)'
+        id: test-run
+        run: |
+          dotnet test Agent1.Tests --configuration Release --no-build \
+            --filter "Category!=Integration" \
+            --verbosity normal \
+            /p:CollectCoverage=true \
+            /p:CoverletOutputFormat=cobertura \
+            /p:CoverletOutput=./TestResults/ \
+            /p:Threshold=60 \
+            /p:ThresholdType=line,branch,method \
+            /p:ThresholdStat=average \
+            2>&1 | tee /tmp/test-output.txt
+          
+          PASSED=$(grep -oP 'Passed:\s*\K\d+' /tmp/test-output.txt | tail -1 || echo "0")
+          TOTAL=$(grep -oP 'Total:\s*\K\d+' /tmp/test-output.txt | tail -1 || echo "0")
+          echo "tests_passed=$PASSED" >> $GITHUB_OUTPUT
+          echo "tests_total=$TOTAL" >> $GITHUB_OUTPUT
+          echo "✅ Tests: $PASSED / $TOTAL"
 
-      - name: Upload Coverage Report
-        uses: actions/upload-artifact@v4
+      - name: '📊 Parse Coverage Report'
+        id: coverage-parse
         if: always()
+        run: |
+          COVERAGE_FILE=$(find ./TestResults -name "coverage.cobertura.xml" -print -quit)
+          if [ -f "$COVERAGE_FILE" ]; then
+            LINE=$(grep -oP 'line-rate="\K[^"]+' "$COVERAGE_FILE" | head -1)
+            BRANCH=$(grep -oP 'branch-rate="\K[^"]+' "$COVERAGE_FILE" | head -1)
+            LINE_PCT=$(python3 -c "print(f'{float($LINE)*100:.1f}')")
+            BRANCH_PCT=$(python3 -c "print(f'{float($BRANCH)*100:.1f}')")
+            echo "coverage_line=${LINE_PCT}%" >> $GITHUB_OUTPUT
+            echo "coverage_branch=${BRANCH_PCT}%" >> $GITHUB_OUTPUT
+            echo "📊 Coverage: Line ${LINE_PCT}% | Branch ${BRANCH_PCT}%"
+          else
+            echo "::warning::Coverage report file not found"
+            echo "coverage_line=N/A" >> $GITHUB_OUTPUT
+            echo "coverage_branch=N/A" >> $GITHUB_OUTPUT
+          fi
+
+      - name: '📥 Download Previous Coverage Baseline'
+        id: coverage-baseline
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
+          path: ./prev-coverage
+
+      - name: '🚨 Coverage Regression Check (drop > 2%)'
+        if: steps.coverage-baseline.outcome == 'success'
+        run: |
+          PREV_FILE=$(find ./prev-coverage -name "coverage.cobertura.xml" -print -quit)
+          CURR_FILE=$(find ./TestResults -name "coverage.cobertura.xml" -print -quit)
+          if [ -f "$PREV_FILE" ] && [ -f "$CURR_FILE" ]; then
+            PREV_LINE=$(grep -oP 'line-rate="\K[^"]+' "$PREV_FILE" | head -1)
+            CURR_LINE=$(grep -oP 'line-rate="\K[^"]+' "$CURR_FILE" | head -1)
+            PREV_PCT=$(python3 -c "print(f'{float($PREV_LINE)*100:.1f}')")
+            CURR_PCT=$(python3 -c "print(f'{float($CURR_LINE)*100:.1f}')")
+            echo "Previous: ${PREV_PCT}%  →  Current: ${CURR_PCT}%"
+            REGRESSED=$(python3 -c "print(1 if float($CURR_LINE) < float($PREV_LINE) * 0.98 else 0)")
+            if [ "$REGRESSED" = "1" ]; then
+              echo "::error::🚨 Coverage REGRESSION: ${PREV_PCT}% → ${CURR_PCT}% (drop > 2%)"
+              exit 1
+            else
+              echo "✅ Coverage stable or improved"
+            fi
+          fi
+
+      - name: '📤 Upload Coverage Artifact'
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: ./TestResults/**/coverage.cobertura.xml
-          retention-days: 7
+          retention-days: 30
 
       - name: Architecture Convergence Test
         run: dotnet run --project ArchitectureTest --configuration Release
-        continue-on-error: true
-
-      - name: Benchmark (non-blocking)
-        run: dotnet run --project Benchmark --configuration Release -- 5 20 http://localhost:5000
         continue-on-error: true
 
   # ═══════════════════════════════════════
@@ -132,11 +201,141 @@ jobs:
             ghcr.io/${{ env.REPO_LOWER }}:${{ github.sha }}
 
   # ═══════════════════════════════════════
-  # Job 4: CI 结果邮件通知（失败时发送到 QQ 邮箱）
+  # Job 4: 性能基准回归检测 (轻量级，无需 DB/LLM)
+  # - 启动 API 后台进程 → 等待就绪 → 压测健康端点 → 对比历史基线
+  # - 回归阈值: P95 延迟退步 >50% 或错误率 >5% → 构建失败
+  # ═══════════════════════════════════════
+  benchmark:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    env:
+      ASPNETCORE_ENVIRONMENT: Development
+      JWT_KEY: Agent1-CI-JWT-Key-2026
+
+    outputs:
+      perf_summary: ${{ steps.bench-run.outputs.perf_summary }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build
+        run: dotnet build --configuration Release
+
+      - name: Start API in background
+        run: |
+          nohup dotnet run --project Agent1.Api --configuration Release --urls http://localhost:5000 > /tmp/api-stdout.log 2> /tmp/api-stderr.log &
+          echo "API PID: $!"
+          echo "Waiting for API to become ready..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:5000/health/live 2>/dev/null; then
+              echo ""
+              echo "✅ API ready (attempt $i/30)"
+              break
+            fi
+            sleep 2
+          done
+          curl -sf http://localhost:5000/health/live || { echo "::error::API did not start in time"; cat /tmp/api-stderr.log; exit 1; }
+
+      - name: '⏱️ Run Performance Benchmark'
+        id: bench-run
+        run: |
+          dotnet run --project Benchmark --configuration Release -- 5 20 http://localhost:5000 --json --light --output ./bench-baseline.json 2>&1 | tee /tmp/bench-output.txt
+          
+          if [ -f "./bench-baseline.json" ]; then
+            echo "✅ Baseline saved: $(wc -c < ./bench-baseline.json) bytes"
+          else
+            echo "::warning::bench-baseline.json not found"
+          fi
+
+      - name: '📥 Download Previous Performance Baseline'
+        id: perf-baseline
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: perf-baseline
+          path: ./prev-perf
+
+      - name: '🚨 Performance Regression Check'
+        if: steps.perf-baseline.outcome == 'success'
+        run: |
+          PREV_FILE=$(find ./prev-perf -name "baseline.json" -print -quit)
+          CURR_FILE="./bench-baseline.json"
+          if [ -f "$PREV_FILE" ] && [ -f "$CURR_FILE" ]; then
+            echo "Comparing performance baseline..."
+            
+            # Extract P95 for critical endpoints using python
+            python3 << 'PYEOF'
+          import json, sys
+          
+          with open("./prev-perf/baseline.json") as f:
+              prev = json.load(f)
+          with open("./bench-baseline.json") as f:
+              curr = json.load(f)
+          
+          regression_found = False
+          errors = []
+          
+          # Build lookup by endpoint
+          prev_map = {r["endpoint"]: r for r in prev["results"]}
+          curr_map = {r["endpoint"]: r for r in curr["results"]}
+          
+          for ep, cr in curr_map.items():
+              pr = prev_map.get(ep)
+              if not pr:
+                  continue
+              
+              # P95 regression check (>50% degradation)
+              if pr["p95_ms"] > 0 and cr["p95_ms"] > pr["p95_ms"] * 1.5:
+                  regression_found = True
+                  errors.append(
+                      f"  P95 REGRESSION {ep}: {pr['p95_ms']:.0f}ms → {cr['p95_ms']:.0f}ms "
+                      f"(+{((cr['p95_ms']/pr['p95_ms'])-1)*100:.0f}%)"
+                  )
+              
+              # Error rate check (>5% fail rate)
+              total = cr["ok"] + cr["fail"]
+              if total > 0 and cr["fail"] / total > 0.05:
+                  regression_found = True
+                  errors.append(
+                      f"  ERROR RATE {ep}: {cr['fail']}/{total} fails ({cr['fail']/total*100:.1f}%)"
+                  )
+          
+          if regression_found:
+              print("\n".join(errors))
+              sys.exit(1)
+          else:
+              print("✅ Performance stable — no regression detected")
+          PYEOF
+          fi
+
+      - name: '📤 Upload Performance Baseline'
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-baseline
+          path: ./bench-baseline.json
+          retention-days: 60
+
+      - name: Stop API
+        if: always()
+        run: |
+          pkill -f "dotnet run.*Agent1.Api" 2>/dev/null || true
+          echo "API stopped"
+
+  # ═══════════════════════════════════════
+  # Job 5: 邮件通知 (成功摘要 vs 失败告警, 双通道)
+  # - 成功: 发送覆盖率 + 测试数 + 性能摘要
+  # - 失败: 发送详细错误上下文 + 工作流链接
+  # 所需 Secrets: QQ_EMAIL, QQ_SMTP_CODE
   # ═══════════════════════════════════════
   notify:
-    needs: [build-and-test, integration-test, docker]
-    if: failure()
+    needs: [build-and-test, integration-test, benchmark, docker]
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check secrets availability
@@ -146,25 +345,75 @@ jobs:
             echo "SKIP_NOTIFY=true" >> $GITHUB_ENV
           fi
 
-      - name: Send failure notification
+      - name: Determine CI status
         if: env.SKIP_NOTIFY != 'true'
+        id: status
+        run: |
+          if [ "${{ needs.build-and-test.result }}" = "failure" ] || \
+             [ "${{ needs.integration-test.result }}" = "failure" ] || \
+             [ "${{ needs.benchmark.result }}" = "failure" ]; then
+            echo "ci_status=failure" >> $GITHUB_OUTPUT
+          else
+            echo "ci_status=success" >> $GITHUB_OUTPUT
+          fi
+
+      - name: '✅ Send Success Summary'
+        if: env.SKIP_NOTIFY != 'true' && steps.status.outputs.ci_status == 'success'
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.qq.com
           server_port: 587
           username: ${{ secrets.QQ_EMAIL }}
           password: ${{ secrets.QQ_SMTP_CODE }}
-          subject: "[Agent1 CI Failed] ${{ github.repository }} — ${{ github.ref_name }}"
+          subject: "[Agent1 CI ✅] ${{ github.repository }} — ${{ github.ref_name }}"
           body: |
-            CI 工作流执行失败！
+            ✅ CI 工作流全部通过！
 
-            仓库: ${{ github.repository }}
-            分支: ${{ github.ref_name }}
-            提交: ${{ github.sha }}
-            提交信息: ${{ github.event.head_commit.message }}
-            触发者: ${{ github.actor }}
+            📦 仓库: ${{ github.repository }}
+            🌿 分支: ${{ github.ref_name }}
+            📝 提交: ${{ github.sha }}
+            👤 触发者: ${{ github.actor }}
 
-            查看详情: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            ──────────────────────────────
+            📊 质量报告
+            ──────────────────────────────
+            🧪 单元/API测试: ${{ needs.build-and-test.outputs.tests_passed }} / ${{ needs.build-and-test.outputs.tests_total }} 通过
+            📈 行覆盖率:   ${{ needs.build-and-test.outputs.coverage_line }}
+            🌿 分支覆盖率: ${{ needs.build-and-test.outputs.coverage_branch }}
+
+            ──────────────────────────────
+            🔗 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          to: ${{ secrets.QQ_EMAIL }}
+          from: ${{ secrets.QQ_EMAIL }}
+
+      - name: '🚨 Send Failure Alert'
+        if: env.SKIP_NOTIFY != 'true' && steps.status.outputs.ci_status == 'failure'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.qq.com
+          server_port: 587
+          username: ${{ secrets.QQ_EMAIL }}
+          password: ${{ secrets.QQ_SMTP_CODE }}
+          subject: "[Agent1 CI 🚨] ${{ github.repository }} — ${{ github.ref_name }}"
+          body: |
+            🚨 CI 工作流执行失败！
+
+            📦 仓库: ${{ github.repository }}
+            🌿 分支: ${{ github.ref_name }}
+            📝 提交: ${{ github.sha }}
+            📨 提交信息: ${{ github.event.head_commit.message }}
+            👤 触发者: ${{ github.actor }}
+
+            ──────────────────────────────
+            🔴 失败 Job:
+            ──────────────────────────────
+            build-and-test:    ${{ needs.build-and-test.result }}
+            integration-test:  ${{ needs.integration-test.result }}
+            benchmark:         ${{ needs.benchmark.result }}
+            docker:            ${{ needs.docker.result }}
+
+            ──────────────────────────────
+            🔗 查看详情: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           to: ${{ secrets.QQ_EMAIL }}
           from: ${{ secrets.QQ_EMAIL }}
 

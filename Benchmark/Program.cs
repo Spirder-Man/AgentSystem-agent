@@ -11,17 +11,23 @@ class Program
     static int MeasureRequests = 20;
     static int Concurrency = 10;
     static bool JsonOutput = false;
+    static bool LightMode = false;    // CI 轻量模式：仅压测健康/认证端点
+    static string? OutputPath = null; // 基线输出路径
 
     static string? _token = null;
     static string? _refreshToken = null;
 
     static async Task Main(string[] args)
     {
-        // CLI: dotnet run -- [concurrency] [requests] [baseUrl] [--json]
+        // CLI: dotnet run -- [concurrency] [requests] [baseUrl] [--json] [--light] [--output <path>]
         if (args.Length > 0) int.TryParse(args[0], out Concurrency);
         if (args.Length > 1) int.TryParse(args[1], out MeasureRequests);
-        if (args.Length > 2) BaseUrl = args[2];
+        if (args.Length > 2 && !args[2].StartsWith("--")) BaseUrl = args[2];
         JsonOutput = args.Contains("--json");
+        LightMode = args.Contains("--light");
+        int outputIdx = Array.IndexOf(args, "--output");
+        if (outputIdx >= 0 && outputIdx + 1 < args.Length)
+            OutputPath = args[outputIdx + 1];
 
         Concurrency = Math.Clamp(Concurrency, 1, 100);
         MeasureRequests = Math.Clamp(MeasureRequests, 1, 1000);
@@ -58,7 +64,8 @@ class Program
         if (_refreshToken != null)
             results.Add(await RunBenchmark(http, "auth/refresh", "POST", "/api/auth/refresh", $"{{\"refreshToken\":\"{_refreshToken}\"}}"));
 
-        if (_token != null)
+        // 全量模式：压测合规/监管/知识图谱端点 (需 LLM + DB)
+        if (!LightMode && _token != null)
         {
             results.Add(await RunBenchmark(http, "compliance/check", "POST", "/api/compliance/check", """{"query":"benzene safety requirements"}""", useAuth: true));
             results.Add(await RunBenchmark(http, "hazard/query", "POST", "/api/compliance/hazard/query", """{"query":"benzene hazard class"}""", useAuth: true));
@@ -110,7 +117,7 @@ class Program
                 })
             };
             var json = System.Text.Json.JsonSerializer.Serialize(baseline, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-            var baselinePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "baseline.json");
+            var baselinePath = OutputPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "baseline.json");
             File.WriteAllText(baselinePath, json);
             Console.WriteLine($"[BASELINE] 已写入: {baselinePath}");
         }
