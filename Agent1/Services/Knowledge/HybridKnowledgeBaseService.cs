@@ -50,6 +50,7 @@ namespace Agent1.Services
                 string? extractionQuality = null;
                 int? pageNumber = null;
                 int? chunkIndex = null;
+                int? documentId = null; // 双层表：关联的文档记录 ID
 
                 if (metadata != null)
                 {
@@ -73,6 +74,8 @@ namespace Agent1.Services
                         pageNumber = pn;
                     if (metadata.ContainsKey("ChunkIndex") && metadata["ChunkIndex"] is int ci)
                         chunkIndex = ci;
+                    if (metadata.ContainsKey("DocumentId") && metadata["DocumentId"] is int did)
+                        documentId = did;
                 }
 
                 var embedding = await _llmService.GetEmbeddingAsync(content);
@@ -99,8 +102,16 @@ namespace Agent1.Services
                     ChunkIndex = chunkIndex,
                     Embedding = embedding
                 };
-                //ChemicalDocumentRecord 构建
-                await _databaseService.AddChemicalDocumentAsync(record);
+
+                // 双层表路由：有 DocumentId → 写入 knowledge_chunks（新表）；否则 → 写入 chemical_documents（旧表，兼容）
+                if (documentId.HasValue && documentId.Value > 0)
+                {
+                    await _databaseService.InsertChunkAsync(record, documentId.Value);
+                }
+                else
+                {
+                    await _databaseService.AddChemicalDocumentAsync(record);
+                }
             }
             catch (Exception ex)
             {
@@ -558,17 +569,22 @@ namespace Agent1.Services
             }
 
             await _bm25Service.ClearAsync();
-            foreach (var (content, regulationType, priority, sourceFile) in docs)
+            foreach (var record in docs)
             {
                 var metadata = new Dictionary<string, object>
                 {
-                    ["RegulationType"] = regulationType,
-                    ["Priority"] = priority
+                    ["RegulationType"] = record.RegulationType,
+                    ["Priority"] = record.Priority,
+                    ["SourceFile"] = record.SourceFile ?? "",
+                    ["RegulationNumber"] = record.RegulationNumber ?? "",
+                    ["ChapterTitle"] = record.ChapterTitle ?? "",
+                    ["ClauseNumber"] = record.ClauseNumber ?? "",
+                    ["ChunkIndex"] = record.ChunkIndex ?? 0,
+                    ["PageNumber"] = record.PageNumber ?? 0,
+                    ["ExtractionQuality"] = record.ExtractionQuality ?? ""
                 };
-                if (sourceFile != null)
-                    metadata["SourceFile"] = sourceFile;
 
-                await _bm25Service.AddDocumentAsync(content, metadata);
+                await _bm25Service.AddDocumentAsync(record.Content, metadata);
             }
 
             sw.Stop();

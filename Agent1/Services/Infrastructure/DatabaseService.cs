@@ -94,6 +94,8 @@ namespace Agent1.Services
             await CreateAuditLogTableAsync(connection);
             await CreateSearchLogTableAsync(connection);
             await CreateChemicalDocumentTableAsync(connection);
+            await CreateKnowledgeDocumentTableAsync(connection);
+            await CreateKnowledgeChunkTableAsync(connection);
             await CreateLongTermMemoryTableAsync(connection);
             await CreateRefreshTokenTableAsync(connection);
         }
@@ -201,6 +203,110 @@ namespace Agent1.Services
             catch (Exception ex)
             {
                 Console.WriteLine($"   ⚠️ 化工文档表创建失败: {ex.Message}");
+            }
+        }
+
+        private async Task CreateKnowledgeDocumentTableAsync(NpgsqlConnection connection)
+        {
+            try
+            {
+                var createTableSql = @"
+                    CREATE TABLE IF NOT EXISTS knowledge_documents (
+                        id              SERIAL PRIMARY KEY,
+                        source_path     VARCHAR(500) NOT NULL UNIQUE,
+                        file_name       VARCHAR(300) NOT NULL,
+                        file_format     VARCHAR(10)  NOT NULL,
+                        file_size_bytes BIGINT,
+                        regulation_type VARCHAR(50)  NOT NULL,
+                        regulation_number VARCHAR(100),
+                        regulation_title  VARCHAR(500),
+                        priority        VARCHAR(10)  NOT NULL DEFAULT '中',
+                        parent_category VARCHAR(200),
+                        extraction_quality VARCHAR(20) DEFAULT 'good',
+                        page_count      INT,
+                        is_full_text    BOOLEAN DEFAULT TRUE,
+                        total_chunks    INT DEFAULT 0,
+                        content_hash    VARCHAR(64),
+                        last_modified   TIMESTAMP WITH TIME ZONE,
+                        created_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    );
+                ";
+
+                using (var cmd = new NpgsqlCommand(createTableSql, connection))
+                {
+                    await cmd.ExecuteNonQueryAsync();
+                }
+
+                var indexSql = @"
+                    CREATE INDEX IF NOT EXISTS idx_docs_regulation_number ON knowledge_documents(regulation_number);
+                    CREATE INDEX IF NOT EXISTS idx_docs_type_priority ON knowledge_documents(regulation_type, priority);
+                ";
+                using (var idxCmd = new NpgsqlCommand(indexSql, connection))
+                {
+                    await idxCmd.ExecuteNonQueryAsync();
+                }
+
+                Console.WriteLine("   ✅ 知识库文档表创建成功");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ⚠️ 知识库文档表创建失败: {ex.Message}");
+            }
+        }
+
+        private async Task CreateKnowledgeChunkTableAsync(NpgsqlConnection connection)
+        {
+            try
+            {
+                var createTableSql = $@"
+                    CREATE TABLE IF NOT EXISTS knowledge_chunks (
+                        id              SERIAL PRIMARY KEY,
+                        document_id     INT NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+                        content         TEXT NOT NULL,
+                        embedding       vector({_vectorConfig.EmbeddingDimension}),
+                        chunk_index     INT NOT NULL DEFAULT 0,
+                        chapter_number  VARCHAR(50),
+                        chapter_title   VARCHAR(500),
+                        clause_number   VARCHAR(50),
+                        article_number  VARCHAR(50),
+                        page_number     INT,
+                        sub_chunk_index INT,
+                        regulation_type VARCHAR(50)  NOT NULL,
+                        priority        VARCHAR(10)  NOT NULL,
+                        created_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    );
+                ";
+
+                using (var cmd = new NpgsqlCommand(createTableSql, connection))
+                {
+                    await cmd.ExecuteNonQueryAsync();
+                }
+
+                var vectorIndexSql = $@"
+                    CREATE INDEX IF NOT EXISTS idx_chunks_embedding ON knowledge_chunks
+                        USING hnsw (embedding vector_cosine_ops)
+                        WITH (m = {_vectorConfig.HnswM}, ef_construction = {_vectorConfig.HnswEfConstruction});
+                ";
+                using (var viCmd = new NpgsqlCommand(vectorIndexSql, connection))
+                {
+                    await viCmd.ExecuteNonQueryAsync();
+                }
+
+                var indexSql = @"
+                    CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON knowledge_chunks(document_id);
+                    CREATE INDEX IF NOT EXISTS idx_chunks_regulation_type ON knowledge_chunks(regulation_type);
+                    CREATE INDEX IF NOT EXISTS idx_chunks_priority ON knowledge_chunks(priority);
+                ";
+                using (var idxCmd = new NpgsqlCommand(indexSql, connection))
+                {
+                    await idxCmd.ExecuteNonQueryAsync();
+                }
+
+                Console.WriteLine("   ✅ 知识库分块表创建成功");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ⚠️ 知识库分块表创建失败: {ex.Message}");
             }
         }
 
@@ -483,6 +589,246 @@ namespace Agent1.Services
             }
         }
 
+        // ═══════════════════════════════════════════
+        // 知识库双层表架构 — 文档级写入
+        // ═══════════════════════════════════════════
+
+        public async Task<int> InsertDocumentAsync(KnowledgeDocumentRecord doc)
+        {
+            try
+            {
+                using var connection = CreateConnection();
+                await connection.OpenAsync();
+
+                var sql = @"
+                    INSERT INTO knowledge_documents (
+                        source_path, file_name, file_format, file_size_bytes,
+                        regulation_type, regulation_number, regulation_title, priority,
+                        parent_category, extraction_quality, page_count,
+                        is_full_text, total_chunks, content_hash, last_modified
+                    )
+                    VALUES (
+                        @sourcePath, @fileName, @fileFormat, @fileSizeBytes,
+                        @regulationType, @regulationNumber, @regulationTitle, @priority,
+                        @parentCategory, @extractionQuality, @pageCount,
+                        @isFullText, @totalChunks, @contentHash, @lastModified
+                    )
+                    RETURNING id;
+                ";
+
+                using var command = new NpgsqlCommand(sql, connection);
+                command.Parameters.AddWithValue("@sourcePath", doc.SourcePath);
+                command.Parameters.AddWithValue("@fileName", doc.FileName);
+                command.Parameters.AddWithValue("@fileFormat", doc.FileFormat);
+                command.Parameters.AddWithValue("@fileSizeBytes", doc.FileSizeBytes ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@regulationType", doc.RegulationType);
+                command.Parameters.AddWithValue("@regulationNumber", doc.RegulationNumber ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@regulationTitle", doc.RegulationTitle ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@priority", doc.Priority);
+                command.Parameters.AddWithValue("@parentCategory", doc.ParentCategory ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@extractionQuality", doc.ExtractionQuality ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@pageCount", doc.PageCount ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@isFullText", doc.IsFullText);
+                command.Parameters.AddWithValue("@totalChunks", doc.TotalChunks);
+                command.Parameters.AddWithValue("@contentHash", doc.ContentHash ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@lastModified", doc.LastModified ?? (object)DBNull.Value);
+
+                var result = await command.ExecuteScalarAsync();
+                var documentId = Convert.ToInt32(result);
+                Console.WriteLine($"   ✅ 文档入库成功: {doc.FileName} (id={documentId}, 类型={doc.RegulationType})");
+                return documentId;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ❌ 文档入库失败: {doc.FileName} — {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task InsertChunkAsync(ChemicalDocumentRecord chunk, int documentId)
+        {
+            try
+            {
+                if (chunk.IsDirty)
+                {
+                    Console.WriteLine($"   🚫 脏数据拦截(分块): 来源={chunk.SourceFile ?? "未知"}, 质量={chunk.ExtractionQuality ?? "未知"}");
+                    return;
+                }
+
+                if (chunk.Embedding != null && chunk.Embedding.Length != _vectorConfig.EmbeddingDimension)
+                {
+                    Console.WriteLine($"   🚫 向量维度异常拦截: 期望{_vectorConfig.EmbeddingDimension}维, 实际{chunk.Embedding.Length}维");
+                    chunk.Embedding = null;
+                }
+
+                using var connection = CreateConnection();
+                await connection.OpenAsync();
+
+                var sql = @"
+                    INSERT INTO knowledge_chunks (
+                        document_id, content, embedding, chunk_index,
+                        chapter_number, chapter_title, clause_number, article_number,
+                        page_number, sub_chunk_index, regulation_type, priority
+                    )
+                    VALUES (
+                        @documentId, @content, @embedding::vector, @chunkIndex,
+                        @chapterNumber, @chapterTitle, @clauseNumber, @articleNumber,
+                        @pageNumber, @subChunkIndex, @regulationType, @priority
+                    );
+                ";
+
+                using var command = new NpgsqlCommand(sql, connection);
+                command.Parameters.AddWithValue("@documentId", documentId);
+                command.Parameters.AddWithValue("@content", chunk.Content);
+                if (chunk.Embedding != null)
+                {
+                    var vecStr = "[" + string.Join(",", chunk.Embedding.Select(x => x.ToString("G", System.Globalization.CultureInfo.InvariantCulture))) + "]";
+                    command.Parameters.AddWithValue("@embedding", vecStr);
+                }
+                else
+                {
+                    command.Parameters.AddWithValue("@embedding", DBNull.Value);
+                }
+                command.Parameters.AddWithValue("@chunkIndex", chunk.ChunkIndex ?? 0);
+                command.Parameters.AddWithValue("@chapterNumber", chunk.ClauseNumber ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@chapterTitle", chunk.ChapterTitle ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@clauseNumber", chunk.ClauseNumber ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@articleNumber", (object)DBNull.Value);
+                command.Parameters.AddWithValue("@pageNumber", chunk.PageNumber ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@subChunkIndex", (object)DBNull.Value);
+                command.Parameters.AddWithValue("@regulationType", chunk.RegulationType);
+                command.Parameters.AddWithValue("@priority", chunk.Priority);
+
+                await command.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ❌ 分块入库失败: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task InsertChunksBatchAsync(List<ChemicalDocumentRecord> chunks, int documentId)
+        {
+            if (chunks.Count == 0) return;
+
+            try
+            {
+                using var connection = CreateConnection();
+                await connection.OpenAsync();
+                using var transaction = await connection.BeginTransactionAsync();
+
+                try
+                {
+                    var sql = @"
+                        INSERT INTO knowledge_chunks (
+                            document_id, content, embedding, chunk_index,
+                            chapter_number, chapter_title, clause_number, article_number,
+                            page_number, sub_chunk_index, regulation_type, priority
+                        )
+                        VALUES (
+                            @documentId, @content, @embedding::vector, @chunkIndex,
+                            @chapterNumber, @chapterTitle, @clauseNumber, @articleNumber,
+                            @pageNumber, @subChunkIndex, @regulationType, @priority
+                        );
+                    ";
+
+                    int successCount = 0;
+                    foreach (var chunk in chunks)
+                    {
+                        if (chunk.IsDirty)
+                        {
+                            Console.WriteLine($"   🚫 脏数据拦截(批量分块): 长度={chunk.Content?.Length ?? 0}, 质量={chunk.ExtractionQuality ?? "无"}");
+                            continue;
+                        }
+
+                        using var command = new NpgsqlCommand(sql, connection, transaction);
+                        command.Parameters.AddWithValue("@documentId", documentId);
+                        command.Parameters.AddWithValue("@content", chunk.Content);
+                        if (chunk.Embedding != null)
+                        {
+                            var vecStr = "[" + string.Join(",", chunk.Embedding.Select(x => x.ToString("G", System.Globalization.CultureInfo.InvariantCulture))) + "]";
+                            command.Parameters.AddWithValue("@embedding", vecStr);
+                        }
+                        else
+                        {
+                            command.Parameters.AddWithValue("@embedding", DBNull.Value);
+                        }
+                        command.Parameters.AddWithValue("@chunkIndex", chunk.ChunkIndex ?? 0);
+                        command.Parameters.AddWithValue("@chapterNumber", chunk.ClauseNumber ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@chapterTitle", chunk.ChapterTitle ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@clauseNumber", chunk.ClauseNumber ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@articleNumber", (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@pageNumber", chunk.PageNumber ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@subChunkIndex", (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@regulationType", chunk.RegulationType);
+                        command.Parameters.AddWithValue("@priority", chunk.Priority);
+
+                        await command.ExecuteNonQueryAsync();
+                        successCount++;
+                    }
+
+                    await transaction.CommitAsync();
+                    Console.WriteLine($"   ✅ 批量分块入库完成: {successCount}/{chunks.Count} 条 (document_id={documentId})");
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ❌ 批量分块入库失败: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task UpdateDocumentChunkCountAsync(int documentId, int totalChunks)
+        {
+            try
+            {
+                using var connection = CreateConnection();
+                await connection.OpenAsync();
+                using var command = new NpgsqlCommand(
+                    "UPDATE knowledge_documents SET total_chunks = @totalChunks WHERE id = @id;",
+                    connection);
+                command.Parameters.AddWithValue("@totalChunks", totalChunks);
+                command.Parameters.AddWithValue("@id", documentId);
+                await command.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ⚠️ 更新文档块计数失败: {ex.Message}");
+            }
+        }
+
+        public async Task<int> GetKnowledgeDocumentCountAsync()
+        {
+            try
+            {
+                using var connection = CreateConnection();
+                await connection.OpenAsync();
+                using var command = new NpgsqlCommand(
+                    "SELECT COUNT(*) FROM knowledge_documents;", connection);
+                return Convert.ToInt32(await command.ExecuteScalarAsync());
+            }
+            catch { return 0; }
+        }
+
+        public async Task<int> GetKnowledgeChunkCountAsync()
+        {
+            try
+            {
+                using var connection = CreateConnection();
+                await connection.OpenAsync();
+                using var command = new NpgsqlCommand(
+                    "SELECT COUNT(*) FROM knowledge_chunks;", connection);
+                return Convert.ToInt32(await command.ExecuteScalarAsync());
+            }
+            catch { return 0; }
+        }
+
         // 向量检索
         public async Task<List<RetrievedChunk>> VectorSearchAsync(string query, float[] queryEmbedding, int topK = 5)
         {
@@ -492,22 +838,31 @@ namespace Agent1.Services
                 using var connection = CreateConnection();
                 await connection.OpenAsync();
 
+                var queryVectorString = "[" + string.Join(",", queryEmbedding.Select(x => x.ToString("G", System.Globalization.CultureInfo.InvariantCulture))) + "]";
+
+                // 双层表：优先从 knowledge_chunks 检索
                 var sql = @"
                     SELECT 
-                        id,
-                        content,
-                        regulation_type,
-                        priority,
-                        source_file,
-                        chemical_type,
-                        1 - (embedding <=> @queryEmbedding::vector) as similarity_score
-                    FROM chemical_documents
-                    ORDER BY embedding <=> @queryEmbedding::vector
+                        kc.id,
+                        kc.content,
+                        kc.regulation_type,
+                        kc.priority,
+                        kd.source_path,
+                        kd.file_name,
+                        kc.chapter_title,
+                        kc.clause_number,
+                        kc.page_number,
+                        kc.chunk_index,
+                        kd.regulation_number,
+                        kd.extraction_quality,
+                        1 - (kc.embedding <=> @queryEmbedding::vector) as similarity_score
+                    FROM knowledge_chunks kc
+                    JOIN knowledge_documents kd ON kc.document_id = kd.id
+                    ORDER BY kc.embedding <=> @queryEmbedding::vector
                     LIMIT @topK;
                 ";
 
                 using var command = new NpgsqlCommand(sql, connection);
-                var queryVectorString = "[" + string.Join(",", queryEmbedding.Select(x => x.ToString("G", System.Globalization.CultureInfo.InvariantCulture))) + "]";
                 command.Parameters.AddWithValue("@queryEmbedding", queryVectorString);
                 command.Parameters.AddWithValue("@topK", topK);
 
@@ -521,14 +876,16 @@ namespace Agent1.Services
                         { "Priority", reader["priority"].ToString() ?? "" }
                     };
 
-                    if (!string.IsNullOrEmpty(reader["source_file"].ToString()))
-                    {
-                        metadata["SourceFile"] = reader["source_file"].ToString() ?? "";
-                    }
-                    if (!string.IsNullOrEmpty(reader["chemical_type"].ToString()))
-                    {
-                        metadata["ChemicalType"] = reader["chemical_type"].ToString() ?? "";
-                    }
+                    AddMetaIfNotNull(metadata, "SourceFile", reader["file_name"]);
+                    AddMetaIfNotNull(metadata, "SourcePath", reader["source_path"]);
+                    AddMetaIfNotNull(metadata, "ChapterTitle", reader["chapter_title"]);
+                    AddMetaIfNotNull(metadata, "ClauseNumber", reader["clause_number"]);
+                    AddMetaIfNotNull(metadata, "RegulationNumber", reader["regulation_number"]);
+                    AddMetaIfNotNull(metadata, "ExtractionQuality", reader["extraction_quality"]);
+                    if (!(reader["page_number"] is DBNull))
+                        metadata["PageNumber"] = reader.GetInt32(reader.GetOrdinal("page_number"));
+                    if (!(reader["chunk_index"] is DBNull))
+                        metadata["ChunkIndex"] = reader.GetInt32(reader.GetOrdinal("chunk_index"));
 
                     results.Add(new RetrievedChunk
                     {
@@ -541,6 +898,51 @@ namespace Agent1.Services
                     });
                 }
 
+                // 兜底：新表无结果则从旧表 chemical_documents 检索
+                if (results.Count == 0)
+                {
+                    var fallbackSql = @"
+                        SELECT 
+                            id,
+                            content,
+                            regulation_type,
+                            priority,
+                            source_file,
+                            chemical_type,
+                            1 - (embedding <=> @fbEmbedding::vector) as similarity_score
+                        FROM chemical_documents
+                        ORDER BY embedding <=> @fbEmbedding::vector
+                        LIMIT @fbTopK;
+                    ";
+
+                    using var fbCmd = new NpgsqlCommand(fallbackSql, connection);
+                    fbCmd.Parameters.AddWithValue("@fbEmbedding", queryVectorString);
+                    fbCmd.Parameters.AddWithValue("@fbTopK", topK);
+
+                    using var fbReader = await fbCmd.ExecuteReaderAsync();
+                    rank = 0;
+                    while (await fbReader.ReadAsync())
+                    {
+                        var metadata = new Dictionary<string, object>
+                        {
+                            { "RegulationType", fbReader["regulation_type"].ToString() ?? "" },
+                            { "Priority", fbReader["priority"].ToString() ?? "" }
+                        };
+                        AddMetaIfNotNull(metadata, "SourceFile", fbReader["source_file"]);
+                        AddMetaIfNotNull(metadata, "ChemicalType", fbReader["chemical_type"]);
+
+                        results.Add(new RetrievedChunk
+                        {
+                            Id = fbReader["id"].ToString() ?? "",
+                            Content = fbReader["content"].ToString() ?? "",
+                            Score = Convert.ToDouble(fbReader["similarity_score"]),
+                            Rank = rank++,
+                            Metadata = metadata,
+                            RetrievalMethod = "Vector"
+                        });
+                    }
+                }
+
                 if (!EvalMode.IsActive)
                     Console.WriteLine($"   ✅ 向量检索完成 (找到 {results.Count} 条结果)");
             }
@@ -550,6 +952,12 @@ namespace Agent1.Services
             }
 
             return results;
+        }
+
+        private static void AddMetaIfNotNull(Dictionary<string, object> meta, string key, object value)
+        {
+            if (value is not DBNull && value != null && !string.IsNullOrEmpty(value.ToString()))
+                meta[key] = value.ToString()!;
         }
 
         // 清空化工文档表（与 BM25 Clear 同步，避免双通道数据不一致）
@@ -592,25 +1000,73 @@ namespace Agent1.Services
             }
         }
 
-        public async Task<List<(string Content, string RegulationType, string Priority, string? SourceFile)>> GetAllChemicalDocumentTextsAsync()
+        public async Task<List<ChemicalDocumentRecord>> GetAllChemicalDocumentTextsAsync()
         {
-            var results = new List<(string Content, string RegulationType, string Priority, string? SourceFile)>();
+            var results = new List<ChemicalDocumentRecord>();
             try
             {
                 using var connection = CreateConnection();
                 await connection.OpenAsync();
-                using var command = new NpgsqlCommand(
-                    "SELECT content, regulation_type, priority, source_file FROM chemical_documents ORDER BY id;",
-                    connection);
+
+                // 双层表 JOIN：优先从 knowledge_chunks + knowledge_documents 读取完整元数据
+                var joinSql = @"
+                    SELECT kc.content, kc.regulation_type, kc.priority,
+                           kc.chapter_title, kc.clause_number, kc.chunk_index,
+                           kc.page_number,
+                           kd.regulation_number, kd.file_name,
+                           kd.extraction_quality
+                    FROM knowledge_chunks kc
+                    JOIN knowledge_documents kd ON kc.document_id = kd.id
+                    ORDER BY kc.id;
+                ";
+
+                using var command = new NpgsqlCommand(joinSql, connection);
                 using var reader = await command.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
-                    results.Add((
-                        reader["content"].ToString() ?? "",
-                        reader["regulation_type"].ToString() ?? "通用",
-                        reader["priority"].ToString() ?? "中",
-                        reader["source_file"] is DBNull ? null : reader["source_file"].ToString()
-                    ));
+                    results.Add(new ChemicalDocumentRecord
+                    {
+                        Content = reader.IsDBNull(0) ? "" : reader.GetString(0),
+                        RegulationType = reader.IsDBNull(1) ? "通用" : reader.GetString(1),
+                        Priority = reader.IsDBNull(2) ? "中" : reader.GetString(2),
+                        ChapterTitle = reader.IsDBNull(3) ? null : reader.GetString(3),
+                        ClauseNumber = reader.IsDBNull(4) ? null : reader.GetString(4),
+                        ChunkIndex = reader.IsDBNull(5) ? null : reader.GetInt32(5),
+                        PageNumber = reader.IsDBNull(6) ? null : reader.GetInt32(6),
+                        RegulationNumber = reader.IsDBNull(7) ? null : reader.GetString(7),
+                        SourceFile = reader.IsDBNull(8) ? null : reader.GetString(8),
+                        ExtractionQuality = reader.IsDBNull(9) ? null : reader.GetString(9),
+                    });
+                }
+
+                // 兜底：新表无数据则从旧表 chemical_documents 读取（兼容迁移前数据）
+                if (results.Count == 0)
+                {
+                    var fallbackSql = @"
+                        SELECT content, regulation_type, priority, source_file,
+                               regulation_number, chapter_title, clause_number, page_number,
+                               chunk_index, extraction_quality
+                        FROM chemical_documents
+                        ORDER BY id;
+                    ";
+                    using var fbCmd = new NpgsqlCommand(fallbackSql, connection);
+                    using var fbReader = await fbCmd.ExecuteReaderAsync();
+                    while (await fbReader.ReadAsync())
+                    {
+                        results.Add(new ChemicalDocumentRecord
+                        {
+                            Content = fbReader.IsDBNull(0) ? "" : fbReader.GetString(0),
+                            RegulationType = fbReader.IsDBNull(1) ? "通用" : fbReader.GetString(1),
+                            Priority = fbReader.IsDBNull(2) ? "中" : fbReader.GetString(2),
+                            SourceFile = fbReader.IsDBNull(3) ? null : fbReader.GetString(3),
+                            RegulationNumber = fbReader.IsDBNull(4) ? null : fbReader.GetString(4),
+                            ChapterTitle = fbReader.IsDBNull(5) ? null : fbReader.GetString(5),
+                            ClauseNumber = fbReader.IsDBNull(6) ? null : fbReader.GetString(6),
+                            PageNumber = fbReader.IsDBNull(7) ? null : fbReader.GetInt32(7),
+                            ChunkIndex = fbReader.IsDBNull(8) ? null : fbReader.GetInt32(8),
+                            ExtractionQuality = fbReader.IsDBNull(9) ? null : fbReader.GetString(9),
+                        });
+                    }
                 }
             }
             catch (Exception ex)
@@ -620,7 +1076,7 @@ namespace Agent1.Services
             return results;
         }
 
-        // Sprint 2: 加载全量文档及向量嵌入
+        // Sprint 2: 加载全量文档及向量嵌入（GPU 索引重建 / 内存检索用）
         public async Task<List<ChemicalDocumentRecord>> GetAllChemicalDocumentsWithEmbeddingsAsync()
         {
             var results = new List<ChemicalDocumentRecord>();
@@ -628,14 +1084,21 @@ namespace Agent1.Services
             {
                 using var connection = CreateConnection();
                 await connection.OpenAsync();
-                // P0 FIX: pgvector 类型需显式 CAST 为 TEXT，避免 "public.vector not supported" 错误
-                // P0 FIX: 移除 WHERE embedding IS NOT NULL — 方法名是"All"就应返回全部文档
-                using var command = new NpgsqlCommand(
-                    @"SELECT id, content, embedding::TEXT, regulation_type, priority, source_file, chemical_type,
-                             regulation_number, chapter_title, clause_number, page_number, chunk_index, extraction_quality
-                      FROM chemical_documents
-                      ORDER BY id;",
-                    connection);
+
+                // 双层表：优先从 knowledge_chunks JOIN knowledge_documents 加载
+                var joinSql = @"
+                    SELECT kc.id, kc.content, kc.embedding::TEXT,
+                           kc.regulation_type, kc.priority,
+                           kd.file_name,
+                           kc.chapter_title, kc.clause_number,
+                           kc.page_number, kc.chunk_index,
+                           kd.regulation_number, kd.extraction_quality
+                    FROM knowledge_chunks kc
+                    JOIN knowledge_documents kd ON kc.document_id = kd.id
+                    ORDER BY kc.id;
+                ";
+
+                using var command = new NpgsqlCommand(joinSql, connection);
                 using var reader = await command.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
@@ -646,17 +1109,15 @@ namespace Agent1.Services
                         RegulationType = reader.IsDBNull(3) ? "通用" : reader.GetString(3),
                         Priority = reader.IsDBNull(4) ? "中" : reader.GetString(4),
                         SourceFile = reader.IsDBNull(5) ? null : reader.GetString(5),
-                        ChemicalType = reader.IsDBNull(6) ? null : reader.GetString(6),
-                        // P0修复：补全 6 个元数据字段读取
-                        RegulationNumber = reader.IsDBNull(7) ? null : reader.GetString(7),
-                        ChapterTitle = reader.IsDBNull(8) ? null : reader.GetString(8),
-                        ClauseNumber = reader.IsDBNull(9) ? null : reader.GetString(9),
-                        PageNumber = reader.IsDBNull(10) ? null : reader.GetInt32(10),
-                        ChunkIndex = reader.IsDBNull(11) ? null : reader.GetInt32(11),
-                        ExtractionQuality = reader.IsDBNull(12) ? null : reader.GetString(12)
+                        ChemicalType = null, // knowledge_chunks 无此字段
+                        ChapterTitle = reader.IsDBNull(6) ? null : reader.GetString(6),
+                        ClauseNumber = reader.IsDBNull(7) ? null : reader.GetString(7),
+                        PageNumber = reader.IsDBNull(8) ? null : reader.GetInt32(8),
+                        ChunkIndex = reader.IsDBNull(9) ? null : reader.GetInt32(9),
+                        RegulationNumber = reader.IsDBNull(10) ? null : reader.GetString(10),
+                        ExtractionQuality = reader.IsDBNull(11) ? null : reader.GetString(11)
                     };
 
-                    // 解析 pgvector 格式: [0.1,0.2,...]
                     if (!reader.IsDBNull(2))
                     {
                         var vectorStr = reader.GetValue(2).ToString() ?? "";
@@ -664,6 +1125,45 @@ namespace Agent1.Services
                     }
 
                     results.Add(record);
+                }
+
+                // 兜底：新表无数据则从旧表 chemical_documents 加载
+                if (results.Count == 0)
+                {
+                    var fallbackSql = @"
+                        SELECT id, content, embedding::TEXT, regulation_type, priority, source_file, chemical_type,
+                               regulation_number, chapter_title, clause_number, page_number, chunk_index, extraction_quality
+                        FROM chemical_documents
+                        ORDER BY id;
+                    ";
+                    using var fbCmd = new NpgsqlCommand(fallbackSql, connection);
+                    using var fbReader = await fbCmd.ExecuteReaderAsync();
+                    while (await fbReader.ReadAsync())
+                    {
+                        var record = new ChemicalDocumentRecord
+                        {
+                            Id = fbReader.GetInt32(0),
+                            Content = fbReader.GetString(1),
+                            RegulationType = fbReader.IsDBNull(3) ? "通用" : fbReader.GetString(3),
+                            Priority = fbReader.IsDBNull(4) ? "中" : fbReader.GetString(4),
+                            SourceFile = fbReader.IsDBNull(5) ? null : fbReader.GetString(5),
+                            ChemicalType = fbReader.IsDBNull(6) ? null : fbReader.GetString(6),
+                            RegulationNumber = fbReader.IsDBNull(7) ? null : fbReader.GetString(7),
+                            ChapterTitle = fbReader.IsDBNull(8) ? null : fbReader.GetString(8),
+                            ClauseNumber = fbReader.IsDBNull(9) ? null : fbReader.GetString(9),
+                            PageNumber = fbReader.IsDBNull(10) ? null : fbReader.GetInt32(10),
+                            ChunkIndex = fbReader.IsDBNull(11) ? null : fbReader.GetInt32(11),
+                            ExtractionQuality = fbReader.IsDBNull(12) ? null : fbReader.GetString(12)
+                        };
+
+                        if (!fbReader.IsDBNull(2))
+                        {
+                            var vectorStr = fbReader.GetValue(2).ToString() ?? "";
+                            record.Embedding = ParsePgVectorString(vectorStr);
+                        }
+
+                        results.Add(record);
+                    }
                 }
             }
             catch (Exception ex)
@@ -718,16 +1218,19 @@ namespace Agent1.Services
         // 审计日志持久化（生产安全加固 — 替代内存 List）
         // ═══════════════════════════════════════════
 
-        public async Task AddAuditLogAsync(string userId, string operation, string details, string? ipAddress = null, string? chainHash = null)
+        public async Task AddAuditLogAsync(string userId, string operation, string details, string? ipAddress = null, string? chainHash = null, DateTime? createTime = null)
         {
             try
             {
                 using var connection = CreateConnection();
                 await connection.OpenAsync();
 
+                // [P3 哈希链] 显式写入 created_at，使入库时间与参与哈希计算的时间一致（避免 DB 默认 CURRENT_TIMESTAMP 与 C# 时钟不一致）
+                var createdAtUtc = (createTime ?? DateTime.UtcNow).ToUniversalTime();
+
                 var sql = @"
-                    INSERT INTO audit_logs (user_id, action, detail, ip_address, chain_hash)
-                    VALUES (@userId, @action, @detail, @ipAddress, @chainHash);
+                    INSERT INTO audit_logs (user_id, action, detail, ip_address, chain_hash, created_at)
+                    VALUES (@userId, @action, @detail, @ipAddress, @chainHash, @createdAt);
                 ";
 
                 using var command = new NpgsqlCommand(sql, connection);
@@ -736,12 +1239,33 @@ namespace Agent1.Services
                 command.Parameters.AddWithValue("@detail", details ?? "");
                 command.Parameters.AddWithValue("@ipAddress", ipAddress ?? (object)DBNull.Value);
                 command.Parameters.AddWithValue("@chainHash", chainHash ?? (object)DBNull.Value);
+                command.Parameters.Add(new NpgsqlParameter("@createdAt", NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = createdAtUtc });
 
                 await command.ExecuteNonQueryAsync();
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"   ⚠️ 审计日志写入失败: {ex.Message}");
+            }
+        }
+
+        // [P3 哈希链] 取最后一条 chain_hash（按 id 倒序），供 AuditService 重启后恢复链头
+        public async Task<string?> GetLastAuditChainHashAsync()
+        {
+            try
+            {
+                using var connection = CreateConnection();
+                await connection.OpenAsync();
+
+                const string sql = "SELECT chain_hash FROM audit_logs WHERE chain_hash IS NOT NULL ORDER BY id DESC LIMIT 1;";
+                using var command = new NpgsqlCommand(sql, connection);
+                var result = await command.ExecuteScalarAsync();
+                return result is DBNull or null ? null : result.ToString();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ⚠️ 审计链头恢复查询失败: {ex.Message}");
+                return null;
             }
         }
 
