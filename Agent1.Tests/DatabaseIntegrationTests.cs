@@ -65,7 +65,7 @@ public class DatabaseIntegrationTests : IAsyncLifetime
             using var conn = await _db.GetConnectionAsync();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "DELETE FROM knowledge_chunks; DELETE FROM knowledge_documents;";
-            await cmd.ExecuteNonQueryAsync();
+            cmd.ExecuteNonQuery();
         }
         catch { /* 静默清理 */ }
     }
