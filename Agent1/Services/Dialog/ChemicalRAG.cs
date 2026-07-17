@@ -51,9 +51,79 @@ namespace Agent1.Services
         /// <param name="databaseService">数据库服务（可选），传入后启用启动加速：DB 有数据则跳过文件扫描和嵌入生成。</param>
         public ChemicalRAG(string knowledgeBasePath, IKnowledgeBaseService knowledgeBase, IDatabaseService? databaseService = null)
         {
-            _knowledgeBasePath = knowledgeBasePath;
+            // P0修复：知识库路径健壮解析。
+            // `dotnet run --project Agent1.Api` 启动的子进程 CWD 是项目目录而非仓库根，
+            // 直接用相对路径 "knowledgebase" 会解析到 Agent1.Api/knowledgebase（不存在真实文档）。
+            // 这里将配置路径针对多个稳定锚点（CWD、程序集目录及其各级父目录）解析，
+            // 挑选真正包含知识库子目录的那个，保持配置驱动、跨平台、不硬编码绝对路径。
+            _knowledgeBasePath = ResolveKnowledgeBasePath(knowledgeBasePath);
             _knowledgeBase = knowledgeBase;
             _databaseService = databaseService;
+        }
+
+        // 知识库特征子目录：只要命中其一即认定该目录是真实知识库根。
+        private static readonly string[] KnowledgeBaseMarkers =
+            { "国标", "园区规则", "历史案例", "化工专业条例" };
+
+        /// <summary>
+        /// 将配置的知识库路径（可能是相对路径）解析为真实存在的绝对路径。
+        /// 不依赖进程工作目录：依次尝试 CWD、程序集目录及其各级父目录作为锚点，
+        /// 选出真正包含知识库特征子目录的路径；均未命中时回退为原路径的绝对形式（保持原行为）。
+        /// </summary>
+        private static string ResolveKnowledgeBasePath(string configuredPath)
+        {
+            if (string.IsNullOrWhiteSpace(configuredPath))
+                return configuredPath;
+
+            // 绝对路径且已合格 → 直接采用
+            if (Path.IsPathRooted(configuredPath) && QualifiesAsKnowledgeBase(configuredPath))
+                return configuredPath;
+
+            var anchors = new List<string>();
+            void AddWithAncestors(string? start)
+            {
+                var dir = start;
+                int guard = 0;
+                while (!string.IsNullOrEmpty(dir) && guard++ < 12)
+                {
+                    if (!anchors.Contains(dir)) anchors.Add(dir);
+                    dir = Path.GetDirectoryName(
+                        dir!.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                }
+            }
+            AddWithAncestors(Directory.GetCurrentDirectory());
+            AddWithAncestors(AppContext.BaseDirectory);
+
+            var leaf = Path.GetFileName(
+                configuredPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+
+            foreach (var anchor in anchors)
+            {
+                // 锚点 + 配置路径
+                var candidate = Path.GetFullPath(Path.Combine(anchor, configuredPath));
+                if (QualifiesAsKnowledgeBase(candidate)) return candidate;
+
+                // 锚点 + 叶子目录名（配置为多级相对路径时的兜底）
+                if (!string.IsNullOrEmpty(leaf))
+                {
+                    var leafCandidate = Path.GetFullPath(Path.Combine(anchor, leaf));
+                    if (QualifiesAsKnowledgeBase(leafCandidate)) return leafCandidate;
+                }
+
+                // 锚点自身即知识库根
+                if (QualifiesAsKnowledgeBase(anchor)) return anchor;
+            }
+
+            // 兜底：保持原行为（相对 CWD 解析）
+            return Path.IsPathRooted(configuredPath) ? configuredPath : Path.GetFullPath(configuredPath);
+        }
+
+        private static bool QualifiesAsKnowledgeBase(string dir)
+        {
+            if (!Directory.Exists(dir)) return false;
+            foreach (var marker in KnowledgeBaseMarkers)
+                if (Directory.Exists(Path.Combine(dir, marker))) return true;
+            return false;
         }
         /// <summary>
         /// 异步加载化工知识库，包括国标、园区规则和历史案例。

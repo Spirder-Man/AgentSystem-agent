@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using System.Runtime.Serialization;
 using Agent1.Services;
@@ -109,8 +110,64 @@ public class ChemicalRAGTests
     }
 
     // ═══════════════════════════════════════
+    // ResolveKnowledgeBasePath: 知识库路径健壮解析（P0）
+    // ═══════════════════════════════════════
+
+    [Fact]
+    public void ResolveKnowledgeBasePath_AbsoluteQualified_ReturnedAsIs()
+    {
+        var root = Directory.CreateDirectory(
+            Path.Combine(Path.GetTempPath(), "kb_" + Guid.NewGuid().ToString("N"))).FullName;
+        Directory.CreateDirectory(Path.Combine(root, "国标"));
+        try
+        {
+            var resolved = CallResolveKnowledgeBasePath(root);
+            resolved.Should().Be(root);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void ResolveKnowledgeBasePath_RelativePath_AnchoredToCwdAncestor()
+    {
+        // 模拟远程实况：CWD 在项目子目录（Agent1.Api/bin），真实知识库在上层仓库根。
+        var root = Directory.CreateDirectory(
+            Path.Combine(Path.GetTempPath(), "kbroot_" + Guid.NewGuid().ToString("N"))).FullName;
+        var kb = Directory.CreateDirectory(Path.Combine(root, "knowledgebase")).FullName;
+        Directory.CreateDirectory(Path.Combine(kb, "国标"));
+        var deep = Directory.CreateDirectory(Path.Combine(root, "Agent1.Api", "bin")).FullName;
+
+        var prevCwd = Directory.GetCurrentDirectory();
+        try
+        {
+            Directory.SetCurrentDirectory(deep);
+            var resolved = CallResolveKnowledgeBasePath("knowledgebase");
+            resolved.Should().Be(Path.GetFullPath(kb));
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(prevCwd);
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public void ResolveKnowledgeBasePath_NoMatch_FallsBackToAbsolute()
+    {
+        var resolved = CallResolveKnowledgeBasePath("nonexistent_kb_dir_" + Guid.NewGuid().ToString("N"));
+        Path.IsPathRooted(resolved).Should().BeTrue();
+    }
+
+    // ═══════════════════════════════════════
     // Reflection Helpers
     // ═══════════════════════════════════════
+
+    private static string CallResolveKnowledgeBasePath(string configuredPath)
+    {
+        var method = typeof(ChemicalRAG).GetMethod("ResolveKnowledgeBasePath",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+        return (string)method.Invoke(null, new object[] { configuredPath })!;
+    }
 
     private static List<string> CallSplitTextIntoChunks(string text, int maxChunkSize)
     {
