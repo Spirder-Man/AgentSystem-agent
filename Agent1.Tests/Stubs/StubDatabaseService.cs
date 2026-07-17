@@ -59,8 +59,8 @@ public class StubDatabaseService : IDatabaseService
     public Task<int> GetChemicalDocumentCountAsync()
         => Task.FromResult(0);
 
-    public Task<List<(string Content, string RegulationType, string Priority, string? SourceFile)>> GetAllChemicalDocumentTextsAsync()
-        => Task.FromResult(new List<(string, string, string, string?)>());
+    public Task<List<ChemicalDocumentRecord>> GetAllChemicalDocumentTextsAsync()
+        => Task.FromResult(new List<ChemicalDocumentRecord>());
 
     public Task<List<ChemicalDocumentRecord>> GetAllChemicalDocumentsWithEmbeddingsAsync()
         => Task.FromResult(new List<ChemicalDocumentRecord>());
@@ -69,12 +69,36 @@ public class StubDatabaseService : IDatabaseService
         => Task.FromResult(0);
 
     // ═══════════════════════════════════════
+    // 知识库双层表架构 — 存根（Phase 1-6）
+    // ═══════════════════════════════════════
+
+    public Task<int> InsertDocumentAsync(KnowledgeDocumentRecord doc)
+        => Task.FromResult(1);
+
+    public Task InsertChunkAsync(ChemicalDocumentRecord chunk, int documentId)
+        => Task.CompletedTask;
+
+    public Task InsertChunksBatchAsync(List<ChemicalDocumentRecord> chunks, int documentId)
+        => Task.CompletedTask;
+
+    public Task UpdateDocumentChunkCountAsync(int documentId, int totalChunks)
+        => Task.CompletedTask;
+
+    public Task<int> GetKnowledgeDocumentCountAsync()
+        => Task.FromResult(0);
+
+    public Task<int> GetKnowledgeChunkCountAsync()
+        => Task.FromResult(0);
+
+    // ═══════════════════════════════════════
     // 审计日志（存根返回空）
     // ═══════════════════════════════════════
 
     public Task AddAuditLogAsync(string userId, string operation, string details,
-        string? ipAddress = null, string? chainHash = null)
+        string? ipAddress = null, string? chainHash = null, DateTime? createTime = null)
         => Task.CompletedTask;
+
+    public Task<string?> GetLastAuditChainHashAsync() => Task.FromResult<string?>(null);
 
     public Task<List<AuditLog>> GetAuditLogsAsync(DateTime? startTime, DateTime? endTime, string? userId = null)
         => Task.FromResult(new List<AuditLog>());
