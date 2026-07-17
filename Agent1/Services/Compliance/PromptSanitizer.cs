@@ -19,10 +19,8 @@ namespace Agent1.Services
             @"\[判定[：:][^\]]*\]\s*",
             RegexOptions.Compiled);
 
-        /// <summary>匹配独立的 GB 编号模式</summary>
-        private static readonly Regex GbStandaloneRegex = new(
-            @"\bGB\s*/?T?\s*\d{4,5}(?:[.\-]\d+(?:\.\d+)?)?(?:\s*-\s*\d{4})?\b",
-            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        // P1-2: 统一使用 GbCodeHelper.GbCodePattern，替代私有 GbStandaloneRegex
+        private static Regex GbStandaloneRegex => GbCodeHelper.GbCodePattern;
 
         /// <summary>匹配条款号模式（如"第3.2条"、"第5.3.2条"）</summary>
         private static readonly Regex ClauseRegex = new(

@@ -393,24 +393,23 @@ namespace Agent1.Services
             }
 
             // Phase 2a 验证: 从 LlmService 诊断记录同步工具调用
-            var llmService = _llmService as LlmService;
             var toolCalls = new List<FunctionCallRecord>();// 工具调用记录
-            // 从 LlmService 诊断记录同步工具调用
-            if (llmService != null && llmService.LastFunctionCalls.Count > 0)
+            // 从 LlmService 诊断记录同步工具调用（P2-2: 通过接口属性替代 as 向下转型）
+            if (_llmService.LastFunctionCalls.Count > 0)
             {
                 // 复制工具调用记录
-                toolCalls = new List<FunctionCallRecord>(llmService.LastFunctionCalls);
+                toolCalls = new List<FunctionCallRecord>(_llmService.LastFunctionCalls);
                 // 填充工具调用结果
                 LastToolResults = new Dictionary<string, string>();
                 // 遍历工具调用记录
-                foreach (var fc in llmService.LastFunctionCalls)
+                foreach (var fc in _llmService.LastFunctionCalls)
                 {
                     LastToolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
                 }
                 LastToolPlan = new ToolPlan
                 {
                     NeedsTools = true,
-                    ToolNames = llmService.LastFunctionCalls.Select(fc => fc.FunctionName).ToList()
+                    ToolNames = _llmService.LastFunctionCalls.Select(fc => fc.FunctionName).ToList()
                 };
             }
             // 如果没有工具调用，则初始化工具调用结果和计划
@@ -422,6 +421,21 @@ namespace Agent1.Services
             // ★ 双通道解耦架构：统一入口（事实提取 + 消毒 + 事实渲染 + 合并）
             answer = ApplyDecoupledPipeline(answer, toolCalls, isInfoQuery: false);
 
+            // P0-1: 输出验证与置信度标注（激活 OutputValidator 死代码）
+            var warnings = new List<string>();
+            var toolOutput = string.Join("\n", toolCalls.Select(tc => tc.Result ?? ""));
+            var qualityLevel = toolCalls.Select(tc => tc.Quality).FirstOrDefault(q => q != null);
+            if (toolOutput.Length > 0)
+            {
+                var validationResult = OutputValidator.Validate(answer, toolOutput, qualityLevel);
+                if (validationResult.HasHallucination || validationResult.Confidence == OutputValidator.ConfidenceLevel.LOW_CONFIDENCE)
+                {
+                    answer = validationResult.SanitizedOutput
+                        + $"\n\n{OutputValidator.GetConfidenceTag(qualityLevel)}";
+                    warnings.Add("输出含未验证法规引用，已标注置信度");
+                }
+            }
+
             // 提取并存储关键事实 input 和 answer 是提示模板的输入和输出
             _memoryService.ExtractAndStoreKeyFacts(input, answer);
 
@@ -431,8 +445,15 @@ namespace Agent1.Services
                 var userId = context.UserProfile.UserName ?? "default";
                 _ = _memoryCoordinator.PostInferenceAsync(context.Session.SessionId, userId, input, answer, LastToolResults);
             }
+
+            // P0-2: 审计留痕（激活 ComplianceAuditLogger 死代码）
+            ComplianceAuditLogger.LogFromToolContext(
+                userQuery: input,
+                toolName: toolCalls.FirstOrDefault()?.FunctionName ?? "ChemicalCompliance",
+                llmResponse: answer);
+
             // 返回结果：回答文本, 工具调用记录, 安全警告
-            return (answer, toolCalls, new List<string>());
+            return (answer, toolCalls, warnings);
         }
         /// <summary>
         /// Phase 2b: 通用对话业务
@@ -463,13 +484,14 @@ namespace Agent1.Services
             
             // [BUG FIX] 收集 SK Auto FC 在 SimpleChat 路径中调用的系统工具（GetCurrentTime/Calculate）
             // 此前硬编码返回空列表导致 metrics.ToolCallCount=0 与实际 [SK诊断] 输出矛盾
+            // P2-2: 通过接口属性替代 as 向下转型
             var toolCalls = new List<FunctionCallRecord>();
-            if (_llmService is LlmService llmService && llmService.LastFunctionCalls.Count > 0)
+            if (_llmService.LastFunctionCalls.Count > 0)
             {
-                toolCalls = new List<FunctionCallRecord>(llmService.LastFunctionCalls);
+                toolCalls = new List<FunctionCallRecord>(_llmService.LastFunctionCalls);
                 // 同步到 LastToolResults 供后续 PostInferenceAsync 使用
                 var toolResults = new Dictionary<string, string>();
-                foreach (var fc in llmService.LastFunctionCalls)
+                foreach (var fc in _llmService.LastFunctionCalls)
                     toolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
             }
 

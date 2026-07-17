@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import apiClient from '@/lib/axios';
+import { knowledgeBaseApi } from '@/api';
 import type { HealthStatus, AlertTestResult } from '@/types/api';
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage } from 'element-plus';
@@ -26,7 +27,7 @@ async function clearCache() {
 
 async function updateKB() {
   try {
-    const { data } = await apiClient.post<{ message: string }>('/api/KnowledgeBase/incremental-load');
+    const data = await knowledgeBaseApi.incrementalLoad();
     ElMessage.success(data.message);
   } catch { ElMessage.error('更新失败'); }
 }

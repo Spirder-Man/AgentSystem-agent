@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import apiClient from '@/lib/axios';
+import { adminApi } from '@/api';
 import type { DbInfoResponse, DbValidateResponse } from '@/types/api';
 import { ElMessage } from 'element-plus';
 import {
@@ -23,8 +23,7 @@ async function fetchDbInfo() {
   infoLoading.value = true;
   infoError.value = '';
   try {
-    const { data } = await apiClient.get<DbInfoResponse>('/api/admin/db/info');
-    dbInfo.value = data;
+    dbInfo.value = await adminApi.getDbInfo();
   } catch {
     infoError.value = '加载数据库信息失败';
   } finally {
@@ -37,9 +36,8 @@ async function runValidate() {
   validateError.value = '';
   validateResult.value = null;
   try {
-    const { data } = await apiClient.get<DbValidateResponse>('/api/admin/db/validate');
-    validateResult.value = data;
-    ElMessage.success(`验证完成 · 耗时 ${data.elapsedMs}ms`);
+    validateResult.value = await adminApi.validateDb();
+    ElMessage.success(`验证完成 · 耗时 ${validateResult.value!.elapsedMs}ms`);
   } catch {
     validateError.value = '数据库验证失败，请稍后重试';
   } finally {

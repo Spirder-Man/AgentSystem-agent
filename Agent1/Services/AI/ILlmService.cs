@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Agent1.Models;
 using Microsoft.SemanticKernel;
 
 namespace Agent1.Services
@@ -22,5 +23,8 @@ namespace Agent1.Services
 
         // Phase 2c: 轻量级文本生成（无工具调用，用于摘要/压缩）
         Task<string> GenerateSimpleResponseAsync(string prompt, int maxTokens = 512);
+
+        // P2-2: 暴露最近一次 Function Calling 的工具调用记录，消除 as LlmService 向下转型
+        IReadOnlyList<FunctionCallRecord> LastFunctionCalls { get; }
     }
 }

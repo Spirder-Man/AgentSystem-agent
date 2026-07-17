@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import apiClient from '@/lib/axios';
+import { auditApi } from '@/api';
 import type {
   AuditLogEntry,
-  AuditLogListResponse,
   AuditIntegrityResponse,
   AuditStatsResponse,
 } from '@/types/api';
@@ -45,7 +44,7 @@ async function fetchAuditLogs() {
     if (filterFrom.value) params.from = filterFrom.value;
     if (filterTo.value) params.to = filterTo.value;
 
-    const { data } = await apiClient.get<AuditLogListResponse>('/api/Audit/logs', { params });
+    const data = await auditApi.getLogs(params);
     logs.value = data.logs;
     total.value = data.total;
   } catch (err: unknown) {
@@ -63,7 +62,7 @@ async function fetchAuditLogs() {
 async function verifyIntegrity() {
   checkingIntegrity.value = true;
   try {
-    const { data } = await apiClient.get<AuditIntegrityResponse>('/api/Audit/integrity');
+    const data = await auditApi.verifyIntegrity();
     integrity.value = data;
     ElMessage[data.intact ? 'success' : 'warning'](data.detail);
   } catch {
@@ -75,16 +74,16 @@ async function verifyIntegrity() {
 
 async function fetchStats() {
   try {
-    const { data } = await apiClient.get<AuditStatsResponse>('/api/Audit/stats');
-    stats.value = data;
+    stats.value = await auditApi.getStats();
   } catch { /* non-critical */ }
 }
 
 async function exportReport() {
   try {
-    const params = { from: filterFrom.value || '2026-01-01', to: filterTo.value || new Date().toISOString() };
-    const { data } = await apiClient.get<{ report: string }>('/api/Audit/export', { params });
-    const blob = new Blob([data.report], { type: 'text/plain;charset=utf-8' });
+    const from = filterFrom.value || '2026-01-01';
+    const to = filterTo.value || new Date().toISOString();
+    const result = await auditApi.exportReport(from, to);
+    const blob = new Blob([result.report], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

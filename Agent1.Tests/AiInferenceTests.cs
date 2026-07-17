@@ -475,48 +475,86 @@ public class ChemicalRagTests
 }
 
 // ═══════════════════════════════════════════
-// IntegrationService 测试 — 空实现/占位
+// P0-3: IntegrationService 测试 — 显式降级，禁止静默返回空数据。
+// 所有未接入方法必须抛出 NotSupportedException 并包含系统名称提示。
 // ═══════════════════════════════════════════
 public class IntegrationServiceTests
 {
     private readonly IntegrationService _service = new();
 
     [Fact]
-    public async Task GetWarehouseRecords_ReturnsEmptyList()
+    public async Task GetWarehouseRecords_ShouldThrowNotSupported()
     {
-        var records = await _service.GetWarehouseRecordsAsync();
-        records.Should().NotBeNull();
-        records.Should().BeEmpty();
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(
+            () => _service.GetWarehouseRecordsAsync());
+        ex.Message.Should().Contain("ERP");
+        ex.Message.Should().Contain("仓储");
     }
 
     [Fact]
-    public async Task GetWarehouseRecords_WithChemicalName_ReturnsEmptyList()
+    public async Task GetWarehouseRecords_WithChemicalName_ShouldThrowNotSupported()
     {
-        var records = await _service.GetWarehouseRecordsAsync("苯");
-        records.Should().BeEmpty();
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(
+            () => _service.GetWarehouseRecordsAsync("苯"));
+        ex.Message.Should().Contain("ERP");
     }
 
     [Fact]
-    public async Task GetEHSTickets_ReturnsEmptyList()
+    public async Task GetEHSTickets_ShouldThrowNotSupported()
     {
-        var tickets = await _service.GetEHSTicketsAsync();
-        tickets.Should().NotBeNull();
-        tickets.Should().BeEmpty();
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(
+            () => _service.GetEHSTicketsAsync());
+        ex.Message.Should().Contain("EHS");
+        ex.Message.Should().Contain("工单");
     }
 
     [Fact]
-    public async Task GetEHSTickets_WithFilter_ReturnsEmptyList()
+    public async Task GetEHSTickets_WithFilter_ShouldThrowNotSupported()
     {
-        var tickets = await _service.GetEHSTicketsAsync(true);
-        tickets.Should().BeEmpty();
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(
+            () => _service.GetEHSTicketsAsync(true));
+        ex.Message.Should().Contain("EHS");
     }
 
     [Fact]
-    public async Task SyncMethods_DoNotThrow()
+    public async Task SyncMethods_ShouldThrowNotSupported()
     {
-        await _service.SyncERPDataAsync();
-        await _service.SyncWMSDataAsync();
-        await _service.SyncEHSDataAsync();
+        (await Assert.ThrowsAsync<NotSupportedException>(
+            () => _service.SyncERPDataAsync())).Message.Should().Contain("ERP");
+
+        (await Assert.ThrowsAsync<NotSupportedException>(
+            () => _service.SyncWMSDataAsync())).Message.Should().Contain("WMS");
+
+        (await Assert.ThrowsAsync<NotSupportedException>(
+            () => _service.SyncEHSDataAsync())).Message.Should().Contain("EHS");
+    }
+
+    [Fact]
+    public void Implements_IIntegrationService()
+    {
+        _service.Should().BeAssignableTo<IIntegrationService>();
+    }
+
+    [Fact]
+    public async Task AllMethods_MessageShouldContainActionableGuidance()
+    {
+        // P0-3: 验证所有 5 个方法各自抛出正确的异常消息
+        var ex1 = await Assert.ThrowsAsync<NotSupportedException>(
+            () => _service.GetWarehouseRecordsAsync());
+        ex1.Message.Should().Contain("ERP");
+
+        var ex2 = await Assert.ThrowsAsync<NotSupportedException>(
+            () => _service.GetEHSTicketsAsync());
+        ex2.Message.Should().Contain("EHS");
+
+        var ex3 = await Assert.ThrowsAsync<NotSupportedException>(
+            () => _service.SyncWMSDataAsync());
+        ex3.Message.Should().Contain("WMS");
+
+        // 所有异常都应包含可操作指引
+        ex1.Message.Should().Contain("请联系管理员");
+        ex2.Message.Should().Contain("请联系管理员");
+        ex3.Message.Should().Contain("请联系管理员");
     }
 }
 

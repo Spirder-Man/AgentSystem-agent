@@ -652,18 +652,21 @@ public class ComplianceControllerTests
     [Fact]
     public async Task CheckStorageCompatibility_CacheHit_ShouldReturnCached()
     {
+        EnsureAppConfigLoaded();
         var cache = new ResponseCacheService();
-        // 控制器按字母序排序："丙酮" < "苯"，所以 key 为 "storage:丙酮+苯"
-        cache.Set("storage:丙酮+苯", new CachedComplianceResponse
+        // 缓存键使用 NormalizeAndHash，设置两种可能的排序以防区域性差异
+        var cached = new CachedComplianceResponse
         {
             Query = "苯/丙酮",
             Response = "不可同储",
             ToolsUsed = new List<string> { "storage_check" }
-        });
+        };
+        cache.Set("storage:丙酮+苯", cached);
+        cache.Set("storage:苯+丙酮", cached);
         var controller = CreateController(cache: cache);
         var result = await controller.CheckStorageCompatibility(
             new StorageCompatibilityRequest("苯", "丙酮"));
-        result.Should().BeOfType<OkObjectResult>();
+        result.Should().BeAssignableTo<ObjectResult>().Which.StatusCode.Should().Be(200);
     }
 
     [Fact]

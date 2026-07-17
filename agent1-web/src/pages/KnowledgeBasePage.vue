@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import apiClient from '@/lib/axios';
-import type { SearchModeResponse, RagTestResponse, IncrementalLoadResponse } from '@/types/api';
+import { knowledgeBaseApi } from '@/api';
+import type { RagTestResponse } from '@/types/api';
 import { ElMessage } from 'element-plus';
 import { useLoadingBar } from '@/lib/useLoadingBar';
 
@@ -19,7 +19,7 @@ const { start, stop } = useLoadingBar();
 
 async function fetchSearchMode() {
   try {
-    const { data } = await apiClient.get<SearchModeResponse>('/api/knowledgebase/search-mode');
+    const data = await knowledgeBaseApi.getSearchMode();
     searchMode.value = data.mode;
   } catch { /* ignore */ }
 }
@@ -27,7 +27,7 @@ async function fetchSearchMode() {
 async function switchMode(mode: 'Bm25' | 'Vector' | 'Hybrid') {
   modeLoading.value = true;
   try {
-    await apiClient.put('/api/knowledgebase/search-mode', { mode });
+    await knowledgeBaseApi.setSearchMode({ mode });
     searchMode.value = mode;
     ElMessage.success(`搜索模式已切换为 ${mode}`);
   } catch { ElMessage.error('切换失败'); }
@@ -41,7 +41,7 @@ async function runRagTest() {
   ragLoading.value = true;
   start('正在执行 RAG 检索…');
   try {
-    const { data } = await apiClient.post<RagTestResponse>('/api/knowledgebase/rag-test', {
+    const data = await knowledgeBaseApi.ragTest({
       query: ragQuery.value.trim(),
     });
     ragResult.value = data;
@@ -54,7 +54,7 @@ async function runRagTest() {
 async function incrementalLoad() {
   kbLoading.value = true;
   try {
-    const { data } = await apiClient.post<IncrementalLoadResponse>('/api/knowledgebase/incremental-load');
+    const data = await knowledgeBaseApi.incrementalLoad();
     ElMessage.success(data.message);
   } catch { ElMessage.error('增量加载失败'); }
   finally { kbLoading.value = false; }

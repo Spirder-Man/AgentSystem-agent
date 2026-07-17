@@ -1,0 +1,57 @@
+# ═══════════════════════════════════════════════
+# 告警规则 — Agent1 化工合规 AI 平台
+# 阈值参考：LLM 错误 >10%、API 5xx >5%、熔断打开、P95 >5s
+# ═══════════════════════════════════════════════
+
+groups:
+  - name: agent1_alerts
+    rules:
+      # ── LLM 调用错误率 ──
+      - alert: HighLLMErrorRate
+        expr: job:llm_errors:rate5m > 0.10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM 调用错误率超过 10%"
+          description: "当前 LLM 错误率 {{ $value | humanizePercentage }}，触发阈值 10%"
+
+      # ── API 5xx 错误率 ──
+      - alert: HighAPI5xxRate
+        expr: job:api_5xx:rate5m > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API 5xx 错误率超过 5%"
+          description: "当前 5xx 错误率 {{ $value | humanizePercentage }}，触发阈值 5%"
+
+      # ── 熔断器打开 ──
+      - alert: CircuitBreakerOpen
+        expr: job:circuit_breaker_open > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "LLM 调用熔断器已打开"
+          description: "熔断器处于打开状态，服务正在拒绝 LLM 请求，需立即排查后端模型可用性"
+
+      # ── LLM 降级到规则引擎 ──
+      - alert: LLMFallbackToRuleEngine
+        expr: job:llm_fallback:rate5m > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM 已降级到规则引擎"
+          description: "LLM 调用降级到规则引擎，降级速率 {{ $value }}，表明主 LLM 通道存在质量问题"
+
+      # ── API P95 延迟 ──
+      - alert: APIHighLatency
+        expr: job:http_request_duration_seconds:p95 > 5.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API P95 延迟超过 5 秒"
+          description: "当前 P95 延迟 {{ $value }}s，超过 5s 阈值"

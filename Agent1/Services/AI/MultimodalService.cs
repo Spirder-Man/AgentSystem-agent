@@ -7,7 +7,7 @@ namespace Agent1.Services
 {
     /// <summary>
     /// [P2] 多模态视觉分析服务 — 通过 llama.cpp 的 OpenAI 兼容 /v1/chat/completions 端点
-    /// 调用视觉模型（需单独启动 llama-server --mmproj 实例在 8082 端口）。
+    /// 调用视觉模型（需单独启动 llama-server --mmproj 实例在 8083 端口，与 Reranker 8082 分离）。
     /// 
     /// API 格式：使用 content 数组中的 image_url 类型传递 Base64 图片。
     /// 适用场景：GHS 标签识别、储罐/管道照片分析、消防设施合规检查。

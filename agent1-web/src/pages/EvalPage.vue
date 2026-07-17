@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onUnmounted } from 'vue';
-import apiClient from '@/lib/axios';
-import type { EvalRunResponse, EvalTaskStatus, EvalReport } from '@/types/api';
+import { evalApi } from '@/api';
+import type { EvalReport } from '@/types/api';
 import { ElMessage } from 'element-plus';
 
 const taskId = ref('');
@@ -20,7 +20,7 @@ async function startEval() {
   progress.value = '';
   running.value = true;
   try {
-    const { data } = await apiClient.post<EvalRunResponse>('/api/eval/run');
+    const data = await evalApi.run();
     taskId.value = data.taskId;
     ElMessage.success(data.message);
     startPolling();
@@ -40,7 +40,7 @@ function startPolling() {
 async function pollStatus() {
   if (!taskId.value) return;
   try {
-    const { data } = await apiClient.get<EvalTaskStatus>(`/api/eval/status/${taskId.value}`);
+    const data = await evalApi.getStatus(taskId.value);
     status.value = data.status;
     progress.value = data.progress;
     if (data.report) {
@@ -66,7 +66,7 @@ function stopPolling() {
 async function deleteTask() {
   if (!taskId.value) return;
   try {
-    await apiClient.delete(`/api/eval/status/${taskId.value}`);
+    await evalApi.cancel(taskId.value);
     ElMessage.success('任务已删除');
     resetState();
   } catch { ElMessage.error('删除失败'); }

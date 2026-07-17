@@ -38,7 +38,7 @@ namespace Agent1.Config
         public static string MultimodalModelId => Config.Llm.MultimodalModelId;
 
         /// <summary>
-        /// 多模态服务端点（从配置读取，默认 :8082 独立 vision 实例）
+        /// 多模态服务端点（从配置读取，默认 :8083 独立 vision 实例，与 Reranker :8082 分离）
         /// </summary>
         public static Uri MultimodalEndpoint => new Uri(Config.Llm.MultimodalEndpoint);
 

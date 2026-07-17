@@ -5,7 +5,9 @@
 
 ---
 
-# Agent1 十项核心技术决策深度拆解
+# Agent1 十五项核心技术决策深度拆解
+
+> 上次更新: 2026-07-14 | ADR-001~010 (2026-05) + ADR-011~015 (2026-06~07)
 
 ---
 
@@ -448,15 +450,289 @@ public async Task LoadChemicalKnowledgeBaseAsync(string knowledgeBasePath)
 
 ---
 
-## 总结：十项决策的共性模式
+## ADR-011：双通道解耦架构（事实通道 + LLM 解读通道）
 
-纵观十项决策，可以归纳出三个反复出现的权衡模式：
+### 决策：法规引用走确定性事实通道（FactAssembler），不走 LLM。LLM 只负责解读和推理
 
-**模式 1：零依赖优先于功能完备**
+### 一、架构全景
+
+```
+用户查询 → AgentDialog.ExecuteAsync()
+                │
+                ├── LLM 自主决定调用哪些工具（FC）
+                │      └── ChemicalComplianceTools 返回结构化结果
+                │
+                ├── 通道 1【事实通道 — 不走 LLM】
+                │      ComplianceFactExtractor.Extract(toolCalls)
+                │        → ExtractedFacts { RegulationRefs, HazardCategories, ... }
+                │      FactAssembler.Build(extractedFacts)
+                │        → 确定性输出: "适用标准: GB 30000.7-2013, GB 15603-2022"
+                │
+                ├── 通道 2【解读通道 — 走 LLM】
+                │      LLM 解读结构化事实 → 生成自然语言合规结论
+                │
+                └── ResponseMerger.Merge(事实输出, LLM解读)
+                       → 最终响应: 法规引用 100% 确定 + 解读由 LLM 生成
+```
+
+### 二、为什么需要两通道？
+
+**核心矛盾**：LLM 在"引用法规编号"这件事上天然不可靠——它会：
+- 补充错误的年份后缀（Bug-028: GB 30000.2 被错误补充为 GB 30000.2-2020）
+- 遗漏工具已经返回的正确编号
+- 编造知识库中不存在的法规编号
+
+**但工具（ChemicalComplianceTools）的返回值是确定性的**——它从 PostgreSQL 化学物质数据库和 RAG 知识库中查询，结果是可验证的。
+
+**所以决策是**：法规编号（以及危险类别、安全距离等结构化数据）由事实通道直接输出，LLM 只负责"根据 GB 30000.7 判定该物质属于易燃液体，应储存在……"这样的语义解读。
+
+### 三、ExtractedFacts 结构体设计
+
+```csharp
+public class ExtractedFacts
+{
+    List<string> RegulationRefs;              // 工具返回的法规编号（唯一白名单）
+    Dictionary<string,string> HazardCategories;   // 物质名 → 危险类别
+    Dictionary<string,string> ComplianceVerdicts; // 物质对 → 合规判定
+    Dictionary<string,string> SafetyDistances;    // 设施对 → 距离
+    Dictionary<string,string> RegulationVersions; // 标准编号 → 版本
+    List<string> RawToolOutputs;              // 降级调试用
+}
+```
+
+关键设计约束：**`RegulationRefs` 是法规编号的唯一白名单来源**——任何其他路径（LLM 生成、知识库检索）产生的法规编号都必须与这个白名单交叉验证。
+
+### 四、ResponseMerger 的合并策略
+
+合并时可能产生的问题：事实输出 `"适用标准: GB 30000.7"` 和 LLM 解读 `"依据 GB 30000.7-2013……"` 会产生重复引用。当前策略是**事实优先、解读去重**——`OutputSanitizer.Sanitize()` 会从 LLM 输出中移除已经在事实通道中出现的法规编号。
+
+### 五、E023 评测路径的兜底（BuildNoResult）
+
+当工具未调用时（评测集异常或 LLM FC 失效），`FactAssembler.BuildNoResult()` 生成空事实输出。这是评测路径特有的兜底，生产环境不应触发。
+
+---
+
+## ADR-012：T13 无状态评测架构与 KV Cache 三层防御
+
+### 决策：每条评测用例独立 Kernel + 按意图裁剪工具集 + Token 预算管理
+
+### 一、问题的根因
+
+llama.cpp 的 KV Cache 通过 **LCP（Logical Context Partition）slot 复用** 机制跨请求累积上下文。当评测 pipeline 用同一个 Kernel 连续执行 50 条用例时，KV Cache 不断膨胀直到溢出，导致 **Function Calling 完全失效**——LLM 不再调用任何工具，所有评测用例的 `tool_match` 返回 false。
+
+### 二、三层防御体系
+
+```
+L1: cache_prompt=false
+    禁用 llama.cpp 的 prompt 缓存机制
+    → 每次推理都重新计算 KV 状态
+
+L2: 每条用例独立 Kernel
+    ExecuteEvalPerCaseAsync() 内部 new Kernel()
+    → 彻底杜绝跨用例的上下文污染
+
+L3: Token 预算检查
+    EstimateTokens() + WouldExceedBudget()
+    → 预估超限时跳过该用例（而非产生错误结果）
+```
+
+### 三、按意图裁剪工具集
+
+| 意图 | 工具白名单 | 数量 | Token 开销 |
+|------|-----------|------|-----------|
+| `info_query` | CheckHazardCategory, GetSafetyDistance, LookupChemicalProperties, GetMajorHazardThreshold, CheckRegulationVersion, GetCurrentTime | 6 | ~500 |
+| `compliance_judgment` | CheckStorageCompatibility, CheckHazardCategory, GetSafetyDistance, CheckRegulation, GetCurrentTime | 5 | ~800 |
+
+**裁剪原理**：合规判断不需要 `LookupChemicalProperties`（化学品属性查询），信息查询不需要 `CheckStorageCompatibility`（储存相容性）。精确裁剪减少 30-40% 的 prompt token 消耗。
+
+### 四、代价
+
+- 每次创建 Kernel 有 ~50ms 的额外开销（50 条用例共 2.5s）
+- Token 预算检查可能跳过合法用例（保守估算的边界情况）
+
+---
+
+## ADR-013：GB 编号版本幻觉的三层约束机制
+
+### 决策：L1 数据库源 → L2 正则剥离年份 → L3 KB 反查验证
+
+### 一、问题
+
+LLM 倾向于给 GB 编号补充**错误的年份后缀**——模型训练数据中见过 `GB 30000.2-2013`，当工具返回 `GB 30000.2`（无年份）时，LLM 会"好心"补上 `-2013`。但国标是会修订的——当前有效版本可能是 `GB 30000.2-2020`，补充 `-2013` 就是**版本幻觉**。
+
+### 二、三层约束逐层分析
+
+**L1: ChemicalSubstanceDatabase.GetRegulationVersion() — 数据库源**
+
+硬编码字典，映射关系来自官方国标目录：
+```csharp
+"GB 30000.2" → { CurrentVersion: "GB 30000.2-2013", IsCurrent: true }
+```
+当 LLM 输出的 `GB 30000.2-2020` 与数据库记录的 `GB 30000.2-2013` 不一致时，标记为**疑似版本幻觉**。
+
+**L2: ConclusionVerifier.RegulationPattern — 正则剥离年份**
+
+```csharp
+Regex: GB\s*/?T?\s*(\d{4,5})[.\-](\d+(?:\.\d+)?)
+```
+这个正则在提取法规编号时**只捕获主干编号**（如 `GB 30000.2`），不捕获年份后缀（如 `-2013`）。效果：
+- LLM 输出 `"GB 30000.2-2013"` → 正则匹配到 `GB 30000.2` ✅
+- LLM 输出 `"GB 30000.2-2020"` → 正则匹配到 `GB 30000.2` ✅（年份被忽略）
+
+**设计意图**：防止 LLM 的版本幻觉导致"因为是不同年份所以没匹配到"。代价是失去了对年份本身的校验能力——如果 LLM 真的引用了错误的年份，L2 检测不到。
+
+**L3: KB 反向检索验证**
+
+`VerifyRegulationsAgainstKBAsync()` 对每个法规编号到知识库中反向检索：
+- 找到 → 标记为 `VerifiedRegulation` ✅
+- 找不到 → 标记为 `HallucinatedRegulation` ❌（疑似幻觉）
+
+### 三、三层之间的信息不对称（Bug-030 的根源）
+
+**关键矛盾**：L2 的正则（剥离年份）和 `ComplianceFactExtractor.GbNumberRegex`（可选保留年份）使用了**两套不同的正则**：
+
+| 正则 | 用途 | 年份处理 |
+|------|------|----------|
+| `RegulationPattern` | L2 结论验证 | 不捕获年份 |
+| `GbNumberRegex` | 事实提取 | 可选保留年份 |
+
+当评测引擎的 `CheckConclusion` 使用 `RegulationPattern` 从 LLM 文本中二次提取编号时，提取结果（无年份）与测试集的预期值（含年份）不一致，导致 `CheckRegulationMatch` 失败。
+
+**修复方向**：ADR-015 将评测引擎从"解析 LLM 文本"迁移到"消费 ExtractedFacts"，使评测引擎使用的事实提取器（`GbNumberRegex`）与双通道保持一致，消除了这组正则不一致。
+
+---
+
+## ADR-014：确定性规则引擎降级路径
+
+### 决策：DeterministicRuleEngine 作为 LLM 不可用时的降级方案
+
+### 一、设计动机
+
+化工合规场景中，部分判断是**确定性的**——不依赖语义理解，可以通过查表和数值比对完成：
+
+| 判断类型 | 输入 | 输出 | 是否需要 LLM |
+|----------|------|------|-------------|
+| 危险类别查询 | 物质名 → CAS | 易燃液体, 类别2 | ❌ 查表即可 |
+| 储存禁忌 | 物质A + 物质B | 不得同库储存 | ❌ 禁忌表匹配 |
+| 安全距离 | 设施类型 | 30米 | ❌ GB 查表 |
+| 法规解读 | 条款文本 + 场景 | 是否符合 | ✅ 需要 LLM |
+
+当 LLM 不可用时（Ollama 挂了、GPU 被占用、网络超时），系统仍能对前三类查询提供基础合规判断——**从"无响应"降级为"部分可用"**。
+
+### 二、在 AgentDialog 中的集成位置
+
+```csharp
+public AgentDialog(
+    ISessionService sessionService,
+    IMemoryService memoryService,
+    ILlmService llmService,
+    IToolService toolService,
+    IAuditService auditService,
+    MemoryCoordinator? memoryCoordinator = null,
+    DeterministicRuleEngine? ruleEngine = null  // 第7个参数
+)
+```
+
+`AgentDialog.ExecuteAsync()` 内部：
+1. 先调用 `DeterministicRuleEngine` 尝试查表/数值比对/禁忌检查
+2. 如果规则引擎能给出确定性答案 → 直接返回，不调用 LLM
+3. 如果规则引擎无法判断（需要语义理解） → 走正常的 LLM 路径
+
+### 三、Bug-029 暴露的架构代价
+
+**问题**：构造函数参数从 6 个增至 7 个，虽然使用了 C# 可选参数（`= null`），但 **Moq/Castle DynamicProxy 对 class 代理要求参数数量精确匹配**，不支持可选参数的隐式省略。
+
+导致 `ArchitectureConvergenceTests.CreateModuleFactory()` 中 Moq mock 的 `AgentDialog` 构造函数调用失败。修复方式是显式传入第 7 个参数 `(DeterministicRuleEngine?)null`。
+
+**教训**：当构造函数参数数量超过 5 个时，应考虑引入 Builder 模式或配置对象，避免 DI 容器/Mock 框架的参数匹配问题。
+
+---
+
+## ADR-015：评测引擎接入双通道结构化真值源
+
+### 决策：CheckConclusion 优先使用 ExtractedFacts.RegulationRefs / SafetyDistances，而非从 LLM 文本二次正则解析
+
+### 一、架构断层的发现（Bug-030 溯源）
+
+评测引擎的 `CheckConclusion` 被判"法规编号不匹配"时，追踪发现：
+
+```
+评测集预期值:         "GB 30000.2"              ← 无年份
+LLM 原始输出:         "适用标准 GB 30000.2-2013"  ← 含年份
+CheckConclusion 提取: "GB 30000.2"               ← 正则剥离年份后匹配 ✅
+但双通道法规真值源:   "GB 30000.2-2013"          ← GbNumberRegex 保留年份
+```
+
+**根因**：`CheckConclusion` 使用 `ConclusionVerifier.ExtractRegulations()`（正则不捕获年份），而双通道使用 `ComplianceFactExtractor.GbNumberRegex`（可选保留年份）。两套正则在同一个 GB 编号上提取结果不一致。
+
+更深层的架构问题：**法规编号的真值源应该是工具返回的结构化事实，而非对 LLM 文本的二次正则解析**。LLM 文本是"二手信息"——它可能遗漏、改写、或错误补充工具已经返回的正确数据。
+
+### 二、演进前后对比
+
+```
+演进前:
+═════════════════════════════════════
+CheckConclusion(response)
+  └→ ConclusionVerifier.ExtractRegulations(response)
+       └→ Regex: GB\s*/?T?\s*(\d{4,5})[.\-](\d+(?:\.\d+)?)
+            ↑ 从 LLM 文本二次扒取，与双通道是两套不同的正则
+
+演进后:
+═════════════════════════════════════
+extractedFacts = ComplianceFactExtractor.Extract(toolCalls, isInfoQuery)
+                    ↑ 双通道事实提取器的公共入口
+CheckConclusion(response, ..., extractedFacts)
+  ├── extractedFacts?.RegulationRefs    ← 优先：结构化真值源
+  ├── extractedFacts?.SafetyDistances   ← 优先：结构化真值源
+  └── ConclusionVerifier.ExtractRegulations  ← 降级：仅 null 时
+```
+
+### 三、关键设计决策
+
+**1. 为什么是"优先"而不是"替代"？**
+
+`ExtractedFacts` 可能为 null（工具未调用、提取失败、非评测环境调用）。保留 LLM 文本解析作为降级路径，用 `??` 操作符串联：
+
+```csharp
+var allRegs = extractedFacts?.RegulationRefs ?? ConclusionVerifier.ExtractRegulations(response);
+```
+
+**2. 为什么合规判定（is_compliant）仍然基于 LLM 文本？**
+
+`extractedFacts.ComplianceVerdicts` 中的内容是工具返回的原始判定（如 `"不得同库储存"`），但最终结论需要 LLM 综合多条工具结果做语义判断。评测 LLM 的"判决"本身就是评测对象，不能用工具结果替代。
+
+**3. Level 4 幻觉检测也接到双通道**
+
+原来的幻觉检测逻辑：`ConclusionVerifier.ExtractRegulations(response)` 提取 LLM 输出的 GB 编号，然后 KB 反查验证。现在改为 `extractedFacts?.RegulationRefs`——因为真值源是工具结果，LLM 额外输出的编号本身就是需要检测的"额外引用"。
+
+### 四、验证
+
+新增测试 `CheckConclusion_WithExtractedFacts_RegulationRefsFromTool_UsesStructuredPath`：
+
+```csharp
+// LLM 文本中不含任何 GB 编号
+var response = "该物质属于易燃液体，需注意储存安全";
+// 但 extractedFacts.RegulationRefs 中有
+var facts = new ExtractedFacts { RegulationRefs = { "GB 30000.2-2013" } };
+
+CheckConclusion(response, expected, extractedFacts: facts).Should().BeTrue();
+// 证明评测引擎吃的是结构化事实，不是 LLM 文本
+```
+
+---
+
+## 总结：十五项决策的共性模式
+
+纵观十五项决策，可以归纳出四个反复出现的权衡模式：
+
+**模式 1：零依赖优先于功能完备**（ADR-001, 006）
 NGram 不用 jieba、不用 DI 容器、不用 BGE——每次选型都倾向于"自己写 40 行"而不是"引入一个库"。这是 CMD 单机部署场景的理性选择，但也留下了维护债务。
 
-**模式 2：静默降级优先于显式告警**
-向量失败吞异常、双路径共存不报错——系统在任何局部失败时都尽力继续运行。代价是可观测性为零。
+**模式 2：静默降级优先于显式告警**（ADR-008, 010, 014）
+向量失败吞异常、双路径共存不报错、规则引擎静默降级——系统在任何局部失败时都尽力继续运行。代价是可观测性为零。
 
-**模式 3：快速验证优先于架构收敛**
-两套分块逻辑、两套工具调度、两条加载路径——这些都是"先跑通再收敛"策略的产物。当前节点正是从"跑通"走向"收敛"的拐点。
+**模式 3：快速验证优先于架构收敛**（ADR-005, 007, 010）
+两套分块逻辑、两套工具调度、两条加载路径——这些都是"先跑通再收敛"策略的产物。
+
+**模式 4（新增）：确定性优先于灵活性**（ADR-011, 013, 015）
+事实通道不走 LLM、法规编号三层约束、评测引擎直连双通道——系统的演进方向明确指向**"对关键信息的生成路径做确定性收敛"**。这是化工合规场景的必然要求：法规引用不能有概率性错误。

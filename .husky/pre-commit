@@ -1,1 +1,2 @@
+#!/usr/bin/env sh
 cd agent1-web && npx lint-staged

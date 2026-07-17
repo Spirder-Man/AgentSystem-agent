@@ -1,0 +1,345 @@
+第一步就是**数据库表结构重设计，把元数据承载完整，减少向量降级到纯 BM25 的概率**。让我先做完整的文件级数据分析，再产出表结构设计。
+
+先看一下当前 DatabaseService 的 INSERT 语句确认现状：
+现在让我看 `RebuildBm25FromDatabaseAsync` 从 DB 读回了哪些字段：
+好，现在全貌已完全清晰。让我做**完整的数据分析和表结构重设计**。
+
+---
+
+## 📊 第一部分：knowledgebase 文件全量分析
+
+### 一、文件分类矩阵
+
+| 类别 | 目录 | 文件数 | 格式 | 内容特征 | 当前 regulation_type | 当前 priority | 应设 regulation_type |
+|------|------|--------|------|----------|---------------------|---------------|---------------------|
+| **国标全文（结构化）** | `国标/` | 5个 TXT | TXT | 法规条文，可按条款分块 | `国标` | `高` | `国标` ✅ |
+| **国标原文PDF** | `国标/` | 9个 PDF | PDF | GB标准PDF原件，需OCR提取 | `国标` | `高` | `国标` ✅ |
+| **GB30000系列PDF** | `化工专业条例/化工专业条例/` | 29个 PDF | PDF | GB30000.2-.29 分类规范全文 | `国标` ⚠️ | `高` | `化工专业条例` |
+| **行业规程PDF** | `化工专业条例/化工专业条例/` | 2个 PDF | PDF | 30871-2022 + 危化品条例 | `国标` ⚠️ | `高` | `化工专业条例` |
+| **危险化学品条例** | `化工专业条例/化工专业条例/` | 1个 PDF | PDF | 国务院令591号 | `国标` ⚠️ | `高` | `化工专业条例` |
+| **园区管理规范** | `园区规则/` | 2个 TXT + 1个 PDF | TXT/PDF | 动火作业规范、存储管理规定 | `园区规则` | `中` | `园区规则` ✅ |
+| **历史事故案例** | `历史案例/` | 2个 TXT | TXT | 叙事文本，整改/处置记录 | `历史案例` | `低` | `历史案例` ✅ |
+| **企业制度模板** | `H166-.../` | ~200个 DOC/DOCX | DOC/DOCX | 标准化管理制度模板、表单 | `企业制度` | `低` | `企业制度` ✅ |
+
+### 二、逐类详细分析
+
+#### A. 国标/ — TXT 文件（5个，已结构化文本）
+
+| 文件名 | 真实内容 | GB编号 | 分块策略 |
+|--------|---------|--------|---------|
+| `GB15603-1995 常用化学危险品贮存通则.txt` | 储存通则全文 | GB 15603-1995 | 按条款 `SemanticChunker.ChunkByClause` |
+| `GB30000 常见危险化学品分类对照表.txt` | 分类对照表（表格型） | GB 30000 系列 | ⚠️ 表格内容不适合按条款分块 |
+| `GB30000-2013 化学品分类和标签规范.txt` | 分类规范概览 | GB 30000-2013 | 按条款分块 |
+| `GB50160 石油化工企业设计防火标准 - 防火间距表.txt` | 防火间距数值表 | GB 50160 | ⚠️ 表格内容，结构特殊 |
+| `危险化学品安全管理条例.txt` | 条例全文 | 国务院令591号 | 按条款分块 |
+
+**关键发现**：`GB30000 常见危险化学品分类对照表.txt` 和 `GB50160 防火间距表.txt` 是**结构化表格数据**，当前按段落分块会破坏表格的行列关系。
+
+#### B. 国标/ — PDF 文件（9个，原件）
+
+| 文件名 | 对应GB编号 | 备注 |
+|--------|-----------|------|
+| `GB+15603-2022.pdf` | GB 15603-2022 | ⚠️ 与 TXT 版 GB15603-1995 版本不同——1995 vs 2022！ |
+| `GB+30000.1-2024.pdf` | GB 30000.1-2024 | 2024年最新修订版 |
+| `GB+30000.10~.15-2013.pdf` (6个) | GB 30000.10-.15-2013 | ⚠️ 与 化工专业条例/ 中的同名 PDF 重复 |
+| `GB+30871-2022.pdf` | GB 30871-2022 | ⚠️ 与 化工专业条例/ 中的 30871-2022.pdf 重复 |
+
+**重复问题**：`国标/` 和 `化工专业条例/化工专业条例/` 中存在重复 PDF：
+- `GB+30000.10-2013.pdf` ～ `GB+30000.15-2013.pdf`（6个）
+- `GB+30871-2022.pdf` / `30871-2022.pdf`（1个）
+
+#### C. 化工专业条例/化工专业条例/ — PDF（32个）
+
+| 范围 | 数量 | 内容 |
+|------|------|------|
+| GB 30000.2-2013 ～ GB 30000.29-2013 | 28个 | 化学品分类和标签规范，覆盖爆炸物到臭氧层危害 |
+| 30871-2022 | 1个 | 危险化学品企业特殊作业安全规范 |
+| 危险化学品安全管理条例（国务院令第591号） | 1个 | 行政法规全文 |
+| **合计** | **32个** | |
+
+**当前问题**：代码中 `LoadDirectoryAsync(specDir, "国标", "高")` 把这些文件标记为 `regulation_type="国标"`，但实际上它们属于独立的 `化工专业条例` 类别。这导致：
+- 检索时无法区分 "来自国标文件夹的 TXT 摘要" 和 "来自化工专业条例的 PDF 全文"
+- 优先级重排时两组文件权重相同
+
+#### D. 园区规则/（3个）
+
+| 文件 | 格式 | 分块策略 |
+|------|------|---------|
+| `园区动火作业安全规范.txt` | TXT | `ChunkByArticle` 按"第X条" |
+| `园区危化品存储管理规定.txt` | TXT | `ChunkByArticle` 按"第X条" |
+| `W020231120639325082393.pdf` | PDF | 政府公文，需PDF提取 |
+
+#### E. 历史案例/（2个）
+
+| 文件 | 格式 | 分块策略 |
+|------|------|---------|
+| `2022年安全检查整改案例.txt` | TXT | `ChunkByParagraph` 按段落 |
+| `2023年储罐泄漏处置案例.txt` | TXT | `ChunkByParagraph` 按段落 |
+
+#### F. H166 企业制度模板（~200个 DOC/DOCX）
+
+12个一级分类目录，递归扫描。`LoadH166DirectoryAsync` 使用 `DocExtractor` 提取：
+- 成功提取全文 → `extraction_quality="good"`，按段落分块
+- 提取失败（空表单/模板）→ 仅存文件名摘要，`extraction_quality="partial"`
+
+---
+
+## 🔴 第二部分：当前架构的核心断裂点
+
+### 断裂点 1：数据库 DDL 与 DML 不一致
+
+| 位置 | 列数 | 说明 |
+|------|------|------|
+| `init_database.sql` | **7列** | 官方初始化脚本，未同步 |
+| `CreateChemicalDocumentTableAsync()` CREATE TABLE | **7列** | 基础建表 |
+| `CreateChemicalDocumentTableAsync()` ALTER TABLE ×6 | **+6列** | 运行时补列（K7扩展） |
+| `AddChemicalDocumentAsync(ChemicalDocumentRecord)` INSERT | **12列** | ✅ 写入全部字段 |
+| `GetAllChemicalDocumentsWithEmbeddingsAsync()` SELECT | **13列** | ✅ GPU检索读全字段 |
+| `GetAllChemicalDocumentTextsAsync()` SELECT | **4列** | 🔴 **仅读4列，快速模式元数据残缺** |
+
+### 断裂点 2：快速启动模式元数据丢失
+
+```csharp
+// HybridKnowledgeBaseService.cs:548-576 RebuildBm25FromDatabaseAsync
+var docs = await _databaseService.GetAllChemicalDocumentTextsAsync();
+// ← 返回值类型: List<(Content, RegulationType, Priority, SourceFile?)>
+// ← 丢失了: RegulationNumber, ChapterTitle, ClauseNumber, 
+//           ChunkIndex, PageNumber, ExtractionQuality
+
+foreach (var (content, regulationType, priority, sourceFile) in docs)
+{
+    var metadata = new Dictionary<string, object>
+    {
+        ["RegulationType"] = regulationType,  // 仅3个字段
+        ["Priority"] = priority,
+    };
+    // ← 无 RegulationNumber, ChapterTitle, ClauseNumber...
+    await _bm25Service.AddDocumentAsync(content, metadata);
+}
+```
+
+**后果**：首次加载时 BM25 有完整14个 metadata 字段；重启后快速模式只恢复3个字段。两次检索的优先级重排序、法规编号过滤能力完全不同。
+
+### 断裂点 3：regulation_type 错标
+
+`化工专业条例` 的 32 个 PDF 全被标为 `"国标"`，丢失来源信息。
+
+### 断裂点 4：缺少文档级实体
+
+当前架构是**扁平表**——每个 chunk 一行，没有文档级聚合。这导致：
+- 同一文件的多个 chunk 各自独立，无法按文件更新/删除
+- 无法追踪文件级加载状态（虽然有 `file_tracker.json`，但那是文件系统的，不反映 DB 状态）
+- `source_file` 字段存的是文件名（无扩展名），丢失路径和目录层级信息
+
+---
+
+## 🏗️ 第三部分：新数据库架构设计
+
+### 设计目标
+
+1. **文档-分块双层模型**：文件级元数据与 chunk 级内容分离
+2. **完整元数据持久化**：14 个字段全部入库，快速模式不降级
+3. **支持增量更新**：按文件粒度的增/删/改，不重建全量索引
+4. **regulation_type 正确映射**：5 种类型独立标识
+5. **向后兼容**：现有检索接口不破坏
+
+### 表结构设计
+
+```sql
+-- ============================================================================
+-- 知识库文档表（一个物理文件 = 一行）
+-- ============================================================================
+CREATE TABLE knowledge_documents (
+    id              SERIAL PRIMARY KEY,
+    
+    -- 文件来源
+    source_path     VARCHAR(500) NOT NULL UNIQUE,  -- 相对路径 "化工专业条例/化工专业条例/GB 30000.7-2013.pdf"
+    file_name       VARCHAR(300) NOT NULL,          -- 展示名 "GB 30000.7-2013 化学品分类和标签规范 第7部分"
+    file_format     VARCHAR(10)  NOT NULL,          -- pdf / doc / docx / txt
+    file_size_bytes BIGINT,
+    
+    -- 法规属性
+    regulation_type VARCHAR(50)  NOT NULL,          -- 国标 / 园区规则 / 历史案例 / 企业制度 / 化工专业条例
+    regulation_number VARCHAR(100),                 -- "GB 30000.7-2013"
+    regulation_title  VARCHAR(500),                 -- "化学品分类和标签规范 第7部分：易燃液体"
+    priority        VARCHAR(10)  NOT NULL DEFAULT '中',  -- 高/中/低
+    
+    -- H166 层级（仅企业制度类文件使用）
+    parent_category VARCHAR(200),                   -- "1.法律法规/1.1识别和获取"
+    
+    -- 质量标记
+    extraction_quality VARCHAR(20) DEFAULT 'good',  -- good / partial / failed
+    page_count      INT,
+    is_full_text    BOOLEAN DEFAULT TRUE,           -- false=仅文件名摘要入库
+    total_chunks    INT DEFAULT 0,
+    
+    -- 变更追踪
+    content_hash    VARCHAR(64),                    -- SHA-256，用于增量检测
+    last_modified   TIMESTAMP WITH TIME ZONE,
+    created_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ============================================================================
+-- 知识库分块表（一个语义块 = 一行 + 向量）
+-- ============================================================================
+CREATE TABLE knowledge_chunks (
+    id              SERIAL PRIMARY KEY,
+    document_id     INT NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+    
+    -- 内容与向量
+    content         TEXT NOT NULL,
+    embedding       vector(768),
+    
+    -- 结构定位（从 SemanticChunker / ChunkByGbStructure 产出）
+    chunk_index     INT NOT NULL DEFAULT 0,         -- 同文档内块序号
+    chapter_number  VARCHAR(50),                    -- "3" 或 "第3章"
+    chapter_title   VARCHAR(500),                   -- "术语和定义"
+    clause_number   VARCHAR(50),                    -- "3.1", "3.2.1"
+    article_number  VARCHAR(50),                    -- "第五条" (园区规则用)
+    page_number     INT,
+    sub_chunk_index INT,                            -- 章节内再分块的子序号
+    
+    -- 冗余（加速过滤，避免 JOIN）
+    regulation_type VARCHAR(50)  NOT NULL,
+    priority        VARCHAR(10)  NOT NULL,
+    
+    created_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ═══ 索引 ═══
+-- 向量索引
+CREATE INDEX idx_chunks_embedding ON knowledge_chunks 
+    USING hnsw (embedding vector_cosine_ops) 
+    WITH (m = 16, ef_construction = 200);
+
+-- 过滤加速
+CREATE INDEX idx_chunks_document_id    ON knowledge_chunks(document_id);
+CREATE INDEX idx_chunks_regulation_type ON knowledge_chunks(regulation_type);
+CREATE INDEX idx_chunks_priority       ON knowledge_chunks(priority);
+CREATE INDEX idx_chunks_clause         ON knowledge_chunks(regulation_type, clause_number);
+CREATE INDEX idx_docs_regulation_number ON knowledge_documents(regulation_number);
+CREATE INDEX idx_docs_type_priority     ON knowledge_documents(regulation_type, priority);
+```
+
+### 数据流映射：知识源 → 文档表 → 分块表
+
+```
+knowledgebase/化工专业条例/化工专业条例/GB 30000.7-2013 化学品分类和标签规范 第7部分：易燃液体.pdf
+  │
+  ├─ PdfExtractor → 全文文本 + RegulationNumber="GB 30000.7-2013"
+  ├─ TextCleaner  → 清洗后文本
+  │
+  ├─ ▶ knowledge_documents INSERT:
+  │    source_path       = "化工专业条例/化工专业条例/GB 30000.7-2013 ....pdf"
+  │    file_name         = "GB 30000.7-2013 化学品分类和标签规范 第7部分：易燃液体"
+  │    file_format       = "pdf"
+  │    regulation_type   = "化工专业条例"    ← 🔧 修正
+  │    regulation_number = "GB 30000.7-2013"
+  │    priority          = "高"
+  │    extraction_quality= "good"
+  │    page_count        = 24
+  │    → 返回 document_id = 42
+  │
+  ├─ SemanticChunker → 按条款编号分块 → 15 chunks
+  │
+  ├─ ▶ knowledge_chunks INSERT ×15:
+  │    chunk₁: document_id=42, chunk_index=0, clause_number="1", 
+  │            chapter_title="范围", content="本标准规定了..."
+  │            → embedding via llama-server → vector(768)
+  │    chunk₂: document_id=42, chunk_index=1, clause_number="3.1",
+  │            chapter_title="术语和定义", content="易燃液体..."
+  │    ...
+  │
+  └─ UPDATE knowledge_documents SET total_chunks=15 WHERE id=42
+```
+
+### 加载/检索新流程
+
+```
+启动加载:
+  ChemicalRAG.LoadKnowledgeBaseAsync()
+    ├─ 扫描 knowledgebase 目录
+    ├─ 对每个文件: INSERT INTO knowledge_documents ... RETURNING id
+    ├─ 对每个 chunk: INSERT INTO knowledge_chunks (document_id, ...)
+    └─ BM25 内存索引从 knowledge_chunks 表重建
+
+快速启动模式:
+  if (SELECT COUNT(*) FROM knowledge_chunks) > 0:
+    └─ RebuildBm25FromDatabaseAsync()
+         SELECT kc.content, kc.regulation_type, kc.priority,
+                kc.chapter_title, kc.clause_number, kc.chunk_index,
+                kd.regulation_number, kd.source_path, kd.parent_category
+         FROM knowledge_chunks kc
+         JOIN knowledge_documents kd ON kc.document_id = kd.id
+         -- ← 完整 13 字段元数据恢复！
+
+增量更新:
+  ChemicalRAG.LoadKnowledgeBaseIncrementalAsync()
+    ├─ 对比 knowledge_documents.content_hash vs 文件 SHA-256
+    ├─ 变更文件: DELETE chunks WHERE document_id=X → 重新提取+分块+写入
+    ├─ 新增文件: INSERT document → INSERT chunks
+    └─ 删除文件: DELETE document → CASCADE DELETE chunks
+```
+
+---
+
+### 与现有关键差异对比
+
+| 维度 | 现状 | 新设计 |
+|------|------|--------|
+| 表结构 | 1个扁平表 (chemical_documents) | 2个关联表 (documents + chunks) |
+| 文档级实体 | 无 | ✅ knowledge_documents |
+| 文件来源追踪 | source_file 仅存文件名 | source_path 存完整相对路径 |
+| 快速模式元数据 | 仅3字段（内容/类型/优先级） | 全13字段（JOIN 恢复） |
+| regulation_type | `化工专业条例` 错标为 `国标` | 5种独立类型 |
+| 文件路径层级 | 丢失（H166 的 ParentDir 未入库） | parent_category 字段 |
+| 增量更新 | file_tracker.json 独立维护 | content_hash 在 DB 内自洽 |
+| 重复检测 | 无 | source_path UNIQUE 约束 + content_hash |
+| 分块策略追溯 | 无 | chunk 关联到 document，可知来源 |
+
+---
+
+### 迁移路径
+
+```
+Phase 1: 创建新表（不影响现有系统）
+  ├─ 执行新 DDL，创建 knowledge_documents + knowledge_chunks
+  └─ 保留旧 chemical_documents 表作为回退
+
+Phase 2: 修改写入路径
+  ├─ DatabaseService 新增 InsertDocument / InsertChunk 方法
+  ├─ ChemicalRAG.LoadDirectoryAsync 改为先写 document 再写 chunk
+  └─ HybridKnowledgeBaseService.AddDocumentAsync 适配新表
+
+Phase 3: 修改读取路径
+  ├─ GetAllChemicalDocumentTextsAsync → JOIN 两表返回完整字段
+  ├─ VectorSearchAsync → 从 knowledge_chunks 查询
+  └─ RebuildBm25FromDatabaseAsync → 使用 JOIN 查询全字段
+
+Phase 4: 一次性重加载
+  ├─ 清空新表 → 全量扫描 knowledgebase → 写入新表
+  └─ 验证检索结果与旧表一致
+
+Phase 5: 清理
+  └─ DROP TABLE chemical_documents (确认无依赖后)
+```
+
+---
+
+### 回答你的问题
+
+> 尽量少进行降级处理（BM25的检索）对吗？
+
+**对的**。降级到纯 BM25 的根本原因是**向量生成失败**（embedding 为 null）。向量生成失败有几种情况：
+1. llama-server embed 服务未启动 → 运维问题
+2. 文本过长超出模型上下文窗口 → 需要在分块时控制长度
+3. 文本包含特殊字符 → TextCleaner 应提前处理
+
+新设计中：
+- `knowledge_chunks.embedding` 默认为 NULL（允许 BM25-only chunk 存在）
+- 但 `content_hash` + `extraction_quality` 让我们能追踪哪些 chunk 缺向量
+- 后续可单独对这些 chunk 补生成 embedding（无需重新分块）
+
+**但核心目标不是"少用 BM25"，而是"BM25 检索时元数据也完整"**。当前即使向量检索成功，快速启动模式重建的 BM25 索引仍然缺元数据，这才是最大的退化。
+
+---

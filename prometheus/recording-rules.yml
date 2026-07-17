@@ -1,6 +1,13 @@
+# ═══════════════════════════════════════════════
+# 预录规则 (Recording Rules) — Agent1 化工合规 AI 平台
+# 用于 SLO Dashboard 的非实时指标预聚合
+# ═══════════════════════════════════════════════
+
 groups:
   - name: agent1_slo
     rules:
+      # ── Agent1 自定义指标 ──
+
       # LLM 调用速率 (5分钟)
       - record: job:llm_calls:rate5m
         expr: rate(agent1_llm_calls_total[5m])
@@ -36,29 +43,13 @@ groups:
       # 双通道管道消毒移除字符速率 (5分钟)
       - record: job:decoupled_pipeline_chars:rate5m
         expr: rate(agent1_decoupled_pipeline_chars_removed_total[5m])
-groups:
-  - name: agent1_slo
-    rules:
+
+      # ── ASP.NET Core 内置指标（不依赖 agent1_ 前缀）──
+
       # HTTP P95 延迟（5分钟滑动窗口）
       - record: job:http_request_duration_seconds:p95
         expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, http_method, http_route))
 
-      # 5xx 错误率（5分钟）
+      # HTTP 5xx 错误率（5分钟）
       - record: job:http_errors:rate5m
         expr: sum(rate(http_requests_total{status_code=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))
-
-      # LLM 调用总数（5分钟速率）
-      - record: job:llm_calls:rate5m
-        expr: rate(llm_call_count_total[5m])
-
-      # LLM 调用失败率（5分钟）
-      - record: job:llm_errors:rate5m
-        expr: rate(llm_error_count_total[5m]) / rate(llm_call_count_total[5m])
-
-      # 缓存命中率（瞬时值）
-      - record: job:cache_hit_ratio
-        expr: cache_hits_total / (cache_hits_total + cache_misses_total)
-
-      # 熔断器状态（1=开启/拒绝服务, 0=闭合/正常）
-      - record: job:circuit_breaker_open
-        expr: agent1_circuit_breaker_open

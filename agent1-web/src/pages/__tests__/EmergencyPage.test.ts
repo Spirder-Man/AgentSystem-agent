@@ -109,7 +109,7 @@ describe('EmergencyPage', () => {
       await respondBtn.trigger('click');
       await flushPromises();
 
-      expect(mockPost).toHaveBeenCalledWith('/api/emergency/response', {
+      expect(mockPost).toHaveBeenCalledWith('/api/Emergency/response', {
         scenario: 'leak',
         substance: '苯',
         location: '甲类仓库A区',

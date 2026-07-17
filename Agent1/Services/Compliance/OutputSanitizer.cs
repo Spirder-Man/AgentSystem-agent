@@ -14,10 +14,8 @@ namespace Agent1.Services
     /// </summary>
     public static class OutputSanitizer
     {
-        /// <summary>匹配 GB 编号模式（含变体）</summary>
-        private static readonly Regex GbNumberRegex = new(
-            @"GB\s*/?T?\s*\d{4,5}(?:[.\-]\d+(?:\.\d+)?)?(?:\s*-\s*\d{4})?",
-            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        // P1-2: 统一使用 GbCodeHelper.GbCodePattern，替代私有 GbNumberRegex
+        private static Regex GbNumberRegex => GbCodeHelper.GbCodePattern;
 
         /// <summary>[P1 FIX] Bug C: 匹配 GB 编号+年代版本号的完整模式（如 GB 15603-2023）</summary>
         private static readonly Regex GbWithYearRegex = new(

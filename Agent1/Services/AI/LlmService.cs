@@ -31,6 +31,9 @@ namespace Agent1.Services
         // Phase 2a 验证: 工具调用诊断 — 记录最近一次 SK Auto Function Calling 的执行信息
         public List<FunctionCallRecord> LastFunctionCalls { get; private set; } = new();
 
+        // P2-2: 显式接口实现，消除 as LlmService 向下转型
+        IReadOnlyList<FunctionCallRecord> ILlmService.LastFunctionCalls => LastFunctionCalls;
+
         // ── Task 7: LLM 熔断器 — 连续失败达阈值后拒绝服务冷却期，防止雪崩 ──
         private int _consecutiveFailures = 0;
         private DateTime? _circuitOpenTime = null;

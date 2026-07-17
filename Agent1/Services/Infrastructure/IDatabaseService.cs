@@ -60,6 +60,8 @@ namespace Agent1.Services
         Task<List<AuditLog>> GetAuditLogsAsync(DateTime? startTime, DateTime? endTime, string? userId = null);
         // [P3 哈希链] 取尾条 chain_hash，供服务重启后恢复链头，避免断链
         Task<string?> GetLastAuditChainHashAsync();
+        // [P3 哈希链修复] 批量回写重算后的 chain_hash（用于一键修复历史断链）
+        Task UpdateAuditChainHashAsync(long id, string chainHash);
 
         // ═══════════════════════════════════════════
         // Task 2.2: Refresh Token 持久化

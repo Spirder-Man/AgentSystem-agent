@@ -375,7 +375,7 @@ describe('AuditPage', () => {
       await vmMethods(wrapper).verifyIntegrity();
       await flushPromises();
 
-      expect(mockGet).toHaveBeenCalledWith('/api/Audit/integrity');
+      expect(mockGet).toHaveBeenCalledWith('/api/Audit/integrity', undefined);
       expect(ElMessage.success).toHaveBeenCalled();
     });
 

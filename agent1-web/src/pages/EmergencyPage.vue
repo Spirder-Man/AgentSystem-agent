@@ -19,7 +19,7 @@ async function respond() {
   loading.value = true;
   start('正在生成应急响应方案…');
   try {
-    const { data } = await apiClient.post<EmergencyResult>('/api/emergency/response', {
+    const { data } = await apiClient.post<EmergencyResult>('/api/Emergency/response', {
       scenario: scenario.value,
       substance: substance.value.trim(),
       location: location.value.trim() || undefined,

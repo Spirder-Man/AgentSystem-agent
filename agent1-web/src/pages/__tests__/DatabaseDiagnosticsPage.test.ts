@@ -120,11 +120,11 @@ describe('DatabaseDiagnosticsPage', () => {
   // ═══════════════════════════════════
 
   describe('数据库信息渲染', () => {
-    it('应调用 GET /api/admin/db/info', async () => {
+    it('应调用 GET /api/Admin/db/info', async () => {
       mockGet.mockResolvedValue({ data: dbInfoData });
       mountPage();
       await flushPromises();
-      expect(mockGet).toHaveBeenCalledWith('/api/admin/db/info');
+      expect(mockGet).toHaveBeenCalledWith('/api/Admin/db/info', undefined);
     });
 
     it('应显示主机、端口、数据库名、版本', async () => {
@@ -166,10 +166,10 @@ describe('DatabaseDiagnosticsPage', () => {
       expect(wrapper.text()).toContain('执行连接验证');
     });
 
-    it('点击应调用 GET /api/admin/db/validate', async () => {
+    it('点击应调用 GET /api/Admin/db/validate', async () => {
       mockGet.mockImplementation((url: string) => {
-        if (url === '/api/admin/db/info') return Promise.resolve({ data: dbInfoData });
-        if (url === '/api/admin/db/validate') return Promise.resolve({ data: validateResultData });
+        if (url === '/api/Admin/db/info') return Promise.resolve({ data: dbInfoData });
+        if (url === '/api/Admin/db/validate') return Promise.resolve({ data: validateResultData });
         return Promise.reject(new Error('Unknown'));
       });
       const wrapper = mountPage();
@@ -181,13 +181,13 @@ describe('DatabaseDiagnosticsPage', () => {
       await validateBtn!.trigger('click');
       await flushPromises();
 
-      expect(mockGet).toHaveBeenCalledWith('/api/admin/db/validate');
+      expect(mockGet).toHaveBeenCalledWith('/api/Admin/db/validate', undefined);
     });
 
     it('验证成功应显示连接正常状态', async () => {
       mockGet.mockImplementation((url: string) => {
-        if (url === '/api/admin/db/info') return Promise.resolve({ data: dbInfoData });
-        if (url === '/api/admin/db/validate') return Promise.resolve({ data: validateResultData });
+        if (url === '/api/Admin/db/info') return Promise.resolve({ data: dbInfoData });
+        if (url === '/api/Admin/db/validate') return Promise.resolve({ data: validateResultData });
         return Promise.reject(new Error('Unknown'));
       });
       const wrapper = mountPage();
@@ -207,8 +207,8 @@ describe('DatabaseDiagnosticsPage', () => {
     it('验证成功应显示 ElMessage 成功提示', async () => {
       const { ElMessage } = await import('element-plus');
       mockGet.mockImplementation((url: string) => {
-        if (url === '/api/admin/db/info') return Promise.resolve({ data: dbInfoData });
-        if (url === '/api/admin/db/validate') return Promise.resolve({ data: validateResultData });
+        if (url === '/api/Admin/db/info') return Promise.resolve({ data: dbInfoData });
+        if (url === '/api/Admin/db/validate') return Promise.resolve({ data: validateResultData });
         return Promise.reject(new Error('Unknown'));
       });
       const wrapper = mountPage();
@@ -224,8 +224,8 @@ describe('DatabaseDiagnosticsPage', () => {
 
     it('验证失败应显示错误提示', async () => {
       mockGet.mockImplementation((url: string) => {
-        if (url === '/api/admin/db/info') return Promise.resolve({ data: dbInfoData });
-        if (url === '/api/admin/db/validate') return Promise.reject(new Error('Timeout'));
+        if (url === '/api/Admin/db/info') return Promise.resolve({ data: dbInfoData });
+        if (url === '/api/Admin/db/validate') return Promise.reject(new Error('Timeout'));
         return Promise.reject(new Error('Unknown'));
       });
       const wrapper = mountPage();

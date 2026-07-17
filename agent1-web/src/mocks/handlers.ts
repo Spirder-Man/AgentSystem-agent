@@ -401,7 +401,7 @@ export const handlers = [
   // Emergency Response (Auth)
   // ═══════════════════════════════════════
 
-  http.post('/api/emergency/response', async ({ request }) => {
+  http.post('/api/Emergency/response', async ({ request }) => {
     const g = readAuthGuard(request); if (g) return g;
     const e = checkSimulatedError(request); if (e) return e;
     await simulateLlmDelay();
@@ -411,11 +411,8 @@ export const handlers = [
     return HttpResponse.json<EmergencyResult>({
       scenario: body.scenario,
       success: true,
-      warnings: [],
-      intent: '应急响应',
       elapsedMs: 5200,
       output: `┌─────────────────────────────────────┐\n│ 🚨 应急响应方案: ${body.substance} ${body.scenario === 'leak' ? '泄漏' : body.scenario === 'fire' ? '火灾' : body.scenario === 'explosion' ? '爆炸' : '中毒'}事故 │\n│ CAS: 71-43-2 | 危化品分类: 易燃液体, 类别2 │\n└─────────────────────────────────────┘\n\n【疏散与隔离】\n1. 立即疏散${isLeak ? '下风向' : '周边'}500米范围内无关人员\n2. 设立警戒区，禁止一切明火和非必要人员进入\n3. 通知应急指挥中心启动应急预案\n\n【PPE 个人防护】\n- 呼吸防护: 正压自给式呼吸器 (SCBA)${isLeak ? '\n- 皮肤防护: A级防化服（全封闭）' : ''}\n- 眼部防护: 防化护目镜\n- 手部防护: 丁基橡胶手套\n\n【泄漏处置】\n1. 切断泄漏源，关闭相关阀门\n2. 用沙土、蛭石或不燃材料围堵收容\n3. 使用防爆工具收集泄漏物至专用容器\n4. 污染区域用大量清水冲洗，废水收集处理\n\n【医疗急救】\n➤ 吸入: 迅速脱离现场至空气新鲜处，保持呼吸道通畅，如呼吸困难给氧，就医\n➤ 皮肤: 脱去污染衣物，用肥皂水和清水彻底冲洗至少15分钟，就医\n➤ 眼睛: 提起眼睑，用流动清水或生理盐水冲洗至少15分钟，就医\n➤ 食入: 漱口，禁止催吐，立即就医\n\n【事故通报模板】\n事故类型: ${body.scenario} | 涉及物质: ${body.substance} (CAS 71-43-2)\n${loc}\n\n【知识库补充建议】\n- 查询 GB 30000.7-2013 易燃液体分类标准\n- 查询 GB 15603-2022 危险化学品储存通则\n- 查询《危险化学品安全管理条例》(国务院令第591号)`,
-      auditRecord: { regulationRefs: ['GB 30000.7-2013', 'GB 15603-2022', '国务院令第591号'] },
     });
   }),
 
@@ -810,7 +807,7 @@ export const handlers = [
   http.get('/api/knowledgebase/search-mode', async ({ request }) => {
     const g = readAuthGuard(request); if (g) return g;
     await delay(100);
-    return HttpResponse.json<SearchModeResponse>({ mode: 'Hybrid', available: ['Bm25', 'Vector', 'Hybrid'], description: 'BM25 + 向量加权融合' });
+    return HttpResponse.json({ mode: 'Hybrid', available: ['Bm25', 'Vector', 'Hybrid'], description: 'BM25 + 向量加权融合' });
   }),
 
   http.put('/api/knowledgebase/search-mode', async ({ request }) => {
@@ -824,7 +821,7 @@ export const handlers = [
     const g = readAuthGuard(request); if (g) return g;
     await simulateLlmDelay();
     const body = await request.json() as RagTestRequest;
-    return HttpResponse.json<RagTestResponse>({
+    return HttpResponse.json({
       query: body.query,
       mode: 'Hybrid',
       totalResults: 5,
@@ -913,7 +910,7 @@ export const handlers = [
   http.post('/api/alerts/test', async ({ request }) => {
     const g = writeAuthGuard(request); if (g) return g;
     await delay(500);
-    return HttpResponse.json<AlertTestResult>({ sent: true, recipient: 'lcy.050801@qq.com' });
+    return HttpResponse.json({ sent: true, recipient: 'lcy.050801@qq.com' });
   }),
 
   http.get('/memory/stats', async () => HttpResponse.json({ sessionCount: 12, totalFacts: 87, totalDialogTurns: 456, cacheHitRate: 0.72 })),

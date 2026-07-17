@@ -1269,6 +1269,25 @@ namespace Agent1.Services
             }
         }
 
+        public async Task UpdateAuditChainHashAsync(long id, string chainHash)
+        {
+            try
+            {
+                using var connection = CreateConnection();
+                await connection.OpenAsync();
+
+                const string sql = "UPDATE audit_logs SET chain_hash = @chainHash WHERE id = @id;";
+                using var command = new NpgsqlCommand(sql, connection);
+                command.Parameters.Add(new NpgsqlParameter("@chainHash", chainHash));
+                command.Parameters.Add(new NpgsqlParameter("@id", id));
+                await command.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ⚠️ 审计链哈希回写失败 (ID={id}): {ex.Message}");
+            }
+        }
+
         public async Task<List<AuditLog>> GetAuditLogsAsync(DateTime? startTime, DateTime? endTime, string? userId = null)
         {
             var results = new List<AuditLog>();

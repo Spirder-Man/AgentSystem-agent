@@ -84,9 +84,9 @@ describe('KnowledgeBasePage', () => {
         await bm25Btn.trigger('click');
         await flushPromises();
 
-        expect(mockPut).toHaveBeenCalledWith('/api/knowledgebase/search-mode', {
+        expect(mockPut).toHaveBeenCalledWith('/api/KnowledgeBase/search-mode', {
           mode: 'Bm25',
-        });
+        }, undefined);
       }
     });
 
@@ -145,9 +145,9 @@ describe('KnowledgeBasePage', () => {
         await testBtn.trigger('click');
         await flushPromises();
 
-        expect(mockPost).toHaveBeenCalledWith('/api/knowledgebase/rag-test', {
+        expect(mockPost).toHaveBeenCalledWith('/api/KnowledgeBase/rag-test', {
           query: '苯的储存要求',
-        });
+        }, undefined);
       }
     });
 
@@ -234,7 +234,7 @@ describe('KnowledgeBasePage', () => {
         await loadBtn.trigger('click');
         await flushPromises();
 
-        expect(mockPost).toHaveBeenCalledWith('/api/knowledgebase/incremental-load');
+        expect(mockPost).toHaveBeenCalledWith('/api/KnowledgeBase/incremental-load', undefined, undefined);
       }
     });
   });

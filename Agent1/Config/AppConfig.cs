@@ -190,7 +190,8 @@ namespace Agent1.Config
         public string ModelId { get; set; } = "deepseek-r1:local7b";
         public string Endpoint { get; set; } = "http://localhost:8080/v1";
         public string MultimodalModelId { get; set; } = "llava-v1.6-mistral-7b";
-        public string MultimodalEndpoint { get; set; } = "http://localhost:8082/v1";
+        // [端口分离] 多模态(视觉)服务独占 8083，与 Reranker(8082) 分开，避免端口冲突
+        public string MultimodalEndpoint { get; set; } = "http://localhost:8083/v1";
 
         // Phase 2a 预留: 工具调用规划专用模型（可与 ModelId 相同）
         // 未来可分离为小模型做工具规划 + 大模型做合规结论生成

@@ -50,6 +50,9 @@ var configuration = new ConfigurationBuilder()
 
 AppConfig.Load(configuration);
 
+// P0-2: 激活审计日志文件路径
+ComplianceAuditLogger.Initialize();
+
 // 启动前校验
 var configErrors = AppConfig.Instance.Validate();
 if (configErrors.Count > 0)

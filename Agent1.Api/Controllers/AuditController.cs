@@ -90,6 +90,16 @@ public class AuditController : ControllerBase
     }
 
     /// <summary>
+    /// 一键修复哈希链 — 逐条重算所有 chain_hash 并回写 DB，修复因时间精度不一致导致的历史断链。
+    /// </summary>
+    [HttpPost("repair-chain")]
+    public async Task<IActionResult> RepairChain()
+    {
+        var (repaired, detail) = await _auditService.RepairChainAsync();
+        return Ok(new { repaired, detail, repairedAt = DateTime.UtcNow.ToString("o") });
+    }
+
+    /// <summary>
     /// 审计统计摘要 — 总记录数 + 按操作类型分布。
     /// </summary>
     [HttpGet("stats")]

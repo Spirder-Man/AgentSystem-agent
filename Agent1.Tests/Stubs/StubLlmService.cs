@@ -16,6 +16,7 @@ public class StubLlmService : ILlmService
 {
     /// <summary>模拟最近一次函数调用记录</summary>
     public List<FunctionCallRecord> LastFunctionCalls { get; set; } = new();
+    IReadOnlyList<FunctionCallRecord> ILlmService.LastFunctionCalls => LastFunctionCalls;
 
     /// <summary>固定的 mock 嵌入向量（768 维，与 nomic-embed-text 一致）</summary>
     private static readonly float[] MockEmbedding = Enumerable.Range(0, 768).Select(i => 0.01f * (i % 100)).ToArray();

@@ -20,10 +20,8 @@ namespace Agent1.Services
             @"\[REGULATIONS:\s*([^\]]+)\]",
             RegexOptions.Compiled);
 
-        /// <summary>提取单独的 GB 编号，如 GB 30000.7、GB30000.7-2013</summary>
-        private static readonly Regex GbNumberRegex = new(
-            @"GB\s*/?T?\s*\d{4,5}(?:[.\-]\d+(?:\.\d+)?)?(?:\s*-\s*\d{4})?",
-            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        // P1-2: 统一使用 GbCodeHelper.GbCodePattern，替代私有 GbNumberRegex
+        private static Regex GbNumberRegex => GbCodeHelper.GbCodePattern;
 
         /// <summary>提取「物质名」危险类别: ... 模式</summary>
         private static readonly Regex HazardCategoryRegex = new(

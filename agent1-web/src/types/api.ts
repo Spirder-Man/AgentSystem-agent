@@ -480,11 +480,8 @@ export interface EmergencyRequest {
 export interface EmergencyResult {
   scenario: string;
   success: boolean;
-  warnings: string[];
-  intent: string;
   elapsedMs: number;
   output: string;
-  auditRecord: unknown;
 }
 
 // ── KnowledgeGraph 知识图谱 ──

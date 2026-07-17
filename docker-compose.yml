@@ -202,15 +202,48 @@ services:
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/recording-rules.yml:/etc/prometheus/recording-rules.yml:ro
+      - ./prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
       - prometheus_data:/prometheus
     depends_on:
       api:
+        condition: service_healthy
+      alertmanager:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9090/-/healthy || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      - agent1_net
+
+  # ═══════════════════════════════════════
+  # Alertmanager — 告警分派与邮件通知
+  # ═══════════════════════════════════════
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: agent1_alertmanager
+    restart: unless-stopped
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+    environment:
+      - ALERT_EMAIL_USER=${ALERT_EMAIL_USER}
+      - ALERT_EMAIL_PASSWORD=${ALERT_EMAIL_PASSWORD}
+      - ALERT_RECIPIENT_EMAILS=${ALERT_RECIPIENT_EMAILS}
+      - ALERT_SMTP_HOST=${ALERT_SMTP_HOST}
+    entrypoint:
+      - /bin/sh
+      - /etc/alertmanager/entrypoint.sh
+    volumes:
+      - ./prometheus/alertmanager.tmpl:/etc/alertmanager/alertmanager.tmpl:ro
+      - ./prometheus/alertmanager-entrypoint.sh:/etc/alertmanager/entrypoint.sh:ro
+      - alertmanager_data:/alertmanager
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9093/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     networks:
       - agent1_net
 
@@ -254,6 +287,8 @@ volumes:
     name: agent1_api_logs
   prometheus_data:
     name: agent1_prometheus_data
+  alertmanager_data:
+    name: agent1_alertmanager_data
   grafana_data:
     name: agent1_grafana_data
 

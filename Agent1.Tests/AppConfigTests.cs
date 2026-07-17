@@ -88,6 +88,19 @@ namespace Agent1.Tests
             }
         }
 
+        // [P1 #4] 多模态(视觉)与 Reranker 默认端口必须分离，避免同占 8082 冲突
+        [Fact]
+        public void MultimodalAndRerankerEndpoints_ShouldNotShareSamePort()
+        {
+            var multimodal = new ChemicalLlmConfig().MultimodalEndpoint;
+            var reranker = new VectorSearchConfig().RerankerEndpoint;
+
+            multimodal.Should().NotBe(reranker, "多模态与 Reranker 端点不得完全相同");
+            new Uri(multimodal).Port.Should().NotBe(new Uri(reranker).Port, "两者不得共用同一端口");
+            new Uri(multimodal).Port.Should().Be(8083);
+            new Uri(reranker).Port.Should().Be(8082);
+        }
+
         [Fact]
         public void Load_WithConfig_ShouldBindVectorSearchDefaults()
         {
