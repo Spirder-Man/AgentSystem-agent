@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Agent1.Config;
+using Microsoft.SemanticKernel;
 
 namespace Agent1.Services
 {
@@ -49,6 +50,7 @@ namespace Agent1.Services
                 string? extractionQuality = null;
                 int? pageNumber = null;
                 int? chunkIndex = null;
+                int? documentId = null; // 双层表：关联的文档记录 ID
 
                 if (metadata != null)
                 {
@@ -72,6 +74,8 @@ namespace Agent1.Services
                         pageNumber = pn;
                     if (metadata.ContainsKey("ChunkIndex") && metadata["ChunkIndex"] is int ci)
                         chunkIndex = ci;
+                    if (metadata.ContainsKey("DocumentId") && metadata["DocumentId"] is int did)
+                        documentId = did;
                 }
 
                 var embedding = await _llmService.GetEmbeddingAsync(content);
@@ -98,8 +102,16 @@ namespace Agent1.Services
                     ChunkIndex = chunkIndex,
                     Embedding = embedding
                 };
-                //ChemicalDocumentRecord 构建
-                await _databaseService.AddChemicalDocumentAsync(record);
+
+                // 双层表路由：有 DocumentId → 写入 knowledge_chunks（新表）；否则 → 写入 chemical_documents（旧表，兼容）
+                if (documentId.HasValue && documentId.Value > 0)
+                {
+                    await _databaseService.InsertChunkAsync(record, documentId.Value);
+                }
+                else
+                {
+                    await _databaseService.AddChemicalDocumentAsync(record);
+                }
             }
             catch (Exception ex)
             {
@@ -183,6 +195,9 @@ namespace Agent1.Services
                     Console.WriteLine($"   💾 缓存命中: \"{query}\"");
                 return cachedResults;
             }
+
+            // 缓存未命中
+            MetricsCollector.RecordRagCacheMiss();
 
             // Sprint 4: 查询扩展
             var expandedQuery = ExpandQuery(query);
@@ -554,17 +569,22 @@ namespace Agent1.Services
             }
 
             await _bm25Service.ClearAsync();
-            foreach (var (content, regulationType, priority, sourceFile) in docs)
+            foreach (var record in docs)
             {
                 var metadata = new Dictionary<string, object>
                 {
-                    ["RegulationType"] = regulationType,
-                    ["Priority"] = priority
+                    ["RegulationType"] = record.RegulationType,
+                    ["Priority"] = record.Priority,
+                    ["SourceFile"] = record.SourceFile ?? "",
+                    ["RegulationNumber"] = record.RegulationNumber ?? "",
+                    ["ChapterTitle"] = record.ChapterTitle ?? "",
+                    ["ClauseNumber"] = record.ClauseNumber ?? "",
+                    ["ChunkIndex"] = record.ChunkIndex ?? 0,
+                    ["PageNumber"] = record.PageNumber ?? 0,
+                    ["ExtractionQuality"] = record.ExtractionQuality ?? ""
                 };
-                if (sourceFile != null)
-                    metadata["SourceFile"] = sourceFile;
 
-                await _bm25Service.AddDocumentAsync(content, metadata);
+                await _bm25Service.AddDocumentAsync(record.Content, metadata);
             }
 
             sw.Stop();
@@ -1011,10 +1031,13 @@ namespace Agent1.Services
                     if (llmSvc != null)
                     {
                         // [策略切换] 流式优先（GPU 3090环境），非流式仅作CPU低算力降级
-                        hydeDocument = await llmSvc.InvokeStreamWithRetryAsync(hydePrompt, ConsoleColor.Gray, "HyDE生成");
+                        // [Bug C 修复] HyDE 是纯文本生成，禁用 FC 防止递归调用 CheckStorageCompatibility
+                        hydeDocument = await llmSvc.InvokeStreamWithRetryAsync(hydePrompt, ConsoleColor.Gray, "HyDE生成",
+                            fcBehavior: FunctionChoiceBehavior.None());
                         // 流式空回退时降级到非流式
                         if (string.IsNullOrWhiteSpace(hydeDocument))
-                            hydeDocument = await llmSvc.InvokeNonStreamingWithRetryAsync(hydePrompt, "HyDE生成(降级)");
+                            hydeDocument = await llmSvc.InvokeNonStreamingWithRetryAsync(hydePrompt, "HyDE生成(降级)",
+                                fcBehavior: FunctionChoiceBehavior.None());
                     }
                     else
                     {

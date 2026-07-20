@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Agent1.Models;
 using Agent1.Modules;
 using Agent1.Services;
+using Agent1.Services.Orchestration;
 using FluentAssertions;
 using Xunit;
 
@@ -250,7 +251,7 @@ namespace Agent1.Tests
             var auditService = new Moq.Mock<IAuditService>().Object;
             var agentDialog = new Moq.Mock<AgentDialog>(
                 sessionService, memoryService, llmService, toolService, auditService,
-                (MemoryCoordinator?)null).Object;
+                (MemoryCoordinator?)null, (DeterministicRuleEngine?)null).Object;
 
             return new ModuleFactory(
                 sessionService, memoryService, llmService, toolService,

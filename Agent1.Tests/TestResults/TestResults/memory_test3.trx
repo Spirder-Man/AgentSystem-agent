@@ -1,0 +1,78 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="16fde9aa-05a0-4631-bcd4-d0fc8d856acf" name="lcy@LAPTOP-40G212RC 2026-06-25 19:24:10" runUser="LAPTOP-40G212RC\lcy" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-06-25T19:24:10.3683435+08:00" queuing="2026-06-25T19:24:10.3683438+08:00" start="2026-06-25T19:24:09.5918453+08:00" finish="2026-06-25T19:24:10.3741932+08:00" />
+  <TestSettings name="default" id="c88c7cc5-0a43-46cb-ba4c-0dfe2fbe472d">
+    <Deployment runDeploymentRoot="lcy_LAPTOP-40G212RC_2026-06-25_19_24_10" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="642ed32d-241e-4a6a-b001-21d33cd39250" testId="58098349-1da7-33f6-73c9-9f6bcc46cd1e" testName="Agent1.Tests.FactExtractorTests.ExtractFactsAsync_MultipleFacts_ShouldParseAll" computerName="LAPTOP-40G212RC" duration="00:00:00.0010722" startTime="2026-06-25T19:24:10.2749112+08:00" endTime="2026-06-25T19:24:10.2749113+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="642ed32d-241e-4a6a-b001-21d33cd39250" />
+    <UnitTestResult executionId="5020fe80-c30b-4cd8-932b-c0895d542a12" testId="d44bcb37-5a1f-fa56-48a8-2e967a219a0b" testName="Agent1.Tests.FactExtractorTests.ExtractFactsAsync_ShouldParseJsonResponse" computerName="LAPTOP-40G212RC" duration="00:00:00.0013485" startTime="2026-06-25T19:24:10.2773837+08:00" endTime="2026-06-25T19:24:10.2773840+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5020fe80-c30b-4cd8-932b-c0895d542a12" />
+    <UnitTestResult executionId="8c60bbbf-fa16-4380-acbd-010954c10800" testId="65c2c817-e98c-ec31-7019-12dd82c6c2c5" testName="Agent1.Tests.FactExtractorTests.ExtractFactsAsync_EmptyResponse_ShouldReturnEmpty" computerName="LAPTOP-40G212RC" duration="00:00:00.0005736" startTime="2026-06-25T19:24:10.2780212+08:00" endTime="2026-06-25T19:24:10.2780215+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="8c60bbbf-fa16-4380-acbd-010954c10800" />
+    <UnitTestResult executionId="1eb6721e-ca6b-4c83-876d-0abe8b496142" testId="f14c3913-eb57-7a72-d327-79f267433bc1" testName="Agent1.Tests.FactExtractorTests.ExtractFactsAsync_LLMThrows_ShouldReturnEmpty" computerName="LAPTOP-40G212RC" duration="00:00:00.0010589" startTime="2026-06-25T19:24:10.2760117+08:00" endTime="2026-06-25T19:24:10.2760118+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1eb6721e-ca6b-4c83-876d-0abe8b496142" />
+    <UnitTestResult executionId="823f0963-6b5c-4791-bd38-83d0ce962b04" testId="36836a38-b018-c945-44f1-42ecaabe3f06" testName="Agent1.Tests.FactExtractorTests.ExtractFactsAsync_NullResponse_ShouldReturnEmpty" computerName="LAPTOP-40G212RC" duration="00:00:00.0492534" startTime="2026-06-25T19:24:10.2096364+08:00" endTime="2026-06-25T19:24:10.2096603+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="823f0963-6b5c-4791-bd38-83d0ce962b04" />
+    <UnitTestResult executionId="96d48155-b8a6-43be-adfd-58cb1bcdc2ce" testId="d672a42d-267f-4746-7eaa-64ae92ede0bd" testName="Agent1.Tests.FactExtractorTests.ExtractFactsAsync_InvalidJson_ShouldReturnEmpty" computerName="LAPTOP-40G212RC" duration="00:00:00.0044391" startTime="2026-06-25T19:24:10.2738380+08:00" endTime="2026-06-25T19:24:10.2738381+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="96d48155-b8a6-43be-adfd-58cb1bcdc2ce" />
+    <UnitTestResult executionId="1832cfb1-e2ea-4bf9-aadf-81d9814c0fd0" testId="1e4b6946-15b1-6274-4b30-c606f1aa25ea" testName="Agent1.Tests.FactExtractorTests.ExtractFactsAsync_WithToolResults_ShouldIncludeInPrompt" computerName="LAPTOP-40G212RC" duration="00:00:00.0024897" startTime="2026-06-25T19:24:10.2692149+08:00" endTime="2026-06-25T19:24:10.2692150+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1832cfb1-e2ea-4bf9-aadf-81d9814c0fd0" />
+    <UnitTestResult executionId="d8e32484-42ee-4137-9a66-b82281c549ea" testId="d94de7cc-8c13-910c-1818-7d8ee74c1022" testName="Agent1.Tests.FactExtractorTests.ExtractFactsAsync_MarkdownCodeBlock_ShouldStrip" computerName="LAPTOP-40G212RC" duration="00:00:00.0573098" startTime="2026-06-25T19:24:10.2666844+08:00" endTime="2026-06-25T19:24:10.2666847+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d8e32484-42ee-4137-9a66-b82281c549ea" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="Agent1.Tests.FactExtractorTests.ExtractFactsAsync_MultipleFacts_ShouldParseAll" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="58098349-1da7-33f6-73c9-9f6bcc46cd1e">
+      <Execution id="642ed32d-241e-4a6a-b001-21d33cd39250" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.FactExtractorTests" name="ExtractFactsAsync_MultipleFacts_ShouldParseAll" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.FactExtractorTests.ExtractFactsAsync_MarkdownCodeBlock_ShouldStrip" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="d94de7cc-8c13-910c-1818-7d8ee74c1022">
+      <Execution id="d8e32484-42ee-4137-9a66-b82281c549ea" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.FactExtractorTests" name="ExtractFactsAsync_MarkdownCodeBlock_ShouldStrip" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.FactExtractorTests.ExtractFactsAsync_InvalidJson_ShouldReturnEmpty" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="d672a42d-267f-4746-7eaa-64ae92ede0bd">
+      <Execution id="96d48155-b8a6-43be-adfd-58cb1bcdc2ce" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.FactExtractorTests" name="ExtractFactsAsync_InvalidJson_ShouldReturnEmpty" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.FactExtractorTests.ExtractFactsAsync_ShouldParseJsonResponse" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="d44bcb37-5a1f-fa56-48a8-2e967a219a0b">
+      <Execution id="5020fe80-c30b-4cd8-932b-c0895d542a12" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.FactExtractorTests" name="ExtractFactsAsync_ShouldParseJsonResponse" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.FactExtractorTests.ExtractFactsAsync_LLMThrows_ShouldReturnEmpty" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="f14c3913-eb57-7a72-d327-79f267433bc1">
+      <Execution id="1eb6721e-ca6b-4c83-876d-0abe8b496142" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.FactExtractorTests" name="ExtractFactsAsync_LLMThrows_ShouldReturnEmpty" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.FactExtractorTests.ExtractFactsAsync_NullResponse_ShouldReturnEmpty" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="36836a38-b018-c945-44f1-42ecaabe3f06">
+      <Execution id="823f0963-6b5c-4791-bd38-83d0ce962b04" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.FactExtractorTests" name="ExtractFactsAsync_NullResponse_ShouldReturnEmpty" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.FactExtractorTests.ExtractFactsAsync_WithToolResults_ShouldIncludeInPrompt" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="1e4b6946-15b1-6274-4b30-c606f1aa25ea">
+      <Execution id="1832cfb1-e2ea-4bf9-aadf-81d9814c0fd0" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.FactExtractorTests" name="ExtractFactsAsync_WithToolResults_ShouldIncludeInPrompt" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.FactExtractorTests.ExtractFactsAsync_EmptyResponse_ShouldReturnEmpty" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="65c2c817-e98c-ec31-7019-12dd82c6c2c5">
+      <Execution id="8c60bbbf-fa16-4380-acbd-010954c10800" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.FactExtractorTests" name="ExtractFactsAsync_EmptyResponse_ShouldReturnEmpty" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="58098349-1da7-33f6-73c9-9f6bcc46cd1e" executionId="642ed32d-241e-4a6a-b001-21d33cd39250" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d44bcb37-5a1f-fa56-48a8-2e967a219a0b" executionId="5020fe80-c30b-4cd8-932b-c0895d542a12" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="65c2c817-e98c-ec31-7019-12dd82c6c2c5" executionId="8c60bbbf-fa16-4380-acbd-010954c10800" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f14c3913-eb57-7a72-d327-79f267433bc1" executionId="1eb6721e-ca6b-4c83-876d-0abe8b496142" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="36836a38-b018-c945-44f1-42ecaabe3f06" executionId="823f0963-6b5c-4791-bd38-83d0ce962b04" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d672a42d-267f-4746-7eaa-64ae92ede0bd" executionId="96d48155-b8a6-43be-adfd-58cb1bcdc2ce" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="1e4b6946-15b1-6274-4b30-c606f1aa25ea" executionId="1832cfb1-e2ea-4bf9-aadf-81d9814c0fd0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d94de7cc-8c13-910c-1818-7d8ee74c1022" executionId="d8e32484-42ee-4137-9a66-b82281c549ea" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="列表中未列出的结果" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="所有已加载的结果" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="8" executed="8" passed="8" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.5.3.1+6b60a9e56a (64-bit .NET 8.0.27)&#xD;
+[xUnit.net 00:00:00.07]   Discovering: Agent1.Tests&#xD;
+[xUnit.net 00:00:00.15]   Discovered:  Agent1.Tests&#xD;
+[xUnit.net 00:00:00.15]   Starting:    Agent1.Tests&#xD;
+   ?? ��ʵ��ȡʧ��: 'not valid json {{' is an invalid JSON literal. Expected the literal 'null'. Path: $ | LineNumber: 0 | BytePositionInLine: 1.&#xD;
+   ?? ��ʵ��ȡʧ��: LLM error&#xD;
+[xUnit.net 00:00:00.30]   Finished:    Agent1.Tests&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

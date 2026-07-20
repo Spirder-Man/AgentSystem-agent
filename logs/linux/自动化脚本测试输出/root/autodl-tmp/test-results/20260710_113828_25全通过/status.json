@@ -1,0 +1,162 @@
+{
+  "started_at": "2026-07-10T11:38:28+08:00",
+  "status": "completed",
+  "total": 25,
+  "passed": 25,
+  "failed": 0,
+  "skipped": 0,
+  "elapsed_s": 1343,
+  "current_test": null,
+  "results": [
+    {
+      "id": "T10",
+      "name": "数据库连接验证",
+      "result": "pass",
+      "elapsed_s": "2"
+    },
+    {
+      "id": "T20",
+      "name": "告警邮件测试",
+      "result": "pass",
+      "elapsed_s": "2"
+    },
+    {
+      "id": "T11",
+      "name": "切换检索模式_BM25",
+      "result": "pass",
+      "elapsed_s": "2"
+    },
+    {
+      "id": "T11b",
+      "name": "切换检索模式_Vector",
+      "result": "pass",
+      "elapsed_s": "2"
+    },
+    {
+      "id": "T11c",
+      "name": "切换检索模式_Hybrid",
+      "result": "pass",
+      "elapsed_s": "2"
+    },
+    {
+      "id": "T1.1",
+      "name": "安全注入_忽略指令",
+      "result": "pass",
+      "elapsed_s": "8"
+    },
+    {
+      "id": "T1.2",
+      "name": "安全注入_SQL",
+      "result": "pass",
+      "elapsed_s": "14"
+    },
+    {
+      "id": "T1.3",
+      "name": "安全注入_空输入",
+      "result": "pass",
+      "elapsed_s": "21"
+    },
+    {
+      "id": "T1",
+      "name": "CoT标准推理",
+      "result": "pass",
+      "elapsed_s": "25"
+    },
+    {
+      "id": "T2",
+      "name": "CoT流式推理",
+      "result": "pass",
+      "elapsed_s": "22"
+    },
+    {
+      "id": "T3",
+      "name": "ReAct标准推理",
+      "result": "pass",
+      "elapsed_s": "9"
+    },
+    {
+      "id": "T4",
+      "name": "ReAct流式推理",
+      "result": "pass",
+      "elapsed_s": "12"
+    },
+    {
+      "id": "T5",
+      "name": "Reflection反思",
+      "result": "pass",
+      "elapsed_s": "15"
+    },
+    {
+      "id": "T6",
+      "name": "RAG检索增强",
+      "result": "pass",
+      "elapsed_s": "43"
+    },
+    {
+      "id": "T7",
+      "name": "智能对话系统",
+      "result": "pass",
+      "elapsed_s": "3"
+    },
+    {
+      "id": "T8",
+      "name": "化工合规自查_共存",
+      "result": "pass",
+      "elapsed_s": "10"
+    },
+    {
+      "id": "T8b",
+      "name": "化工合规自查_间距",
+      "result": "pass",
+      "elapsed_s": "48"
+    },
+    {
+      "id": "T9",
+      "name": "化工RAG检索测试",
+      "result": "pass",
+      "elapsed_s": "3"
+    },
+    {
+      "id": "T12",
+      "name": "工具调用诊断",
+      "result": "pass",
+      "elapsed_s": "62"
+    },
+    {
+      "id": "T14",
+      "name": "整改工单跟进",
+      "result": "pass",
+      "elapsed_s": "12"
+    },
+    {
+      "id": "T16",
+      "name": "知识库增量更新",
+      "result": "pass",
+      "elapsed_s": "2"
+    },
+    {
+      "id": "T17",
+      "name": "监管核查辅助",
+      "result": "pass",
+      "elapsed_s": "44"
+    },
+    {
+      "id": "T19",
+      "name": "知识图谱查询",
+      "result": "pass",
+      "elapsed_s": "2"
+    },
+    {
+      "id": "T18",
+      "name": "应急响应方案",
+      "result": "pass",
+      "elapsed_s": "2"
+    },
+    {
+      "id": "T13",
+      "name": "合规评测集",
+      "result": "pass",
+      "elapsed_s": "975"
+    }
+  ]
+}

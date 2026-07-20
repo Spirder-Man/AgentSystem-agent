@@ -6,7 +6,6 @@ using Agent1.Config;
 using Agent1.Models;
 using Agent1.Services;
 using FluentAssertions;
-using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace Agent1.Tests;
@@ -32,29 +31,20 @@ public class DatabaseIntegrationTests : IAsyncLifetime
     /// <summary>测试前: 创建 DatabaseService 实例 + 建表</summary>
     public async Task InitializeAsync()
     {
-        // 从环境变量构建最小配置
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
+        // 直接从环境变量构建 DatabaseConfig，不依赖 AppConfig 单例
+        // 避免与 ApiIntegrationTests 的 WebApplicationFactory 并行时发生单例竞争
+        var port = int.TryParse(Environment.GetEnvironmentVariable("DB_PORT"), out var p) ? p : 5432;
+        _config = new AppConfig
+        {
+            Database = new DatabaseConfig
             {
-                ["Database:Host"] = Environment.GetEnvironmentVariable("DB_HOST") ?? "localhost",
-                ["Database:Port"] = Environment.GetEnvironmentVariable("DB_PORT") ?? "5432",
-                ["Database:DatabaseName"] = Environment.GetEnvironmentVariable("DB_NAME") ?? "chemical_park_ai_agent",
-                ["Database:Username"] = Environment.GetEnvironmentVariable("DB_USERNAME") ?? "postgres",
-                ["Database:Password"] = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "7758521",
-                // 以下为 AppConfig.Validate() 必需字段（集成测试不关心具体值）
-                ["Llm:ModelId"] = "test-model",
-                ["Llm:Endpoint"] = "http://localhost:11434",
-                ["VectorSearch:EmbeddingModelId"] = "test-embed",
-                ["PromptTemplates:SystemRole"] = "test",
-                ["PromptTemplates:EvalFastPrompt"] = "test {SystemRole} {UserInput}",
-                ["PromptTemplates:EvalFastQueryPrompt"] = "test {SystemRole} {UserInput}"
-            })
-            .Build();
-
-        try { AppConfig.Load(configuration); }
-        catch (InvalidOperationException) { /* 已被其他测试初始化 */ }
-
-        _config = AppConfig.Instance;
+                Host = Environment.GetEnvironmentVariable("DB_HOST") ?? "localhost",
+                Port = port,
+                DatabaseName = Environment.GetEnvironmentVariable("DB_NAME") ?? "chemical_park_ai_agent",
+                Username = Environment.GetEnvironmentVariable("DB_USERNAME") ?? "postgres",
+                Password = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "7758521"
+            }
+        };
         _db = new DatabaseService(_config);
 
         // 确保表存在
@@ -66,10 +56,18 @@ public class DatabaseIntegrationTests : IAsyncLifetime
         await _db.InitializeDatabaseAsync();
     }
 
-    /// <summary>测试后: 清理测试数据</summary>
+    /// <summary>测试后: 清理测试数据（双层表 + 旧表）</summary>
     public async Task DisposeAsync()
     {
         try { await _db.ClearChemicalDocumentsAsync(); } catch { /* 静默清理 */ }
+        try
+        {
+            using var conn = await _db.GetConnectionAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM knowledge_chunks; DELETE FROM knowledge_documents;";
+            cmd.ExecuteNonQuery();
+        }
+        catch { /* 静默清理 */ }
     }
 
     // ═══════════════════════════════════════
@@ -100,6 +98,8 @@ public class DatabaseIntegrationTests : IAsyncLifetime
         tables.Should().Contain("sessions");
         tables.Should().Contain("audit_logs");
         tables.Should().Contain("chemical_documents");
+        tables.Should().Contain("knowledge_documents");
+        tables.Should().Contain("knowledge_chunks");
         tables.Should().Contain("search_logs");
     }
 
@@ -162,14 +162,28 @@ public class DatabaseIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetAllChemicalDocumentTexts_ReturnsCorrectFields()
     {
-        await _db.AddChemicalDocumentAsync(new ChemicalDocumentRecord
+        // 使用双层表新 API：先插入文档记录，再插入分块
+        var docId = await _db.InsertDocumentAsync(new KnowledgeDocumentRecord
+        {
+            FileName = "test-benzene.pdf",
+            SourcePath = "test-benzene.pdf",
+            FileFormat = "pdf",
+            RegulationType = "国标",
+            Priority = "高",
+            RegulationNumber = "GB-TEST-001",
+            ContentHash = "test-hash-benzene"
+        });
+
+        await _db.InsertChunkAsync(new ChemicalDocumentRecord
         {
             Content = "苯 CAS:71-43-2 闪点:-11°C",
             RegulationType = "国标",
             Priority = "高",
             SourceFile = "test-benzene.pdf",
             PageNumber = 5
-        });
+        }, docId);
+
+        await _db.UpdateDocumentChunkCountAsync(docId, 1);
 
         var docs = await _db.GetAllChemicalDocumentTextsAsync();
 
@@ -184,15 +198,27 @@ public class DatabaseIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task DocumentRecord_PageNumber_PersistedCorrectly()
     {
-        // P2-5 回归: 验证 PageNumber 正确写入数据库
-        var record = new ChemicalDocumentRecord
+        // P2-5 回归: 验证 PageNumber 正确写入双层表
+        var docId = await _db.InsertDocumentAsync(new KnowledgeDocumentRecord
+        {
+            FileName = "GB 50160-2008.pdf",
+            SourcePath = "GB 50160-2008.pdf",
+            FileFormat = "pdf",
+            RegulationType = "国标",
+            Priority = "高",
+            RegulationNumber = "GB 50160-2008",
+            ContentHash = "test-hash-gb50160"
+        });
+
+        await _db.InsertChunkAsync(new ChemicalDocumentRecord
         {
             Content = "GB 50160-2008 石油化工企业设计防火标准 第3章 防火间距",
             RegulationType = "国标",
             Priority = "高",
             PageNumber = 42
-        };
-        await _db.AddChemicalDocumentAsync(record);
+        }, docId);
+
+        await _db.UpdateDocumentChunkCountAsync(docId, 1);
 
         var docs = await _db.GetAllChemicalDocumentsWithEmbeddingsAsync();
         var saved = docs.FirstOrDefault(d => d.Content.Contains("GB 50160"));

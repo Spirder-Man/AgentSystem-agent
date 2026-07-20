@@ -77,6 +77,40 @@ namespace Agent1.Services.Orchestration
         /// <summary>获取计划详情</summary>
         public InspectionPlan? GetPlan(string planId) => _repo.GetPlan(planId);
 
+        /// <summary>删除巡检计划</summary>
+        public bool DeletePlan(string planId)
+        {
+            var plan = GetPlan(planId);
+            if (plan == null) return false;
+            lock (_repo) { return _repo.DeletePlan(planId); }
+        }
+
+        /// <summary>更新巡检计划</summary>
+        public InspectionPlan? UpdatePlan(string planId, string? name, string? area,
+            string? inspector, string? notes, List<InspectionItem>? items)
+        {
+            var plan = GetPlan(planId);
+            if (plan == null) return null;
+
+            if (name != null) plan.Name = name;
+            if (area != null) plan.Area = area;
+            if (inspector != null) plan.Inspector = inspector;
+            if (notes != null) plan.Notes = notes;
+            if (items != null && items.Count > 0)
+            {
+                plan.Items = items.Select((it, i) =>
+                {
+                    it.ItemId = i + 1;
+                    return it;
+                }).ToList();
+            }
+
+            lock (_repo) { _repo.SavePlan(plan); }
+
+            Serilog.Log.Information("[InspectionOrchestrator] 更新计划 {PlanId}: {Name}", planId, plan.Name);
+            return plan;
+        }
+
         // ═══════════════════════════════════════
         // Phase 2: 巡检执行
         // ═══════════════════════════════════════

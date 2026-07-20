@@ -68,8 +68,19 @@ namespace Agent1.Tests
         [Fact]
         public void MultimodalModelId_ShouldReturnConfiguredValue()
         {
-            AppConfig.Load(BuildConfig("mm-test", multimodalModelId: "qwen2-vl:7b"));
-            ModelConfig.MultimodalModelId.Should().Be("qwen2-vl:7b");
+            // 保存并清除环境变量，避免远程 .env 覆盖内存配置值
+            var saved = Environment.GetEnvironmentVariable("MULTIMODAL_MODEL_ID");
+            try
+            {
+                Environment.SetEnvironmentVariable("MULTIMODAL_MODEL_ID", null);
+
+                AppConfig.Load(BuildConfig("mm-test", multimodalModelId: "qwen2-vl:7b"));
+                ModelConfig.MultimodalModelId.Should().Be("qwen2-vl:7b");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("MULTIMODAL_MODEL_ID", saved);
+            }
         }
 
         [Fact]

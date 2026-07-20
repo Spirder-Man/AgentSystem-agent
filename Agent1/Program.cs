@@ -147,6 +147,9 @@ namespace Agent1
             //   如果配置键名和属性名不一致，需要用 [ConfigurationKeyName] 注解映射
             AppConfig.Load(configuration);
 
+            // P0-2: 激活审计日志文件路径
+            ComplianceAuditLogger.Initialize();
+
             // 【架构】Fail-Fast 验证：在程序进入业务循环之前检查所有必需配置项
             //   如果配置缺失，立即报错退出——避免运行到一半才发现配错导致数据损坏
             //   Validate() 返回错误列表而非直接抛异常，可以一次性展示所有问题

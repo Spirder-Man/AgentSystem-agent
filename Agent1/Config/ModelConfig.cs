@@ -38,6 +38,11 @@ namespace Agent1.Config
         public static string MultimodalModelId => Config.Llm.MultimodalModelId;
 
         /// <summary>
+        /// 多模态服务端点（从配置读取，默认 :8083 独立 vision 实例，与 Reranker :8082 分离）
+        /// </summary>
+        public static Uri MultimodalEndpoint => new Uri(Config.Llm.MultimodalEndpoint);
+
+        /// <summary>
         /// Phase 2a 预留: 工具调用规划专用模型ID。如果配置为空则使用 ModelId（默认行为）。
         /// 未来可分离为小模型做工具规划 + 大模型做合规结论生成。
         /// </summary>

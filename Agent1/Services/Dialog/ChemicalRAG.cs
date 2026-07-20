@@ -51,22 +51,92 @@ namespace Agent1.Services
         /// <param name="databaseService">数据库服务（可选），传入后启用启动加速：DB 有数据则跳过文件扫描和嵌入生成。</param>
         public ChemicalRAG(string knowledgeBasePath, IKnowledgeBaseService knowledgeBase, IDatabaseService? databaseService = null)
         {
-            _knowledgeBasePath = knowledgeBasePath;
+            // P0修复：知识库路径健壮解析。
+            // `dotnet run --project Agent1.Api` 启动的子进程 CWD 是项目目录而非仓库根，
+            // 直接用相对路径 "knowledgebase" 会解析到 Agent1.Api/knowledgebase（不存在真实文档）。
+            // 这里将配置路径针对多个稳定锚点（CWD、程序集目录及其各级父目录）解析，
+            // 挑选真正包含知识库子目录的那个，保持配置驱动、跨平台、不硬编码绝对路径。
+            _knowledgeBasePath = ResolveKnowledgeBasePath(knowledgeBasePath);
             _knowledgeBase = knowledgeBase;
             _databaseService = databaseService;
+        }
+
+        // 知识库特征子目录：只要命中其一即认定该目录是真实知识库根。
+        private static readonly string[] KnowledgeBaseMarkers =
+            { "国标", "园区规则", "历史案例", "化工专业条例" };
+
+        /// <summary>
+        /// 将配置的知识库路径（可能是相对路径）解析为真实存在的绝对路径。
+        /// 不依赖进程工作目录：依次尝试 CWD、程序集目录及其各级父目录作为锚点，
+        /// 选出真正包含知识库特征子目录的路径；均未命中时回退为原路径的绝对形式（保持原行为）。
+        /// </summary>
+        private static string ResolveKnowledgeBasePath(string configuredPath)
+        {
+            if (string.IsNullOrWhiteSpace(configuredPath))
+                return configuredPath;
+
+            // 绝对路径且已合格 → 直接采用
+            if (Path.IsPathRooted(configuredPath) && QualifiesAsKnowledgeBase(configuredPath))
+                return configuredPath;
+
+            var anchors = new List<string>();
+            void AddWithAncestors(string? start)
+            {
+                var dir = start;
+                int guard = 0;
+                while (!string.IsNullOrEmpty(dir) && guard++ < 12)
+                {
+                    if (!anchors.Contains(dir)) anchors.Add(dir);
+                    dir = Path.GetDirectoryName(
+                        dir!.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                }
+            }
+            AddWithAncestors(Directory.GetCurrentDirectory());
+            AddWithAncestors(AppContext.BaseDirectory);
+
+            var leaf = Path.GetFileName(
+                configuredPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+
+            foreach (var anchor in anchors)
+            {
+                // 锚点 + 配置路径
+                var candidate = Path.GetFullPath(Path.Combine(anchor, configuredPath));
+                if (QualifiesAsKnowledgeBase(candidate)) return candidate;
+
+                // 锚点 + 叶子目录名（配置为多级相对路径时的兜底）
+                if (!string.IsNullOrEmpty(leaf))
+                {
+                    var leafCandidate = Path.GetFullPath(Path.Combine(anchor, leaf));
+                    if (QualifiesAsKnowledgeBase(leafCandidate)) return leafCandidate;
+                }
+
+                // 锚点自身即知识库根
+                if (QualifiesAsKnowledgeBase(anchor)) return anchor;
+            }
+
+            // 兜底：保持原行为（相对 CWD 解析）
+            return Path.IsPathRooted(configuredPath) ? configuredPath : Path.GetFullPath(configuredPath);
+        }
+
+        private static bool QualifiesAsKnowledgeBase(string dir)
+        {
+            if (!Directory.Exists(dir)) return false;
+            foreach (var marker in KnowledgeBaseMarkers)
+                if (Directory.Exists(Path.Combine(dir, marker))) return true;
+            return false;
         }
         /// <summary>
         /// 异步加载化工知识库，包括国标、园区规则和历史案例。
         /// </summary>
         public async Task LoadKnowledgeBaseAsync()
         {
-            // ═══ 启动加速：数据库已有数据 → 跳过文件扫描和嵌入生成 ═══
+            // ═══ 启动加速：新表已有数据 → 跳过文件扫描和嵌入生成 ═══
             if (_databaseService != null)
             {
-                var existingCount = await _databaseService.GetChemicalDocumentCountAsync();
-                if (existingCount > 0 && _knowledgeBase is HybridKnowledgeBaseService hybrid)
+                var existingChunkCount = await _databaseService.GetKnowledgeChunkCountAsync();
+                if (existingChunkCount > 0 && _knowledgeBase is HybridKnowledgeBaseService hybrid)
                 {
-                    Console.WriteLine($"\n📦 数据库已有 {existingCount} 条文档，使用快速模式...");
+                    Console.WriteLine($"\n📦 数据库已有 {existingChunkCount} 条分块，使用快速模式...");
                     await hybrid.RebuildBm25FromDatabaseAsync();
                     Console.WriteLine($"   知识库文档数: {_knowledgeBase.GetDocumentCount()}");
                     return;
@@ -95,7 +165,7 @@ namespace Agent1.Services
 
             var specDir = Path.Combine(_knowledgeBasePath, "化工专业条例", "化工专业条例");
             if (Directory.Exists(specDir))
-                await LoadDirectoryAsync(specDir, "国标", "高");
+                await LoadDirectoryAsync(specDir, "化工专业条例", "高");
 
             var parkDir = Path.Combine(_knowledgeBasePath, "园区规则");
             if (Directory.Exists(parkDir))
@@ -135,7 +205,7 @@ namespace Agent1.Services
             var directories = new[]
             {
                 (Path.Combine(_knowledgeBasePath, "国标"), "国标", "高"),
-                (Path.Combine(_knowledgeBasePath, "化工专业条例", "化工专业条例"), "国标", "高"),
+                (Path.Combine(_knowledgeBasePath, "化工专业条例", "化工专业条例"), "化工专业条例", "高"),
                 (Path.Combine(_knowledgeBasePath, "园区规则"), "园区规则", "中"),
                 (Path.Combine(_knowledgeBasePath, "历史案例"), "历史案例", "低"),
             };
@@ -305,6 +375,44 @@ namespace Agent1.Services
         // ==================== K6: 多格式文档处理管道 ====================
 
         /// <summary>
+        /// 为文件创建文档记录并插入 knowledge_documents，返回自增 ID
+        /// </summary>
+        private async Task<int> InsertDocumentForFileAsync(string filePath, string regulationType, string priority,
+            string? parentCategory = null, string? regulationNumber = null, string? regulationTitle = null,
+            int? pageCount = null, string? extractionQuality = null, bool isFullText = true)
+        {
+            if (_databaseService == null) return 0; // 无数据库则降级，返回 0
+
+            var fileName = Path.GetFileName(filePath);
+            var fileInfo = new FileInfo(filePath);
+            var ext = fileInfo.Extension.TrimStart('.').ToLowerInvariant();
+
+            // 计算相对路径
+            var relativePath = filePath;
+            if (filePath.StartsWith(_knowledgeBasePath))
+                relativePath = filePath.Substring(_knowledgeBasePath.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            var doc = new KnowledgeDocumentRecord
+            {
+                SourcePath = relativePath,
+                FileName = Path.GetFileNameWithoutExtension(filePath),
+                FileFormat = ext,
+                FileSizeBytes = fileInfo.Exists ? fileInfo.Length : null,
+                RegulationType = regulationType,
+                RegulationNumber = regulationNumber,
+                RegulationTitle = regulationTitle,
+                Priority = priority,
+                ParentCategory = parentCategory,
+                ExtractionQuality = extractionQuality ?? "good",
+                PageCount = pageCount,
+                IsFullText = isFullText,
+                LastModified = fileInfo.Exists ? fileInfo.LastWriteTimeUtc : null
+            };
+
+            return await _databaseService.InsertDocumentAsync(doc);
+        }
+
+        /// <summary>
         /// 统一目录加载：自动识别 PDF/DOC/DOCX/TXT
         /// </summary>
         private async Task LoadDirectoryAsync(string dirPath, string regulationType, string priority)
@@ -330,6 +438,13 @@ namespace Agent1.Services
                     var content = await File.ReadAllTextAsync(f, Encoding.UTF8);
                     var cr = _textCleaner.Clean(content, regulationType);
                     var chunks = _semanticChunker.Chunk(cr.CleanText, regulationType);
+
+                    // 双层表：先插入文档记录
+                    var quality = cr.IsGarbled ? "partial" : "good";
+                    var regNumber = chunks.FirstOrDefault()?.RegulationNumber;
+                    var documentId = await InsertDocumentForFileAsync(f, regulationType, priority,
+                        extractionQuality: quality, regulationNumber: regNumber);
+
                     foreach (var c in chunks)
                     {
                         await _knowledgeBase.AddDocumentAsync(c.Content, new Dictionary<string, object>
@@ -341,10 +456,15 @@ namespace Agent1.Services
                             ["ClauseNumber"] = c.ClauseNumber ?? "",
                             ["ChunkIndex"] = c.ChunkIndex,
                             ["PageNumber"] = c.PageNumber ?? (object)DBNull.Value,
-                            ["ExtractionQuality"] = cr.IsGarbled ? "partial" : "good"
+                            ["ExtractionQuality"] = quality,
+                            ["DocumentId"] = documentId
                         });
                         _totalChunks++;
                     }
+
+                    if (_databaseService != null && documentId > 0)
+                        await _databaseService.UpdateDocumentChunkCountAsync(documentId, chunks.Count);
+
                     _successFiles++;
                 }
                 catch (Exception ex)
@@ -368,32 +488,51 @@ namespace Agent1.Services
             {
                 _totalFiles++;
                 var result = _docExtractor.Extract(file);
+
+                // 双层表：先插入文档记录
+                var quality = result.ExtractionMethod == "FilenameOnly" ? "partial" : "good";
+                var parentDir = result.ParentDirectory ?? "";
+
                 if (result.ShouldFullIndex && result.FullText != null)
                 {
                     var cr = _textCleaner.Clean(result.FullText, "通用");
                     var chunks = _semanticChunker.Chunk(cr.CleanText, "通用");
+
+                    var documentId = await InsertDocumentForFileAsync(file, "企业制度", "低",
+                        parentCategory: parentDir, extractionQuality: quality);
+
                     foreach (var c in chunks)
                     {
                         await _knowledgeBase.AddDocumentAsync(c.Content, new Dictionary<string, object>
                         {
                             ["RegulationType"] = "企业制度", ["Priority"] = "低",
-                            ["SourceFile"] = result.FileName, ["ParentDir"] = result.ParentDirectory ?? "",
+                            ["SourceFile"] = result.FileName, ["ParentDir"] = parentDir,
                             ["RegulationNumber"] = c.RegulationNumber ?? "",
                             ["ChapterTitle"] = c.ChapterTitle ?? "",
                             ["ClauseNumber"] = c.ClauseNumber ?? "",
                             ["ChunkIndex"] = c.ChunkIndex,
                             ["PageNumber"] = c.PageNumber ?? (object)DBNull.Value,
-                            ["ExtractionQuality"] = result.ExtractionMethod == "FilenameOnly" ? "partial" : "good"
+                            ["ExtractionQuality"] = quality,
+                            ["DocumentId"] = documentId
                         });
                         _totalChunks++;
                     }
+
+                    if (_databaseService != null && documentId > 0)
+                        await _databaseService.UpdateDocumentChunkCountAsync(documentId, chunks.Count);
+
                     _successFiles++;
                 }
                 else
                 {
+                    var documentId = await InsertDocumentForFileAsync(file, "企业制度", "低",
+                        parentCategory: parentDir, extractionQuality: "partial", isFullText: false);
+
                     await _knowledgeBase.AddDocumentAsync(result.Summary, new Dictionary<string, object>
                     {
-                        ["RegulationType"] = "企业制度", ["Priority"] = "低", ["SourceFile"] = result.FileName
+                        ["RegulationType"] = "企业制度", ["Priority"] = "低",
+                        ["SourceFile"] = result.FileName,
+                        ["DocumentId"] = documentId
                     });
                     _totalChunks++;
                     _skippedFiles++;
@@ -424,6 +563,13 @@ namespace Agent1.Services
                 //语义分块
                 var chunks = _semanticChunker.Chunk(cleanResult.CleanText, regulationType,
                     pdfResult.RegulationNumber ?? fileName, pageNumber: 1);
+
+                // 双层表：先插入文档记录
+                var regNumber = pdfResult.RegulationNumber ?? chunks.FirstOrDefault()?.RegulationNumber;
+                var documentId = await InsertDocumentForFileAsync(filePath, regulationType, priority,
+                    regulationNumber: regNumber, pageCount: pdfResult.PageCount,
+                    extractionQuality: pdfResult.Quality);
+
                 //构建字典存储检索后的分词
                 foreach (var c in chunks)
                 {
@@ -436,10 +582,15 @@ namespace Agent1.Services
                         ["ClauseNumber"] = c.ClauseNumber ?? "",
                         ["ChunkIndex"] = c.ChunkIndex,
                         ["PageNumber"] = c.PageNumber ?? 1,
-                        ["ExtractionQuality"] = pdfResult.Quality
+                        ["ExtractionQuality"] = pdfResult.Quality,
+                        ["DocumentId"] = documentId
                     });
                     _totalChunks++;
                 }
+
+                if (_databaseService != null && documentId > 0)
+                    await _databaseService.UpdateDocumentChunkCountAsync(documentId, chunks.Count);
+
                 if (cleanResult.IsGarbled) _partialFiles++; else _successFiles++;
                 Console.WriteLine($"   ✅ [{fileName}]: {pdfResult.PageCount}页 → {chunks.Count}块 (质量:{pdfResult.Quality})");
             }
@@ -465,6 +616,12 @@ namespace Agent1.Services
                 {
                     var cr = _textCleaner.Clean(docResult.FullText, regulationType);
                     var chunks = _semanticChunker.Chunk(cr.CleanText, regulationType);
+
+                    // 双层表：先插入文档记录
+                    var quality = docResult.ExtractionMethod == "FilenameOnly" ? "partial" : "good";
+                    var documentId = await InsertDocumentForFileAsync(filePath, regulationType, priority,
+                        extractionQuality: quality);
+
                     foreach (var c in chunks)
                     {
                         await _knowledgeBase.AddDocumentAsync(c.Content, new Dictionary<string, object>
@@ -475,17 +632,27 @@ namespace Agent1.Services
                             ["ClauseNumber"] = c.ClauseNumber ?? "",
                             ["ChunkIndex"] = c.ChunkIndex,
                             ["PageNumber"] = c.PageNumber ?? (object)DBNull.Value,
-                            ["ExtractionQuality"] = docResult.ExtractionMethod == "FilenameOnly" ? "partial" : "good"
+                            ["ExtractionQuality"] = quality,
+                            ["DocumentId"] = documentId
                         });
                         _totalChunks++;
                     }
+
+                    if (_databaseService != null && documentId > 0)
+                        await _databaseService.UpdateDocumentChunkCountAsync(documentId, chunks.Count);
+
                     _successFiles++;
                 }
                 else
                 {
+                    var documentId = await InsertDocumentForFileAsync(filePath, regulationType, priority,
+                        extractionQuality: "partial", isFullText: false);
+
                     await _knowledgeBase.AddDocumentAsync(docResult.Summary, new Dictionary<string, object>
                     {
-                        ["RegulationType"] = regulationType, ["Priority"] = priority, ["SourceFile"] = fileName
+                        ["RegulationType"] = regulationType, ["Priority"] = priority,
+                        ["SourceFile"] = fileName,
+                        ["DocumentId"] = documentId
                     });
                     _totalChunks++;
                     _skippedFiles++;
@@ -550,6 +717,7 @@ namespace Agent1.Services
             var priorityLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
             {
                 { "国标", 3000 },
+                { "化工专业条例", 2800 },
                 { "园区规则", 2000 },
                 { "历史案例", 1000 },
                 { "企业制度", 500 }

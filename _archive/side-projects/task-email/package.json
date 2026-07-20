@@ -1,0 +1,13 @@
+{
+  "name": "task-email-mcp",
+  "version": "1.0.0",
+  "description": "MCP Server — 任务完成后自动发送邮件通知，支持邮件内点击确认并继续下一步",
+  "type": "module",
+  "scripts": {
+    "start": "node mcp-server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "nodemailer": "^6.9.16"
+  }
+}

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Agent1.Services;
 using FluentAssertions;
+using Moq;
 using Xunit;
 
 namespace Agent1.Tests;
@@ -63,5 +65,42 @@ public class ConclusionVerifierTests
     public void HasValidRegulation_Empty_ReturnsFalse()
     {
         ConclusionVerifier.HasValidRegulation("").Should().BeFalse();
+    }
+
+    // ═══════════════════════════════════════
+    // [P1 #1] KB 反向验证健壮性：知识库为空时不误判幻觉
+    // ═══════════════════════════════════════
+
+    [Fact]
+    public async Task VerifyAsync_EmptyKnowledgeBase_DoesNotFlagHallucination()
+    {
+        var kb = new Mock<IKnowledgeBaseService>();
+        kb.Setup(x => x.GetDocumentCount()).Returns(0); // 知识库未加载
+
+        var response = "依据 GB 30000.2-2013 第5条，属于危险类别";
+        var result = await ConclusionVerifier.VerifyAsync(response, new List<FunctionCallRecord>(), kb.Object);
+
+        result.HallucinatedRegulations.Should().BeEmpty("知识库为空时不应把真实法规判为幻觉");
+        result.Warnings.Should().Contain(w => w.Contains("知识库未加载"));
+        // 空库时不应触发反向检索
+        kb.Verify(x => x.RetrieveChemicalRegulationAsync(
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<string?>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_KnowledgeBaseHasRegulation_MarksVerified()
+    {
+        var kb = new Mock<IKnowledgeBaseService>();
+        kb.Setup(x => x.GetDocumentCount()).Returns(10); // 知识库已加载
+        kb.Setup(x => x.RetrieveChemicalRegulationAsync(
+                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<string?>()))
+            .ReturnsAsync(new List<RetrievedChunk> { RetrievedChunk.Create("GB 30000.2-2013 内容", 0.9, 1) });
+
+        var response = "依据 GB 30000.2-2013 第5条，属于危险类别";
+        var result = await ConclusionVerifier.VerifyAsync(response, new List<FunctionCallRecord>(), kb.Object);
+
+        result.VerifiedRegulations.Should().NotBeEmpty("KB 命中的法规应标记为已验证");
+        result.HallucinatedRegulations.Should().BeEmpty();
     }
 }

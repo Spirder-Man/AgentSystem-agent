@@ -225,12 +225,12 @@ start_services() {
     echo "  启动 LLM 推理服务 (8080)..."
     # KV Cache: -c 32768 = 32K 上下文窗口，支持 63 条连续评测不溢出
     # --cache-type-k q8_0 + --cache-type-v q8_0 = KV Cache 量化，VRAM 降至 ~2GB
-    # -fa = Flash Attention，进一步减少显存占用
+    # --flash-attn on = Flash Attention，进一步减少显存占用
     # -sps 0.0 = 禁用 LCP 自动 slot 匹配，每个请求独立 KV Cache（防止跨请求累积）
     nohup "$LLAMA_DIR/llama-server" \
       -m "$LLM_MODEL" \
       --host 0.0.0.0 --port 8080 -ngl 99 -c 32768 \
-      --cache-type-k q8_0 --cache-type-v q8_0 -fa \
+      --cache-type-k q8_0 --cache-type-v q8_0 --flash-attn on \
       -sps 0.0 \
       > /root/autodl-tmp/logs/llama-server.log 2>&1 &
     echo "    PID: $!"
@@ -243,20 +243,36 @@ start_services() {
       > /root/autodl-tmp/logs/llama-embed.log 2>&1 &
     echo "    PID: $!"
 
-    echo "  等待模型加载 (约20秒)..."
-    sleep 20
+    echo "  等待模型加载 (心跳检测，最多60秒)..."
 
-    # 验证
-    if curl -s --max-time 3 http://localhost:8080/health | grep -q "ok"; then
-        OK "8080 (LLM推理) 启动成功"
-    else
-        FAIL "8080 启动失败，查看日志: tail -50 /root/autodl-tmp/logs/llama-server.log"
+    # 8080 心跳轮询
+    LOADED_8080=0
+    for i in $(seq 1 20); do
+        if curl -s --max-time 2 http://localhost:8080/health 2>/dev/null | grep -q "ok"; then
+            OK "8080 (LLM推理) 启动成功 (耗时 ${i}s)"
+            LOADED_8080=1
+            break
+        fi
+        printf "  ."
+        sleep 3
+    done
+    if [ "$LOADED_8080" = "0" ]; then
+        echo ""
+        FAIL "8080 启动超时 (60s)，查看日志: tail -50 /root/autodl-tmp/logs/llama-server.log"
     fi
 
-    if curl -s --max-time 3 http://localhost:8081/health | grep -q "ok"; then
-        OK "8081 (Embedding) 启动成功"
-    else
-        FAIL "8081 启动失败，查看日志: tail -50 /root/autodl-tmp/logs/llama-embed.log"
+    # 8081 心跳轮询 (embedding 模型小，10次即可)
+    LOADED_8081=0
+    for i in $(seq 1 10); do
+        if curl -s --max-time 2 http://localhost:8081/health 2>/dev/null | grep -q "ok"; then
+            OK "8081 (Embedding) 启动成功 (耗时 ${i}s)"
+            LOADED_8081=1
+            break
+        fi
+        sleep 3
+    done
+    if [ "$LOADED_8081" = "0" ]; then
+        FAIL "8081 启动超时 (30s)，查看日志: tail -50 /root/autodl-tmp/logs/llama-embed.log"
     fi
 
     echo ""

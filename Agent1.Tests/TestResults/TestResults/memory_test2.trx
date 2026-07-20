@@ -1,0 +1,110 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="f8132c44-2c89-42b4-82a9-dac680755429" name="lcy@LAPTOP-40G212RC 2026-06-25 19:24:14" runUser="LAPTOP-40G212RC\lcy" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-06-25T19:24:14.9348111+08:00" queuing="2026-06-25T19:24:14.9348114+08:00" start="2026-06-25T19:24:14.1894608+08:00" finish="2026-06-25T19:24:14.9581344+08:00" />
+  <TestSettings name="default" id="a82db55b-c401-423e-81e8-51606dd4375a">
+    <Deployment runDeploymentRoot="lcy_LAPTOP-40G212RC_2026-06-25_19_24_14" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="f492d7d4-0259-467f-bc18-12040009ab9b" testId="8a1cf80f-eb64-2a45-2c28-4842bc1fab88" testName="Agent1.Tests.LongTermMemoryServiceTests.RetrieveAsync_DbThrows_ShouldReturnEmpty" computerName="LAPTOP-40G212RC" duration="00:00:00.0535507" startTime="2026-06-25T19:24:14.8090357+08:00" endTime="2026-06-25T19:24:14.8090467+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f492d7d4-0259-467f-bc18-12040009ab9b" />
+    <UnitTestResult executionId="56c84b65-4be0-49ec-8763-9e2e7e4bf290" testId="af3754a8-a925-cc8b-e9e7-24ec940f32cb" testName="Agent1.Tests.LongTermMemoryServiceTests.GetStatsAsync_ShouldReturnStats" computerName="LAPTOP-40G212RC" duration="00:00:00.0037543" startTime="2026-06-25T19:24:14.8122796+08:00" endTime="2026-06-25T19:24:14.8122797+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="56c84b65-4be0-49ec-8763-9e2e7e4bf290" />
+    <UnitTestResult executionId="1c0796ad-d4c2-4fc7-98f7-c9165498be2e" testId="ba1fe8d7-f743-5a5f-a444-02b94762d60c" testName="Agent1.Tests.LongTermMemoryServiceTests.SearchByKeywordAsync_ShouldReturnResults" computerName="LAPTOP-40G212RC" duration="00:00:00.0017916" startTime="2026-06-25T19:24:14.9077288+08:00" endTime="2026-06-25T19:24:14.9077288+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1c0796ad-d4c2-4fc7-98f7-c9165498be2e" />
+    <UnitTestResult executionId="38c17abb-2f7a-4332-860e-994493c983bb" testId="04ce481f-ee95-cb66-3f92-a66ddd05629a" testName="Agent1.Tests.LongTermMemoryServiceTests.DeactivateAsync_ShouldCallDb" computerName="LAPTOP-40G212RC" duration="00:00:00.0015150" startTime="2026-06-25T19:24:14.8887925+08:00" endTime="2026-06-25T19:24:14.8887928+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="38c17abb-2f7a-4332-860e-994493c983bb" />
+    <UnitTestResult executionId="130d1cbc-746f-4581-98b7-e3cfd1324fec" testId="f213bf5e-cbe5-ae61-1db1-91da2c52bc57" testName="Agent1.Tests.LongTermMemoryServiceTests.SearchByKeywordAsync_DbThrows_ShouldReturnEmpty" computerName="LAPTOP-40G212RC" duration="00:00:00.0007674" startTime="2026-06-25T19:24:14.9078480+08:00" endTime="2026-06-25T19:24:14.9078480+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="130d1cbc-746f-4581-98b7-e3cfd1324fec" />
+    <UnitTestResult executionId="f7806774-a584-4460-8d0e-573c518a67c4" testId="54304442-53cb-9107-5eb2-4895fcf3259f" testName="Agent1.Tests.LongTermMemoryServiceTests.RecordAsync_ExtractionFails_ShouldReturnEmpty" computerName="LAPTOP-40G212RC" duration="00:00:00.0042309" startTime="2026-06-25T19:24:14.9078619+08:00" endTime="2026-06-25T19:24:14.9078619+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f7806774-a584-4460-8d0e-573c518a67c4" />
+    <UnitTestResult executionId="8645026d-5a28-4d7c-86c1-9984111f5d4b" testId="ee21bf98-b2ba-f0c8-f00f-d7de88b9ac9d" testName="Agent1.Tests.LongTermMemoryServiceTests.RecordAsync_EmptyFacts_ShouldReturnEmpty" computerName="LAPTOP-40G212RC" duration="00:00:00.0387578" startTime="2026-06-25T19:24:14.8581956+08:00" endTime="2026-06-25T19:24:14.8581958+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="8645026d-5a28-4d7c-86c1-9984111f5d4b" />
+    <UnitTestResult executionId="3384f60f-1cd6-4d1c-947a-3ad750f432db" testId="9777b565-ed88-dcb6-ec54-f0fb6ddc35a4" testName="Agent1.Tests.LongTermMemoryServiceTests.MemoryTypePriority_ShouldRankRegulationRefHighest" computerName="LAPTOP-40G212RC" duration="00:00:00.0213380" startTime="2026-06-25T19:24:14.8795258+08:00" endTime="2026-06-25T19:24:14.8795260+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="3384f60f-1cd6-4d1c-947a-3ad750f432db" />
+    <UnitTestResult executionId="72aa6af3-91be-4295-bdd3-b0b63ad1c028" testId="0d56ad22-7eb1-c3e0-00ea-7bb4147b7b94" testName="Agent1.Tests.LongTermMemoryServiceTests.RetrieveAsync_ShouldReturnResults" computerName="LAPTOP-40G212RC" duration="00:00:00.0053111" startTime="2026-06-25T19:24:14.8176710+08:00" endTime="2026-06-25T19:24:14.8176712+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="72aa6af3-91be-4295-bdd3-b0b63ad1c028" />
+    <UnitTestResult executionId="0430606d-4fe1-4f82-a2ff-3e0605a95e8c" testId="f6cbbe19-c095-8239-ea59-18d29b9adf64" testName="Agent1.Tests.LongTermMemoryServiceTests.RecordHitAsync_ShouldCallDb" computerName="LAPTOP-40G212RC" duration="00:00:00.0012483" startTime="2026-06-25T19:24:14.8873158+08:00" endTime="2026-06-25T19:24:14.8873159+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0430606d-4fe1-4f82-a2ff-3e0605a95e8c" />
+    <UnitTestResult executionId="8f6f1a2a-7a2d-4729-8a66-e3e6b238840b" testId="97007267-892b-4941-1169-20de772fef1e" testName="Agent1.Tests.LongTermMemoryServiceTests.CleanupAsync_ShouldCallDb" computerName="LAPTOP-40G212RC" duration="00:00:00.0014785" startTime="2026-06-25T19:24:14.8192214+08:00" endTime="2026-06-25T19:24:14.8192216+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="8f6f1a2a-7a2d-4729-8a66-e3e6b238840b" />
+    <UnitTestResult executionId="40ee70e1-a949-4939-bfa3-2aaf3d64ab14" testId="dcb9af53-2a7f-0664-5db8-28a295033505" testName="Agent1.Tests.LongTermMemoryServiceTests.AddMemoryAsync_WithoutEmbedding_ShouldGenerate" computerName="LAPTOP-40G212RC" duration="00:00:00.0062705" startTime="2026-06-25T19:24:14.8858943+08:00" endTime="2026-06-25T19:24:14.8858947+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="40ee70e1-a949-4939-bfa3-2aaf3d64ab14" />
+    <UnitTestResult executionId="74ae45b5-c146-4d6e-8c29-f89406e83ace" testId="4e111a18-bd2c-b61b-a5b0-3ceac122b042" testName="Agent1.Tests.LongTermMemoryServiceTests.RetrieveAsync_EmbeddingReturnsNull_ShouldFallbackToKeyword" computerName="LAPTOP-40G212RC" duration="00:00:00.0008505" startTime="2026-06-25T19:24:14.9078303+08:00" endTime="2026-06-25T19:24:14.9078303+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="74ae45b5-c146-4d6e-8c29-f89406e83ace" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="Agent1.Tests.LongTermMemoryServiceTests.RetrieveAsync_DbThrows_ShouldReturnEmpty" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="8a1cf80f-eb64-2a45-2c28-4842bc1fab88">
+      <Execution id="f492d7d4-0259-467f-bc18-12040009ab9b" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.LongTermMemoryServiceTests" name="RetrieveAsync_DbThrows_ShouldReturnEmpty" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.LongTermMemoryServiceTests.RetrieveAsync_EmbeddingReturnsNull_ShouldFallbackToKeyword" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="4e111a18-bd2c-b61b-a5b0-3ceac122b042">
+      <Execution id="74ae45b5-c146-4d6e-8c29-f89406e83ace" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.LongTermMemoryServiceTests" name="RetrieveAsync_EmbeddingReturnsNull_ShouldFallbackToKeyword" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.LongTermMemoryServiceTests.RecordHitAsync_ShouldCallDb" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="f6cbbe19-c095-8239-ea59-18d29b9adf64">
+      <Execution id="0430606d-4fe1-4f82-a2ff-3e0605a95e8c" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.LongTermMemoryServiceTests" name="RecordHitAsync_ShouldCallDb" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.LongTermMemoryServiceTests.GetStatsAsync_ShouldReturnStats" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="af3754a8-a925-cc8b-e9e7-24ec940f32cb">
+      <Execution id="56c84b65-4be0-49ec-8763-9e2e7e4bf290" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.LongTermMemoryServiceTests" name="GetStatsAsync_ShouldReturnStats" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.LongTermMemoryServiceTests.SearchByKeywordAsync_ShouldReturnResults" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="ba1fe8d7-f743-5a5f-a444-02b94762d60c">
+      <Execution id="1c0796ad-d4c2-4fc7-98f7-c9165498be2e" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.LongTermMemoryServiceTests" name="SearchByKeywordAsync_ShouldReturnResults" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.LongTermMemoryServiceTests.SearchByKeywordAsync_DbThrows_ShouldReturnEmpty" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="f213bf5e-cbe5-ae61-1db1-91da2c52bc57">
+      <Execution id="130d1cbc-746f-4581-98b7-e3cfd1324fec" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.LongTermMemoryServiceTests" name="SearchByKeywordAsync_DbThrows_ShouldReturnEmpty" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.LongTermMemoryServiceTests.DeactivateAsync_ShouldCallDb" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="04ce481f-ee95-cb66-3f92-a66ddd05629a">
+      <Execution id="38c17abb-2f7a-4332-860e-994493c983bb" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.LongTermMemoryServiceTests" name="DeactivateAsync_ShouldCallDb" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.LongTermMemoryServiceTests.RetrieveAsync_ShouldReturnResults" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="0d56ad22-7eb1-c3e0-00ea-7bb4147b7b94">
+      <Execution id="72aa6af3-91be-4295-bdd3-b0b63ad1c028" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.LongTermMemoryServiceTests" name="RetrieveAsync_ShouldReturnResults" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.LongTermMemoryServiceTests.RecordAsync_ExtractionFails_ShouldReturnEmpty" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="54304442-53cb-9107-5eb2-4895fcf3259f">
+      <Execution id="f7806774-a584-4460-8d0e-573c518a67c4" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.LongTermMemoryServiceTests" name="RecordAsync_ExtractionFails_ShouldReturnEmpty" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.LongTermMemoryServiceTests.CleanupAsync_ShouldCallDb" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="97007267-892b-4941-1169-20de772fef1e">
+      <Execution id="8f6f1a2a-7a2d-4729-8a66-e3e6b238840b" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.LongTermMemoryServiceTests" name="CleanupAsync_ShouldCallDb" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.LongTermMemoryServiceTests.AddMemoryAsync_WithoutEmbedding_ShouldGenerate" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="dcb9af53-2a7f-0664-5db8-28a295033505">
+      <Execution id="40ee70e1-a949-4939-bfa3-2aaf3d64ab14" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.LongTermMemoryServiceTests" name="AddMemoryAsync_WithoutEmbedding_ShouldGenerate" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.LongTermMemoryServiceTests.RecordAsync_EmptyFacts_ShouldReturnEmpty" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="ee21bf98-b2ba-f0c8-f00f-d7de88b9ac9d">
+      <Execution id="8645026d-5a28-4d7c-86c1-9984111f5d4b" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.LongTermMemoryServiceTests" name="RecordAsync_EmptyFacts_ShouldReturnEmpty" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.LongTermMemoryServiceTests.MemoryTypePriority_ShouldRankRegulationRefHighest" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="9777b565-ed88-dcb6-ec54-f0fb6ddc35a4">
+      <Execution id="3384f60f-1cd6-4d1c-947a-3ad750f432db" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.LongTermMemoryServiceTests" name="MemoryTypePriority_ShouldRankRegulationRefHighest" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="8a1cf80f-eb64-2a45-2c28-4842bc1fab88" executionId="f492d7d4-0259-467f-bc18-12040009ab9b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="af3754a8-a925-cc8b-e9e7-24ec940f32cb" executionId="56c84b65-4be0-49ec-8763-9e2e7e4bf290" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ba1fe8d7-f743-5a5f-a444-02b94762d60c" executionId="1c0796ad-d4c2-4fc7-98f7-c9165498be2e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="04ce481f-ee95-cb66-3f92-a66ddd05629a" executionId="38c17abb-2f7a-4332-860e-994493c983bb" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f213bf5e-cbe5-ae61-1db1-91da2c52bc57" executionId="130d1cbc-746f-4581-98b7-e3cfd1324fec" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="54304442-53cb-9107-5eb2-4895fcf3259f" executionId="f7806774-a584-4460-8d0e-573c518a67c4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ee21bf98-b2ba-f0c8-f00f-d7de88b9ac9d" executionId="8645026d-5a28-4d7c-86c1-9984111f5d4b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="9777b565-ed88-dcb6-ec54-f0fb6ddc35a4" executionId="3384f60f-1cd6-4d1c-947a-3ad750f432db" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0d56ad22-7eb1-c3e0-00ea-7bb4147b7b94" executionId="72aa6af3-91be-4295-bdd3-b0b63ad1c028" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f6cbbe19-c095-8239-ea59-18d29b9adf64" executionId="0430606d-4fe1-4f82-a2ff-3e0605a95e8c" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="97007267-892b-4941-1169-20de772fef1e" executionId="8f6f1a2a-7a2d-4729-8a66-e3e6b238840b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="dcb9af53-2a7f-0664-5db8-28a295033505" executionId="40ee70e1-a949-4939-bfa3-2aaf3d64ab14" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="4e111a18-bd2c-b61b-a5b0-3ceac122b042" executionId="74ae45b5-c146-4d6e-8c29-f89406e83ace" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="列表中未列出的结果" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="所有已加载的结果" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="13" executed="13" passed="13" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.5.3.1+6b60a9e56a (64-bit .NET 8.0.27)&#xD;
+[xUnit.net 00:00:00.06]   Discovering: Agent1.Tests&#xD;
+[xUnit.net 00:00:00.14]   Discovered:  Agent1.Tests&#xD;
+[xUnit.net 00:00:00.14]   Starting:    Agent1.Tests&#xD;
+   ?? ���ڼ������ʧ��: db error&#xD;
+   ?? ���ڼ���: ��ȡ 1 ����ʵ���־û� 1 ��&#xD;
+   ?? ������ʧ�ܣ�����Ϊ�ؼ�������&#xD;
+   ?? ��ʵ��ȡʧ��: 'i' is an invalid start of a value. Path: $ | LineNumber: 0 | BytePositionInLine: 0.&#xD;
+[xUnit.net 00:00:00.32]   Finished:    Agent1.Tests&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

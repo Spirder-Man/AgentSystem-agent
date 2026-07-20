@@ -87,7 +87,7 @@ npm run dev   # VITE_ENABLE_MOCK 默认 false
 
 ### 4. 为什么 tickets 有状态流转引擎
 
-`applyTicketStatusUpdate()` 实现了真实的状态机（New→Confirmed→InProgress→Remediated→VerifiedClosed），前端开发工单流转功能时不依赖后端状态变更逻辑。
+`applyTicketStatusUpdate()` 实现了真实的状态机（New→Accepted→InProgress→Completed→Verified），前端开发工单流转功能时不依赖后端状态变更逻辑。
 
 ## Handler 对照表
 

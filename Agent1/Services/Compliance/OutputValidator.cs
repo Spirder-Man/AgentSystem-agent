@@ -186,7 +186,8 @@ public static class OutputValidator
         if (string.IsNullOrWhiteSpace(text))
             return regs;
 
-        var matches = Regex.Matches(text, @"GB\s*/?T?\s*\d{4,5}(?:[.\-]\d{2,4})?(?:\s*-\s*\d{4})?");
+        // P1-2: 统一使用 GbCodeHelper.GbCodePattern
+        var matches = GbCodeHelper.GbCodePattern.Matches(text);
         foreach (Match m in matches)
         {
             var normalized = Regex.Replace(m.Value, @"\s+", " ").Trim();

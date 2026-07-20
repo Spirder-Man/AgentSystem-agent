@@ -4,6 +4,236 @@
     "uid": "agent1-slo",
     "panels": [
       {
+        "id": 1,
+        "title": "API Request Rate (QPS)",
+        "type": "timeseries",
+        "description": "每秒 API 请求数 (agent1_api_requests_total)",
+        "targets": [
+          {
+            "expr": "rate(agent1_api_requests_total[1m])",
+            "legendFormat": "QPS"
+          }
+        ],
+        "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 }
+      },
+      {
+        "id": 2,
+        "title": "LLM Calls Rate",
+        "type": "timeseries",
+        "description": "每秒 LLM 调用次数 (agent1_llm_calls_total)",
+        "targets": [
+          {
+            "expr": "rate(agent1_llm_calls_total[5m])",
+            "legendFormat": "LLM calls/s"
+          }
+        ],
+        "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 }
+      },
+      {
+        "id": 3,
+        "title": "API 5xx Error Rate",
+        "type": "timeseries",
+        "description": "5xx 错误占 API 总请求比例",
+        "targets": [
+          {
+            "expr": "rate(agent1_api_5xx_total[1m]) / rate(agent1_api_requests_total[1m])",
+            "legendFormat": "5xx_rate"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 0.01, "color": "orange" },
+                { "value": 0.05, "color": "red" }
+              ]
+            }
+          }
+        },
+        "gridPos": { "x": 0, "y": 8, "w": 8, "h": 8 }
+      },
+      {
+        "id": 4,
+        "title": "LLM Call Success Rate",
+        "type": "timeseries",
+        "description": "LLM 调用成功率 (1 - 错误率)",
+        "targets": [
+          {
+            "expr": "1 - (rate(agent1_llm_errors_total[5m]) / rate(agent1_llm_calls_total[5m]))",
+            "legendFormat": "LLM success rate"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": {
+              "steps": [
+                { "value": 0.95, "color": "green" },
+                { "value": 0.8, "color": "orange" },
+                { "value": 0, "color": "red" }
+              ]
+            }
+          }
+        },
+        "gridPos": { "x": 8, "y": 8, "w": 8, "h": 8 }
+      },
+      {
+        "id": 5,
+        "title": "LLM Fallback to Rule Engine Rate",
+        "type": "timeseries",
+        "description": "LLM 降级到确定性规则引擎的频率 (agent1_llm_fallback_rule_engine_total)",
+        "targets": [
+          {
+            "expr": "rate(agent1_llm_fallback_rule_engine_total[5m])",
+            "legendFormat": "fallback/s"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 0.01, "color": "orange" },
+                { "value": 0.1, "color": "red" }
+              ]
+            }
+          }
+        },
+        "gridPos": { "x": 16, "y": 8, "w": 8, "h": 8 }
+      },
+      {
+        "id": 6,
+        "title": "Cache Hit Ratio",
+        "type": "stat",
+        "description": "RAG 查询缓存命中率",
+        "targets": [
+          {
+            "expr": "agent1_rag_cache_hits_total / (agent1_rag_cache_hits_total + agent1_rag_cache_misses_total)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 0.3, "color": "orange" },
+                { "value": 0.6, "color": "green" }
+              ]
+            }
+          }
+        },
+        "gridPos": { "x": 0, "y": 16, "w": 6, "h": 4 }
+      },
+      {
+        "id": 7,
+        "title": "Circuit Breaker Status",
+        "type": "stat",
+        "description": "LLM 熔断器状态: 0=正常, 1=熔断中",
+        "targets": [
+          {
+            "expr": "agent1_circuit_breaker_open"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              { "value": "0", "text": "CLOSED (OK)" },
+              { "value": "1", "text": "OPEN (BLOCKED)" }
+            ]
+          }
+        },
+        "gridPos": { "x": 6, "y": 16, "w": 6, "h": 4 }
+      },
+      {
+        "id": 8,
+        "title": "Active LLM Concurrency",
+        "type": "gauge",
+        "description": "当前活跃 LLM 请求数 (agent1_llm_active_requests)",
+        "targets": [
+          {
+            "expr": "agent1_llm_active_requests"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 5, "color": "orange" },
+                { "value": 10, "color": "red" }
+              ]
+            }
+          }
+        },
+        "gridPos": { "x": 12, "y": 16, "w": 6, "h": 4 }
+      },
+      {
+        "id": 9,
+        "title": "LLM Avg Duration (ms)",
+        "type": "timeseries",
+        "description": "LLM 调用平均耗时 (agent1_llm_duration_ms_avg)",
+        "targets": [
+          {
+            "expr": "agent1_llm_duration_ms_avg",
+            "legendFormat": "LLM avg ms"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "ms" }
+        },
+        "gridPos": { "x": 18, "y": 16, "w": 6, "h": 4 }
+      },
+      {
+        "id": 10,
+        "title": "Decoupled Pipeline Invocations",
+        "type": "timeseries",
+        "description": "双通道解耦管道调用速率 (agent1_decoupled_pipeline_invocations_total)",
+        "targets": [
+          {
+            "expr": "rate(agent1_decoupled_pipeline_invocations_total[5m])",
+            "legendFormat": "pipeline calls/s"
+          }
+        ],
+        "gridPos": { "x": 0, "y": 20, "w": 8, "h": 6 }
+      },
+      {
+        "id": 11,
+        "title": "Decoupled Pipeline Chars Removed",
+        "type": "timeseries",
+        "description": "双通道管道消毒移除字符速率 (agent1_decoupled_pipeline_chars_removed_total)",
+        "targets": [
+          {
+            "expr": "rate(agent1_decoupled_pipeline_chars_removed_total[5m])",
+            "legendFormat": "chars/s"
+          }
+        ],
+        "gridPos": { "x": 8, "y": 20, "w": 8, "h": 6 }
+      },
+      {
+        "id": 12,
+        "title": "RAG Search Rate",
+        "type": "timeseries",
+        "description": "RAG 检索速率 (agent1_rag_searches_total)",
+        "targets": [
+          {
+            "expr": "rate(agent1_rag_searches_total[5m])",
+            "legendFormat": "RAG searches/s"
+          }
+        ],
+        "gridPos": { "x": 16, "y": 20, "w": 8, "h": 6 }
+      }
+    ]
+  }
+}
+{
+  "dashboard": {
+    "title": "Agent1 API SLO Dashboard",
+    "uid": "agent1-slo",
+    "panels": [
+      {
         "title": "HTTP QPS by Endpoint",
         "type": "timeseries",
         "targets": [

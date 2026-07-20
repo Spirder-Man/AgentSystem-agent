@@ -170,6 +170,8 @@ namespace Agent1.Tests
             mockLlm.Setup(x => x.InvokeStreamWithRetryAsync(
                     It.IsAny<string>(), It.IsAny<ConsoleColor>(), It.IsAny<string>()))
                 .ReturnsAsync("测试回复");
+            // P2-2: 设置 LastFunctionCalls 属性，避免 NRE
+            mockLlm.Setup(x => x.LastFunctionCalls).Returns(new List<FunctionCallRecord>());
 
             var mockTool = new Mock<IToolService>();
             var mockAudit = new Mock<IAuditService>();

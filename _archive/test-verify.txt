@@ -1,0 +1,54 @@
+﻿  姝ｅ湪纭畾瑕佽繕鍘熺殑椤圭洰鈥?
+D:\妗岄潰\agent\椤圭洰\Agent1\Agent1.Tests\Agent1.Tests.csproj : warning NU1901: 鍖?"Moq" 4.20.0 鍏锋湁宸茬煡鐨?浣?涓ラ噸鎬ф紡娲烇紝https://github.com/advisories/GHSA-6r78-m64m-qwcf
+  鎵€鏈夐」鐩潎鏄渶鏂扮殑锛屾棤娉曡繕鍘熴€?
+D:\妗岄潰\agent\椤圭洰\Agent1\Agent1.Tests\Agent1.Tests.csproj : warning NU1901: 鍖?"Moq" 4.20.0 鍏锋湁宸茬煡鐨?浣?涓ラ噸鎬ф紡娲烇紝https://github.com/advisories/GHSA-6r78-m64m-qwcf
+  Agent1 -> D:\妗岄潰\agent\椤圭洰\Agent1\Agent1\bin\Release\net8.0\Agent1.dll
+  Agent1.Api -> D:\妗岄潰\agent\椤圭洰\Agent1\Agent1.Api\bin\Release\net8.0\Agent1.Api.dll
+  Agent1.Tests -> D:\妗岄潰\agent\椤圭洰\Agent1\Agent1.Tests\bin\Release\net8.0\Agent1.Tests.dll
+D:\妗岄潰\agent\椤圭洰\Agent1\Agent1.Tests\bin\Release\net8.0\Agent1.Tests.dll (.NETCoreApp,Version=v8.0)鐨勬祴璇曡繍琛?
+鎬诲叡 1 涓祴璇曟枃浠朵笌鎸囧畾妯″紡鐩稿尮閰嶃€?
+dotnet : [xUnit.net 00:00:00.79]     Agent1.Tests.AuditServiceTests.GetAuditLogs_WithTimeFilter_ShouldFilterCorrectly [
+FAIL]
+所在位置 行:1 字符: 29
++ ... 项目\Agent1"; dotnet test Agent1.Tests -c Release --filter "Category!=I ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([xUnit.net 00:0...orrectly [FAIL]:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  澶辫触 Agent1.Tests.AuditServiceTests.GetAuditLogs_WithTimeFilter_ShouldFilterCorrectly [175 ms]
+  閿欒娑堟伅:
+   Expected logs to contain 1 item(s), but found 2: {
+    Agent1.Services.AuditLog
+    {
+        ChainHash = "672a9af28d99fb011069bc9362765606fe2cad221c9e2a6203ba2bd8a59776a9", 
+        CreateTime = <2026-07-18 06:51:19.464027>, 
+        Details = "detail2", 
+        Id = 2L, 
+        IsSensitive = False, 
+        Operation = "op2", 
+        UserId = "u2"
+    }, 
+    Agent1.Services.AuditLog
+    {
+        ChainHash = "c98737b6daaa10dfb8d524e1a68048e09de2fa6403edfb1d464278478ea720f8", 
+        CreateTime = <2026-07-18 06:51:19.416875>, 
+        Details = "detail1", 
+        Id = 1L, 
+        IsSensitive = False, 
+        Operation = "op1", 
+        UserId = "u1"
+    }
+}
+.
+  鍫嗘爤璺熻釜:
+     at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+   at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+   at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(String message, Object[] args)
+   at FluentAssertions.Collections.GenericCollectionAssertions`3.HaveCount(Int32 expected, String because, Object[] becauseArgs)
+   at Agent1.Tests.AuditServiceTests.GetAuditLogs_WithTimeFilter_ShouldFilterCorrectly() in D:\妗岄潰\agent\椤圭洰\Agent1\Agent1.Tests\InfrastructureServicesTests.cs:line 125
+--- End of stack trace from previous location ---
+
+澶辫触!  - 澶辫触:     1锛岄€氳繃:  1321锛屽凡璺宠繃:     0锛屾€昏:  1322锛屾寔缁椂闂? 1 m 8 s - Agent1.Tests.dll (net8.0)

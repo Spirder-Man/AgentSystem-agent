@@ -1,0 +1,31 @@
+﻿docs\Agent1 十项核心技术决策深度拆解.md
+docs\别小看这两个for循环！中文RAG检索的底层核心解法.md
+docs\🔴 断点地图：RAG 全链路深度理解.md
+docs\FunctionCalling模型评测BUG记录.md
+docs\🔴 断点地图：RAG 全链路深度理解.assets\ (whole dir, 34 files)
+docs\testing\Agent1-Linux-3090系统测试与架构分析方案.md
+docs\testing\Agent1-Linux完整测试方案.html
+docs\testing\Agent1无GPU全链路测试方案.html
+docs\testing\真实集成测试方案.md
+docs\testing\化工园区危化品合规审核RAG系统测试案例文档.md
+docs\testing\测试方案.md
+docs\testing\测试案例.md
+docs\testing\Agent1-手动测试执行手册.html
+docs\testing\手动测试指南.md
+docs\architecture\_archive\AI会话记忆机制.md
+docs\architecture\_archive\架构优化方案.md
+docs\architecture\_archive\架构思想的深度可行性分析.md
+docs\architecture\_archive\架构整改方案.md
+docs\architecture\_archive\架构更新说明.md
+docs\architecture\_archive\ollama-api-chat-think-example.png
+docs\architecture\_archive\ollama-api-chat-think-schema.png
+docs\architecture\_archive\ollama-api-chat-think.png
+docs\architecture\_archive\Semantic_Kernel_Ollama_enable_thinking_参数注入方案探讨.md
+docs\_archive\C# 内存模型、LINQ、BM25 和 NGram 详解.md
+docs\_archive\版本演进对比文档.md
+docs\_archive\项目分析与下一步计划.md
+docs\_archive\第一阶段代码初步理解.md
+docs\_archive\设计文档.md
+docs\_archive\问题解答文档.md
+docs\_archive\page_check.png
+docs\articles\K1-K9的具体问题.md

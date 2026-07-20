@@ -1,0 +1,133 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="8a8b90b0-b372-475e-8844-9d4125045169" name="lcy@LAPTOP-40G212RC 2026-06-25 19:24:23" runUser="LAPTOP-40G212RC\lcy" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-06-25T19:24:23.6751750+08:00" queuing="2026-06-25T19:24:23.6751756+08:00" start="2026-06-25T19:24:23.0340532+08:00" finish="2026-06-25T19:24:23.6990204+08:00" />
+  <TestSettings name="default" id="8b284f4b-99c4-4b2f-a510-4ab861c95ad7">
+    <Deployment runDeploymentRoot="lcy_LAPTOP-40G212RC_2026-06-25_19_24_23" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="a949b4d8-9035-4be5-8b9a-2ee4db113199" testId="a0bc0ae5-4889-9122-f7d9-493690a65cfa" testName="Agent1.Tests.MemoryCoordinatorTests.MemoryPreResult_CacheHit_ShouldSetCorrectFlags" computerName="LAPTOP-40G212RC" duration="00:00:00.0000533" startTime="2026-06-25T19:24:23.6498401+08:00" endTime="2026-06-25T19:24:23.6498402+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a949b4d8-9035-4be5-8b9a-2ee4db113199" />
+    <UnitTestResult executionId="bfa216b8-6afe-4aa3-99d6-b2db871c2ea7" testId="e47ce3c2-95f7-9b8c-63df-2e267302e08c" testName="Agent1.Tests.MemoryCoordinatorTests.ExpandQueryWithAliases_ReverseAlias_ShouldExpandToAlias" computerName="LAPTOP-40G212RC" duration="00:00:00.0002258" startTime="2026-06-25T19:24:23.5764657+08:00" endTime="2026-06-25T19:24:23.5764658+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="bfa216b8-6afe-4aa3-99d6-b2db871c2ea7" />
+    <UnitTestResult executionId="aad14ae3-e1a8-4b50-b7f4-ae576a5f37a2" testId="c90539ae-1430-b122-25f6-0e900867df70" testName="Agent1.Tests.MemoryCoordinatorTests.PostInferenceAsync_ShouldCallShortMemoryMethods" computerName="LAPTOP-40G212RC" duration="00:00:00.0387500" startTime="2026-06-25T19:24:23.6132315+08:00" endTime="2026-06-25T19:24:23.6132322+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="aad14ae3-e1a8-4b50-b7f4-ae576a5f37a2" />
+    <UnitTestResult executionId="f6f5435f-869e-4dda-929a-59b12666d801" testId="2ffc7473-4ff6-0cd5-ba03-28e910dd42e1" testName="Agent1.Tests.MemoryCoordinatorTests.PreInferenceAsync_NullCache_ShouldSkipCache" computerName="LAPTOP-40G212RC" duration="00:00:00.0009690" startTime="2026-06-25T19:24:23.6299042+08:00" endTime="2026-06-25T19:24:23.6299043+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f6f5435f-869e-4dda-929a-59b12666d801" />
+    <UnitTestResult executionId="e80a9e0c-b53a-4b45-b107-faa297011281" testId="db73b967-a779-d3e9-a16e-4e65fc74a866" testName="Agent1.Tests.MemoryCoordinatorTests.PostInferenceAsync_WithToolResults_ShouldStoreFacts" computerName="LAPTOP-40G212RC" duration="00:00:00.0025726" startTime="2026-06-25T19:24:23.6498946+08:00" endTime="2026-06-25T19:24:23.6498946+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e80a9e0c-b53a-4b45-b107-faa297011281" />
+    <UnitTestResult executionId="1e22b9f7-f273-48b0-80dc-4fdfdd4244bc" testId="9d9b19f8-b2db-182a-d03c-0b1b0f49ba99" testName="Agent1.Tests.MemoryCoordinatorTests.PreInferenceAsync_ShortMemoryHit_ShouldReturnDirectAnswer" computerName="LAPTOP-40G212RC" duration="00:00:00.0005932" startTime="2026-06-25T19:24:23.6499083+08:00" endTime="2026-06-25T19:24:23.6499083+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1e22b9f7-f273-48b0-80dc-4fdfdd4244bc" />
+    <UnitTestResult executionId="77febee2-a991-47de-a355-0cf07eb0e2b8" testId="7a1a7bbb-494e-8b6f-3f3a-00566fb51e99" testName="Agent1.Tests.MemoryCoordinatorTests.PreInferenceAsync_NullLongMemory_ShouldSkipLongTerm" computerName="LAPTOP-40G212RC" duration="00:00:00.0009974" startTime="2026-06-25T19:24:23.6498573+08:00" endTime="2026-06-25T19:24:23.6498574+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="77febee2-a991-47de-a355-0cf07eb0e2b8" />
+    <UnitTestResult executionId="1402926d-f831-465f-b372-07a37fe7ad8e" testId="1fce579a-d2da-75b2-5dda-fb4e4980045f" testName="Agent1.Tests.MemoryCoordinatorTests.MemoryPreResult_MemoryHit_ShouldSetCorrectFlags" computerName="LAPTOP-40G212RC" duration="00:00:00.0000956" startTime="2026-06-25T19:24:23.6497439+08:00" endTime="2026-06-25T19:24:23.6497439+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1402926d-f831-465f-b372-07a37fe7ad8e" />
+    <UnitTestResult executionId="a7f57296-2754-4d50-bc9c-30045a643631" testId="2f7b5a11-4802-1466-1e29-7ba540b5ca57" testName="Agent1.Tests.MemoryCoordinatorTests.ExpandQueryWithAliases_DualAlias_ShouldExpandBoth" computerName="LAPTOP-40G212RC" duration="00:00:00.0001224" startTime="2026-06-25T19:24:23.6300705+08:00" endTime="2026-06-25T19:24:23.6300706+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a7f57296-2754-4d50-bc9c-30045a643631" />
+    <UnitTestResult executionId="5bb4cddc-85dc-4af9-b28a-f5871746eec9" testId="d647e5da-7f46-2b5d-c3a8-02a6f962b28c" testName="Agent1.Tests.MemoryCoordinatorTests.PreInferenceAsync_ContextReady_ShouldAssembleContext" computerName="LAPTOP-40G212RC" duration="00:00:00.0014687" startTime="2026-06-25T19:24:23.6499343+08:00" endTime="2026-06-25T19:24:23.6499343+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5bb4cddc-85dc-4af9-b28a-f5871746eec9" />
+    <UnitTestResult executionId="62ad6ab2-c12e-4600-98dd-2d1751cc93a8" testId="b6219e6e-9b41-5144-b899-739fbd97f395" testName="Agent1.Tests.MemoryCoordinatorTests.PreInferenceAsync_LongTermFails_ShouldStillReturnContext" computerName="LAPTOP-40G212RC" duration="00:00:00.0020484" startTime="2026-06-25T19:24:23.6499214+08:00" endTime="2026-06-25T19:24:23.6499214+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="62ad6ab2-c12e-4600-98dd-2d1751cc93a8" />
+    <UnitTestResult executionId="bc20229a-5e49-4cec-a77d-b4982c9c1c75" testId="e05cfcfb-0508-9514-3f39-f6414697d8cc" testName="Agent1.Tests.MemoryCoordinatorTests.ExpandQueryWithAliases_NoMatch_ShouldReturnOriginalOnly" computerName="LAPTOP-40G212RC" duration="00:00:00.0001066" startTime="2026-06-25T19:24:23.6312893+08:00" endTime="2026-06-25T19:24:23.6312894+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="bc20229a-5e49-4cec-a77d-b4982c9c1c75" />
+    <UnitTestResult executionId="113c52c9-60e5-4bfd-b492-23ec1a9da97e" testId="d4ff4034-5e93-a404-7739-357ab46c27c6" testName="Agent1.Tests.MemoryCoordinatorTests.PreInferenceAsync_LongTermRetrievesRelevantContext" computerName="LAPTOP-40G212RC" duration="00:00:00.0117375" startTime="2026-06-25T19:24:23.6288890+08:00" endTime="2026-06-25T19:24:23.6288895+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="113c52c9-60e5-4bfd-b492-23ec1a9da97e" />
+    <UnitTestResult executionId="5c5b7914-3a65-4cbd-8e10-dda7b63d4b82" testId="b8d7f98a-eb49-5c0e-650e-b4dd4f99ef2d" testName="Agent1.Tests.MemoryCoordinatorTests.MemoryPreResult_ContextReady_ShouldSetCorrectFlags" computerName="LAPTOP-40G212RC" duration="00:00:00.0010399" startTime="2026-06-25T19:24:23.6311889+08:00" endTime="2026-06-25T19:24:23.6311890+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5c5b7914-3a65-4cbd-8e10-dda7b63d4b82" />
+    <UnitTestResult executionId="35102aae-b579-477b-8718-8b47fe45665e" testId="0e555ee0-102b-61e7-d6cb-56aa5fb891a8" testName="Agent1.Tests.MemoryCoordinatorTests.PostInferenceAsync_WithCache_ShouldUpdateCache" computerName="LAPTOP-40G212RC" duration="00:00:00.0007220" startTime="2026-06-25T19:24:23.6498714+08:00" endTime="2026-06-25T19:24:23.6498715+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="35102aae-b579-477b-8718-8b47fe45665e" />
+    <UnitTestResult executionId="5ee5ceb4-329f-415e-85ad-5be05bfb53bf" testId="2b123e53-4477-9943-1951-e62d1e05c9ca" testName="Agent1.Tests.MemoryCoordinatorTests.ExpandQueryWithAliases_KnownAlias_ShouldExpandToStandardName" computerName="LAPTOP-40G212RC" duration="00:00:00.0066362" startTime="2026-06-25T19:24:23.5746887+08:00" endTime="2026-06-25T19:24:23.5746991+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5ee5ceb4-329f-415e-85ad-5be05bfb53bf" />
+    <UnitTestResult executionId="80d6ae75-3a8d-462f-b7da-09f3a88e8bb6" testId="dee34596-8b51-1624-6a4e-f7a78a9f73a5" testName="Agent1.Tests.MemoryCoordinatorTests.PreInferenceAsync_CacheHit_ShouldReturnDirectAnswer" computerName="LAPTOP-40G212RC" duration="00:00:00.0038676" startTime="2026-06-25T19:24:23.6171967+08:00" endTime="2026-06-25T19:24:23.6171968+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="80d6ae75-3a8d-462f-b7da-09f3a88e8bb6" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="Agent1.Tests.MemoryCoordinatorTests.MemoryPreResult_MemoryHit_ShouldSetCorrectFlags" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="1fce579a-d2da-75b2-5dda-fb4e4980045f">
+      <Execution id="1402926d-f831-465f-b372-07a37fe7ad8e" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.MemoryCoordinatorTests" name="MemoryPreResult_MemoryHit_ShouldSetCorrectFlags" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.MemoryCoordinatorTests.PostInferenceAsync_ShouldCallShortMemoryMethods" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="c90539ae-1430-b122-25f6-0e900867df70">
+      <Execution id="aad14ae3-e1a8-4b50-b7f4-ae576a5f37a2" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.MemoryCoordinatorTests" name="PostInferenceAsync_ShouldCallShortMemoryMethods" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.MemoryCoordinatorTests.PreInferenceAsync_LongTermFails_ShouldStillReturnContext" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="b6219e6e-9b41-5144-b899-739fbd97f395">
+      <Execution id="62ad6ab2-c12e-4600-98dd-2d1751cc93a8" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.MemoryCoordinatorTests" name="PreInferenceAsync_LongTermFails_ShouldStillReturnContext" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.MemoryCoordinatorTests.ExpandQueryWithAliases_ReverseAlias_ShouldExpandToAlias" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="e47ce3c2-95f7-9b8c-63df-2e267302e08c">
+      <Execution id="bfa216b8-6afe-4aa3-99d6-b2db871c2ea7" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.MemoryCoordinatorTests" name="ExpandQueryWithAliases_ReverseAlias_ShouldExpandToAlias" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.MemoryCoordinatorTests.PostInferenceAsync_WithCache_ShouldUpdateCache" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="0e555ee0-102b-61e7-d6cb-56aa5fb891a8">
+      <Execution id="35102aae-b579-477b-8718-8b47fe45665e" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.MemoryCoordinatorTests" name="PostInferenceAsync_WithCache_ShouldUpdateCache" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.MemoryCoordinatorTests.ExpandQueryWithAliases_DualAlias_ShouldExpandBoth" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="2f7b5a11-4802-1466-1e29-7ba540b5ca57">
+      <Execution id="a7f57296-2754-4d50-bc9c-30045a643631" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.MemoryCoordinatorTests" name="ExpandQueryWithAliases_DualAlias_ShouldExpandBoth" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.MemoryCoordinatorTests.PreInferenceAsync_NullCache_ShouldSkipCache" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="2ffc7473-4ff6-0cd5-ba03-28e910dd42e1">
+      <Execution id="f6f5435f-869e-4dda-929a-59b12666d801" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.MemoryCoordinatorTests" name="PreInferenceAsync_NullCache_ShouldSkipCache" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.MemoryCoordinatorTests.PostInferenceAsync_WithToolResults_ShouldStoreFacts" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="db73b967-a779-d3e9-a16e-4e65fc74a866">
+      <Execution id="e80a9e0c-b53a-4b45-b107-faa297011281" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.MemoryCoordinatorTests" name="PostInferenceAsync_WithToolResults_ShouldStoreFacts" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.MemoryCoordinatorTests.ExpandQueryWithAliases_NoMatch_ShouldReturnOriginalOnly" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="e05cfcfb-0508-9514-3f39-f6414697d8cc">
+      <Execution id="bc20229a-5e49-4cec-a77d-b4982c9c1c75" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.MemoryCoordinatorTests" name="ExpandQueryWithAliases_NoMatch_ShouldReturnOriginalOnly" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.MemoryCoordinatorTests.PreInferenceAsync_ShortMemoryHit_ShouldReturnDirectAnswer" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="9d9b19f8-b2db-182a-d03c-0b1b0f49ba99">
+      <Execution id="1e22b9f7-f273-48b0-80dc-4fdfdd4244bc" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.MemoryCoordinatorTests" name="PreInferenceAsync_ShortMemoryHit_ShouldReturnDirectAnswer" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.MemoryCoordinatorTests.PreInferenceAsync_NullLongMemory_ShouldSkipLongTerm" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="7a1a7bbb-494e-8b6f-3f3a-00566fb51e99">
+      <Execution id="77febee2-a991-47de-a355-0cf07eb0e2b8" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.MemoryCoordinatorTests" name="PreInferenceAsync_NullLongMemory_ShouldSkipLongTerm" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.MemoryCoordinatorTests.PreInferenceAsync_ContextReady_ShouldAssembleContext" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="d647e5da-7f46-2b5d-c3a8-02a6f962b28c">
+      <Execution id="5bb4cddc-85dc-4af9-b28a-f5871746eec9" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.MemoryCoordinatorTests" name="PreInferenceAsync_ContextReady_ShouldAssembleContext" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.MemoryCoordinatorTests.PreInferenceAsync_CacheHit_ShouldReturnDirectAnswer" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="dee34596-8b51-1624-6a4e-f7a78a9f73a5">
+      <Execution id="80d6ae75-3a8d-462f-b7da-09f3a88e8bb6" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.MemoryCoordinatorTests" name="PreInferenceAsync_CacheHit_ShouldReturnDirectAnswer" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.MemoryCoordinatorTests.PreInferenceAsync_LongTermRetrievesRelevantContext" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="d4ff4034-5e93-a404-7739-357ab46c27c6">
+      <Execution id="113c52c9-60e5-4bfd-b492-23ec1a9da97e" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.MemoryCoordinatorTests" name="PreInferenceAsync_LongTermRetrievesRelevantContext" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.MemoryCoordinatorTests.MemoryPreResult_ContextReady_ShouldSetCorrectFlags" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="b8d7f98a-eb49-5c0e-650e-b4dd4f99ef2d">
+      <Execution id="5c5b7914-3a65-4cbd-8e10-dda7b63d4b82" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.MemoryCoordinatorTests" name="MemoryPreResult_ContextReady_ShouldSetCorrectFlags" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.MemoryCoordinatorTests.ExpandQueryWithAliases_KnownAlias_ShouldExpandToStandardName" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="2b123e53-4477-9943-1951-e62d1e05c9ca">
+      <Execution id="5ee5ceb4-329f-415e-85ad-5be05bfb53bf" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.MemoryCoordinatorTests" name="ExpandQueryWithAliases_KnownAlias_ShouldExpandToStandardName" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.MemoryCoordinatorTests.MemoryPreResult_CacheHit_ShouldSetCorrectFlags" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="a0bc0ae5-4889-9122-f7d9-493690a65cfa">
+      <Execution id="a949b4d8-9035-4be5-8b9a-2ee4db113199" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.MemoryCoordinatorTests" name="MemoryPreResult_CacheHit_ShouldSetCorrectFlags" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="a0bc0ae5-4889-9122-f7d9-493690a65cfa" executionId="a949b4d8-9035-4be5-8b9a-2ee4db113199" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e47ce3c2-95f7-9b8c-63df-2e267302e08c" executionId="bfa216b8-6afe-4aa3-99d6-b2db871c2ea7" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c90539ae-1430-b122-25f6-0e900867df70" executionId="aad14ae3-e1a8-4b50-b7f4-ae576a5f37a2" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2ffc7473-4ff6-0cd5-ba03-28e910dd42e1" executionId="f6f5435f-869e-4dda-929a-59b12666d801" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="db73b967-a779-d3e9-a16e-4e65fc74a866" executionId="e80a9e0c-b53a-4b45-b107-faa297011281" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="9d9b19f8-b2db-182a-d03c-0b1b0f49ba99" executionId="1e22b9f7-f273-48b0-80dc-4fdfdd4244bc" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7a1a7bbb-494e-8b6f-3f3a-00566fb51e99" executionId="77febee2-a991-47de-a355-0cf07eb0e2b8" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="1fce579a-d2da-75b2-5dda-fb4e4980045f" executionId="1402926d-f831-465f-b372-07a37fe7ad8e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2f7b5a11-4802-1466-1e29-7ba540b5ca57" executionId="a7f57296-2754-4d50-bc9c-30045a643631" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d647e5da-7f46-2b5d-c3a8-02a6f962b28c" executionId="5bb4cddc-85dc-4af9-b28a-f5871746eec9" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="b6219e6e-9b41-5144-b899-739fbd97f395" executionId="62ad6ab2-c12e-4600-98dd-2d1751cc93a8" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e05cfcfb-0508-9514-3f39-f6414697d8cc" executionId="bc20229a-5e49-4cec-a77d-b4982c9c1c75" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d4ff4034-5e93-a404-7739-357ab46c27c6" executionId="113c52c9-60e5-4bfd-b492-23ec1a9da97e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="b8d7f98a-eb49-5c0e-650e-b4dd4f99ef2d" executionId="5c5b7914-3a65-4cbd-8e10-dda7b63d4b82" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0e555ee0-102b-61e7-d6cb-56aa5fb891a8" executionId="35102aae-b579-477b-8718-8b47fe45665e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2b123e53-4477-9943-1951-e62d1e05c9ca" executionId="5ee5ceb4-329f-415e-85ad-5be05bfb53bf" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="dee34596-8b51-1624-6a4e-f7a78a9f73a5" executionId="80d6ae75-3a8d-462f-b7da-09f3a88e8bb6" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="列表中未列出的结果" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="所有已加载的结果" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="17" executed="17" passed="17" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.5.3.1+6b60a9e56a (64-bit .NET 8.0.27)&#xD;
+[xUnit.net 00:00:00.06]   Discovering: Agent1.Tests&#xD;
+[xUnit.net 00:00:00.14]   Discovered:  Agent1.Tests&#xD;
+[xUnit.net 00:00:00.15]   Starting:    Agent1.Tests&#xD;
+   ? ��������&#xD;
+   ?? ���ڼ�������&#xD;
+   ?? ���ڼ������ʧ��: db error&#xD;
+[xUnit.net 00:00:00.26]   Finished:    Agent1.Tests&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>
