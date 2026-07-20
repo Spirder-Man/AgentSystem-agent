@@ -1,6 +1,7 @@
 
 using Agent1.Services;
 using Agent1.Models;
+using Microsoft.SemanticKernel;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -85,7 +86,8 @@ namespace Agent1.Services
 格式示例：TOOLS:CheckHazardCategory,CheckStorageCompatibility
 （务必以 TOOLS: 开头，否则工具不会被调用！）";
 
-                string thoughtResult = await _llmService.InvokeStreamWithRetryAsync(thoughtPrompt, ConsoleColor.DarkGray, "分析思考");
+                string thoughtResult = await _llmService.InvokeStreamWithRetryAsync(thoughtPrompt, ConsoleColor.DarkGray, "分析思考",
+                    fcBehavior: FunctionChoiceBehavior.Auto());
                 Console.ResetColor();
 
                 Console.WriteLine("\n【Step 2 - Action】解析工具调用指令");
@@ -118,7 +120,8 @@ namespace Agent1.Services
 {observationSummary}
 【要求】基于工具数据判断是否合规，引用法规条款，给出整改建议。";
 
-                string initialConclusion = await _llmService.InvokeStreamWithRetryAsync(initialPrompt, ConsoleColor.Yellow, "初步结论");
+                string initialConclusion = await _llmService.InvokeStreamWithRetryAsync(initialPrompt, ConsoleColor.Yellow, "初步结论",
+                    fcBehavior: FunctionChoiceBehavior.None());
                 Console.ResetColor();
 
                 Console.WriteLine("\n【Step 5 - Reflection】自我反思（检查纠错）");
@@ -136,7 +139,8 @@ namespace Agent1.Services
 3. 建议落地性：整改建议是否具体可操作？
 【输出格式】逐条指出问题，最后用【纠错指令】: 具体修改方向 总结。";
 
-                string reflectionResult = await _llmService.InvokeStreamWithRetryAsync(reflectionPrompt, ConsoleColor.Magenta, "反思检查");
+                string reflectionResult = await _llmService.InvokeStreamWithRetryAsync(reflectionPrompt, ConsoleColor.Magenta, "反思检查",
+                    fcBehavior: FunctionChoiceBehavior.None());
                 Console.ResetColor();
 
                 Console.WriteLine("\n【Step 6 - Final Conclusion】纠错后的最终合规审核结论");
@@ -157,7 +161,8 @@ namespace Agent1.Services
 3. 合规判断引用具体法规条款
 4. 整改建议具体可落地";
 
-                var answer = await _llmService.InvokeStreamAsync(finalPrompt, ConsoleColor.Blue);
+                var answer = await _llmService.InvokeStreamAsync(finalPrompt, ConsoleColor.Blue,
+                    fcBehavior: FunctionChoiceBehavior.None());
 
                 _sessionService.AddDialogTurn(_session.SessionId, "Assistant", "已生成诊断结论");
 
@@ -232,7 +237,8 @@ namespace Agent1.Services
                         var correctedPrompt = _verifier.BuildCorrectedPrompt(
                             userInput, initialConclusion, bizReport, sysReport);
                         Console.WriteLine();
-                        await _llmService.InvokeStreamAsync(correctedPrompt, ConsoleColor.Blue);
+                        await _llmService.InvokeStreamAsync(correctedPrompt, ConsoleColor.Blue,
+                            fcBehavior: FunctionChoiceBehavior.None());
                         Console.ResetColor();
                         Console.WriteLine();
                     }
@@ -260,7 +266,8 @@ namespace Agent1.Services
 
 最后一行必须输出：【纠错指令】: 具体修改方向（无问题则写「无需修正」）";
 
-                    string reflectionResult = await _llmService.InvokeStreamWithRetryAsync(reflectionPrompt, ConsoleColor.Magenta, "Reflection反思");
+                    string reflectionResult = await _llmService.InvokeStreamWithRetryAsync(reflectionPrompt, ConsoleColor.Magenta, "Reflection反思",
+                        fcBehavior: FunctionChoiceBehavior.None());
                     Console.ResetColor();
 
                     Console.WriteLine();

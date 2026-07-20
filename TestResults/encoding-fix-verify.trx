@@ -1,0 +1,88 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="1535fb89-1d29-4625-92c5-6ced5c9598eb" name="lcy@LAPTOP-40G212RC 2026-06-30 21:11:49" runUser="LAPTOP-40G212RC\lcy" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-06-30T21:11:49.7089803+08:00" queuing="2026-06-30T21:11:49.7089812+08:00" start="2026-06-30T21:11:48.8832356+08:00" finish="2026-06-30T21:11:49.7340980+08:00" />
+  <TestSettings name="default" id="b164de64-6e9a-482e-9ecf-030143996ac5">
+    <Deployment runDeploymentRoot="lcy_LAPTOP-40G212RC_2026-06-30_21_11_49" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="61b25d25-63b9-4d9e-b1b8-738707c4de1a" testId="b18257ed-7fed-9095-34d7-455ab7387065" testName="Agent1.Tests.EmailAlertServiceTests.SendAlertAsync_WhenDisabled_DoesNotThrow" computerName="LAPTOP-40G212RC" duration="00:00:00.0094090" startTime="2026-06-30T21:11:49.6576223+08:00" endTime="2026-06-30T21:11:49.6576328+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="61b25d25-63b9-4d9e-b1b8-738707c4de1a" />
+    <UnitTestResult executionId="61359a6a-c028-46b6-81d0-356cd3629cd2" testId="2d75813f-caca-0bd6-b39c-37882e6231ff" testName="Agent1.Tests.EmailAlertServiceTests.Constructor_WithNullSmtpHost_IsDisabled" computerName="LAPTOP-40G212RC" duration="00:00:00.0000770" startTime="2026-06-30T21:11:49.6608882+08:00" endTime="2026-06-30T21:11:49.6608882+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="61359a6a-c028-46b6-81d0-356cd3629cd2" />
+    <UnitTestResult executionId="255902e0-a7c4-47a0-87ac-f0600d478509" testId="7fe2fcc9-ad1f-5e4f-7692-b5ad64a43c43" testName="Agent1.Tests.EmailAlertServiceTests.Constructor_WithEmptyRecipients_IsDisabled" computerName="LAPTOP-40G212RC" duration="00:00:00.0000615" startTime="2026-06-30T21:11:49.6833579+08:00" endTime="2026-06-30T21:11:49.6833579+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="255902e0-a7c4-47a0-87ac-f0600d478509" />
+    <UnitTestResult executionId="70b1be11-419a-4a7d-a27f-635ecab74e41" testId="9a5ff241-e360-7778-a3b8-a29f81c6b6c7" testName="Agent1.Tests.EmailAlertServiceTests.Constructor_ExplicitlyDisabled_IsDisabled" computerName="LAPTOP-40G212RC" duration="00:00:00.0000939" startTime="2026-06-30T21:11:49.6608623+08:00" endTime="2026-06-30T21:11:49.6608624+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="70b1be11-419a-4a7d-a27f-635ecab74e41" />
+    <UnitTestResult executionId="7fc1b3d2-82b4-4eb0-81db-c7a68085d8bb" testId="ac155d67-0d30-5f46-f15a-65d43f12d7fa" testName="Agent1.Tests.EmailAlertServiceTests.Constructor_WithEmptySmtpHost_IsDisabled" computerName="LAPTOP-40G212RC" duration="00:00:00.0000900" startTime="2026-06-30T21:11:49.6608750+08:00" endTime="2026-06-30T21:11:49.6608750+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7fc1b3d2-82b4-4eb0-81db-c7a68085d8bb" />
+    <UnitTestResult executionId="f127be50-014b-4920-a83e-424ca126ea8a" testId="ef352edc-1d80-ebae-4676-007b89e1a7cc" testName="Agent1.Tests.EmailAlertServiceTests.Constructor_WithEmptySenderEmail_IsDisabled" computerName="LAPTOP-40G212RC" duration="00:00:00.0005710" startTime="2026-06-30T21:11:49.6604395+08:00" endTime="2026-06-30T21:11:49.6604397+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f127be50-014b-4920-a83e-424ca126ea8a" />
+    <UnitTestResult executionId="d7233421-90e2-4482-9a99-bbba352ca44e" testId="3a90cfbf-6445-4331-d2e6-cb09661b2c74" testName="Agent1.Tests.EmailAlertServiceTests.Constructor_MultipleRecipients_IsEnabled" computerName="LAPTOP-40G212RC" duration="00:00:00.0001319" startTime="2026-06-30T21:11:49.6608354+08:00" endTime="2026-06-30T21:11:49.6608354+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d7233421-90e2-4482-9a99-bbba352ca44e" />
+    <UnitTestResult executionId="f1671f95-819e-4628-b109-d3239ae1edfb" testId="e40a26d8-e0ca-104d-07c9-68fbd72c32ed" testName="Agent1.Tests.EmailAlertServiceTests.Constructor_WithValidConfig_IsEnabled" computerName="LAPTOP-40G212RC" duration="00:00:00.0001624" startTime="2026-06-30T21:11:49.6607981+08:00" endTime="2026-06-30T21:11:49.6607982+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f1671f95-819e-4628-b109-d3239ae1edfb" />
+    <UnitTestResult executionId="78aeec7c-ff5a-46ec-83af-3f40be6c7ac0" testId="6a511ba5-8450-9ecb-f768-27760c6fbec5" testName="Agent1.Tests.EmailAlertServiceTests.Constructor_DefaultEnabledIsTrue" computerName="LAPTOP-40G212RC" duration="00:00:00.0001050" startTime="2026-06-30T21:11:49.6608494+08:00" endTime="2026-06-30T21:11:49.6608495+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="78aeec7c-ff5a-46ec-83af-3f40be6c7ac0" />
+    <UnitTestResult executionId="87e2743b-62a8-4c53-8e5d-d7fac12dd4f5" testId="cdcb2a3f-d74d-56b6-d225-35280748fd86" testName="Agent1.Tests.EmailAlertServiceTests.Constructor_Port465_StillEnabled" computerName="LAPTOP-40G212RC" duration="00:00:00.0001591" startTime="2026-06-30T21:11:49.6608163+08:00" endTime="2026-06-30T21:11:49.6608163+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="87e2743b-62a8-4c53-8e5d-d7fac12dd4f5" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="Agent1.Tests.EmailAlertServiceTests.Constructor_WithEmptySenderEmail_IsDisabled" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="ef352edc-1d80-ebae-4676-007b89e1a7cc">
+      <Execution id="f127be50-014b-4920-a83e-424ca126ea8a" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.EmailAlertServiceTests" name="Constructor_WithEmptySenderEmail_IsDisabled" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.EmailAlertServiceTests.Constructor_WithValidConfig_IsEnabled" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="e40a26d8-e0ca-104d-07c9-68fbd72c32ed">
+      <Execution id="f1671f95-819e-4628-b109-d3239ae1edfb" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.EmailAlertServiceTests" name="Constructor_WithValidConfig_IsEnabled" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.EmailAlertServiceTests.SendAlertAsync_WhenDisabled_DoesNotThrow" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="b18257ed-7fed-9095-34d7-455ab7387065">
+      <Execution id="61b25d25-63b9-4d9e-b1b8-738707c4de1a" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.EmailAlertServiceTests" name="SendAlertAsync_WhenDisabled_DoesNotThrow" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.EmailAlertServiceTests.Constructor_Port465_StillEnabled" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="cdcb2a3f-d74d-56b6-d225-35280748fd86">
+      <Execution id="87e2743b-62a8-4c53-8e5d-d7fac12dd4f5" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.EmailAlertServiceTests" name="Constructor_Port465_StillEnabled" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.EmailAlertServiceTests.Constructor_WithEmptySmtpHost_IsDisabled" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="ac155d67-0d30-5f46-f15a-65d43f12d7fa">
+      <Execution id="7fc1b3d2-82b4-4eb0-81db-c7a68085d8bb" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.EmailAlertServiceTests" name="Constructor_WithEmptySmtpHost_IsDisabled" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.EmailAlertServiceTests.Constructor_MultipleRecipients_IsEnabled" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="3a90cfbf-6445-4331-d2e6-cb09661b2c74">
+      <Execution id="d7233421-90e2-4482-9a99-bbba352ca44e" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.EmailAlertServiceTests" name="Constructor_MultipleRecipients_IsEnabled" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.EmailAlertServiceTests.Constructor_DefaultEnabledIsTrue" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="6a511ba5-8450-9ecb-f768-27760c6fbec5">
+      <Execution id="78aeec7c-ff5a-46ec-83af-3f40be6c7ac0" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.EmailAlertServiceTests" name="Constructor_DefaultEnabledIsTrue" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.EmailAlertServiceTests.Constructor_WithEmptyRecipients_IsDisabled" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="7fe2fcc9-ad1f-5e4f-7692-b5ad64a43c43">
+      <Execution id="255902e0-a7c4-47a0-87ac-f0600d478509" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.EmailAlertServiceTests" name="Constructor_WithEmptyRecipients_IsDisabled" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.EmailAlertServiceTests.Constructor_WithNullSmtpHost_IsDisabled" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="2d75813f-caca-0bd6-b39c-37882e6231ff">
+      <Execution id="61359a6a-c028-46b6-81d0-356cd3629cd2" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.EmailAlertServiceTests" name="Constructor_WithNullSmtpHost_IsDisabled" />
+    </UnitTest>
+    <UnitTest name="Agent1.Tests.EmailAlertServiceTests.Constructor_ExplicitlyDisabled_IsDisabled" storage="d:\桌面\agent\项目\agent1\agent1.tests\bin\debug\net8.0\agent1.tests.dll" id="9a5ff241-e360-7778-a3b8-a29f81c6b6c7">
+      <Execution id="70b1be11-419a-4a7d-a27f-635ecab74e41" />
+      <TestMethod codeBase="D:\桌面\agent\项目\Agent1\Agent1.Tests\bin\Debug\net8.0\Agent1.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Agent1.Tests.EmailAlertServiceTests" name="Constructor_ExplicitlyDisabled_IsDisabled" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="b18257ed-7fed-9095-34d7-455ab7387065" executionId="61b25d25-63b9-4d9e-b1b8-738707c4de1a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2d75813f-caca-0bd6-b39c-37882e6231ff" executionId="61359a6a-c028-46b6-81d0-356cd3629cd2" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7fe2fcc9-ad1f-5e4f-7692-b5ad64a43c43" executionId="255902e0-a7c4-47a0-87ac-f0600d478509" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="9a5ff241-e360-7778-a3b8-a29f81c6b6c7" executionId="70b1be11-419a-4a7d-a27f-635ecab74e41" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ac155d67-0d30-5f46-f15a-65d43f12d7fa" executionId="7fc1b3d2-82b4-4eb0-81db-c7a68085d8bb" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ef352edc-1d80-ebae-4676-007b89e1a7cc" executionId="f127be50-014b-4920-a83e-424ca126ea8a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3a90cfbf-6445-4331-d2e6-cb09661b2c74" executionId="d7233421-90e2-4482-9a99-bbba352ca44e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e40a26d8-e0ca-104d-07c9-68fbd72c32ed" executionId="f1671f95-819e-4628-b109-d3239ae1edfb" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6a511ba5-8450-9ecb-f768-27760c6fbec5" executionId="78aeec7c-ff5a-46ec-83af-3f40be6c7ac0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="cdcb2a3f-d74d-56b6-d225-35280748fd86" executionId="87e2743b-62a8-4c53-8e5d-d7fac12dd4f5" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="列表中未列出的结果" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="所有已加载的结果" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="10" executed="10" passed="10" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.5.3.1+6b60a9e56a (64-bit .NET 8.0.27)&#xD;
+[xUnit.net 00:00:00.07]   Discovering: Agent1.Tests&#xD;
+[xUnit.net 00:00:00.15]   Discovered:  Agent1.Tests&#xD;
+[xUnit.net 00:00:00.15]   Starting:    Agent1.Tests&#xD;
+[xUnit.net 00:00:00.22]   Finished:    Agent1.Tests&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

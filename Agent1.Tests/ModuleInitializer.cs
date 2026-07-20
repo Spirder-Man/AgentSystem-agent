@@ -24,6 +24,8 @@
 //
 // 【约束】方法必须满足: static, 无参, void, 非泛型, 非嵌套
 // ============================================================================
+using System;
+using System.IO;
 using System.Runtime.CompilerServices;
 
 namespace Agent1.Tests;
@@ -37,5 +39,69 @@ internal static class ModuleInitializer
         // 必须在任何测试代码或 Serilog 配置之前执行
         System.Console.OutputEncoding = System.Text.Encoding.UTF8;
         System.Console.InputEncoding  = System.Text.Encoding.UTF8;
+
+        // ── 根治 .env 环境变量继承问题 ──
+        // 根因：shell 中 source .env 仅设置 shell-local 变量，dotnet test
+        // 子进程无法继承。通过 ModuleInitializer 在测试进程内加载 .env，
+        // 确保 WebApplicationFactory 子进程继承所有必需环境变量。
+        LoadEnvFile();
+    }
+
+    /// <summary>
+    /// 从项目根目录加载 .env 文件，将 KEY=VALUE 行设为环境变量。
+    /// 跳过空行、注释行（#开头）、已存在的环境变量（不覆盖）。
+    /// </summary>
+    private static void LoadEnvFile()
+    {
+        var envPath = FindEnvFile();
+        if (envPath == null || !File.Exists(envPath))
+            return;
+
+        foreach (var line in File.ReadAllLines(envPath))
+        {
+            var trimmed = line.Trim();
+            if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith('#'))
+                continue;
+
+            var eq = trimmed.IndexOf('=');
+            if (eq <= 0)
+                continue;
+
+            var key = trimmed[..eq].Trim();
+            var value = trimmed[(eq + 1)..].Trim();
+
+            // 移除引号包裹（支持 KEY="value" 和 KEY='value'）
+            if ((value.StartsWith('"') && value.EndsWith('"')) ||
+                (value.StartsWith('\'') && value.EndsWith('\'')))
+                value = value[1..^1];
+
+            // 不覆盖已有环境变量（CI 注入的优先级更高）
+            if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable(key)))
+                Environment.SetEnvironmentVariable(key, value);
+        }
+    }
+
+    /// <summary>
+    /// 从测试程序集目录向上查找 .env 文件。
+    /// 遍历路径: bin/{Config}/{Tfm} → bin/{Config} → bin → 项目根 → 解决方案根。
+    /// </summary>
+    private static string? FindEnvFile()
+    {
+        var dir = AppContext.BaseDirectory;
+
+        // 向上最多 5 层查找 .env
+        for (int i = 0; i < 5; i++)
+        {
+            var candidate = Path.Combine(dir, ".env");
+            if (File.Exists(candidate))
+                return candidate;
+
+            var parent = Path.GetDirectoryName(dir);
+            if (parent == null || parent == dir)
+                break;
+            dir = parent;
+        }
+
+        return null;
     }
 }

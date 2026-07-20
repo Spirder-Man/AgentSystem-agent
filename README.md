@@ -1,911 +1,170 @@
 # Agent1 — 化工园区危化品合规审查 AI Agent
 
-> **项目版本**：v4.0（双通道解耦架构 — 零幻觉法规引用输出 — 2026-07-03）
-> **核心修复文档**：[P0-P1修复详细技术文档](docs/troubleshooting/P0-P1修复详细技术文档.md) | [RAG工程Bug修复笔记](docs/troubleshooting/RAG工程Bug修复笔记_2026-05-26.md) | [故障排查文档](docs/troubleshooting/故障排查文档.md) | [代码自检清单](docs/工程skill/代码自检清单%20Skill.md)
-> **前端开发**：[前端开发快速上手指南](docs/architecture/Agent1前端开发快速上手指南.md) | [Mock 机制说明](agent1-web/src/mocks/README.md)
+> **版本**：v4.4 | **编译**：0 错误 | **测试**：152 通过 | **分支**：`linux原生编译模型llama.cpp`
 
-基于 .NET 8 + Semantic Kernel + **llama.cpp 原生编译**构建的企业级化工园区危化品合规审查 AI Agent。
-
-支持 20 个控制台菜单、12 个 ModuleType、REST API、JWT 认证、PostgreSQL+pgvector 混合检索、
-OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对 NVIDIA GPU (RTX 3090/3080 Ti) Linux 环境实现 RAG 全链路 GPU 加速**。
-
-> 整体完成度：~96% | 编译：0 错误 | C# 文件：~118 个 / ~18,000 行 | 测试：152 通过 | 自动化测试：25 条 CLI 全功能 | 双通道解耦架构 (对话+评测双路径) + T13 无状态评测已交付
+基于 .NET 8 + Semantic Kernel + **llama.cpp 原生编译**构建的企业级化工园区危化品合规审查 AI Agent。支持 REST API、JWT 认证、PostgreSQL+pgvector 混合检索、OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对 NVIDIA GPU (RTX 3090/3080 Ti) Linux 环境 RAG 全链路 GPU 加速**。
 
 ## 功能全景
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  AI 推理引擎        │  SK Auto FC + 三层防御 + GPU嵌入   │
-│  化工合规工具        │  8 个 [KernelFunction] + Token预算 │
-│  知识库              │  BM25+Vector+RRF+增量更新        │
-│  化工业务模块        │  合规自查/工单/监管/应急/图谱     │
-│  基础设施            │  Sha256审计链/安全双防线/健康检查  │
-│  可观测性            │  PipelineMetrics/TraceId/事件溯源 │
-│  API 服务            │  JWT认证/限流/OTel/优雅关闭       │
-│  19 菜单 + 12 ModuleType — 全部实现 ✅                    │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│  AI 推理引擎  │  SK Auto FC + 三层防御 + GPU嵌入   │
+│  化工合规工具  │  8 个 [KernelFunction] + Token预算 │
+│  知识库       │  BM25+Vector+RRF+增量更新          │
+│  化工业务模块  │  合规自查/工单/监管/应急/图谱      │
+│  基础设施     │  SHA256审计链/安全双防线/健康检查   │
+│  可观测性     │  PipelineMetrics/TraceId/事件溯源  │
+│  API 服务     │  JWT认证/限流/OTel/优雅关闭        │
+└──────────────────────────────────────────────────┘
 ```
 
 ## 🏗️ 项目架构
 
 ```
-├── Agent1/                       # 核心类库
-│   ├── Models/                   # 数据模型
-│   │   ├── CliExecutionResult.cs      # 统一输出契约 (Success/Warnings/ToolCalls/Events)
-│   │   ├── PipelineMetrics.cs         # 6步流水线性能指标 (7步耗时+TraceId+业务指标)
-│   │   ├── PipelineEvent.cs           # 事件溯源单元 (EventId/TraceId/EventType)
-│   │   ├── ChemicalSubstanceModels.cs  # 化学品属性/法规版本/安全距离
-│   │   ├── EvalModels.cs         # 评测数据模型
-│   │   ├── ExtractedFacts.cs     # 结构化事实模型(双通道:法规编号+类别+判定)
-│   │   ├── DialogTypes.cs        # 对话类型
-│   │   ├── LongTermMemoryModels.cs     # 长期记忆模型
-│   │   └── ModuleType.cs         # 模块枚举 (12 个, 全部实现)
-│   ├── Commands/                 # [P2] 命令模式
-│   │   └── MenuCommands.cs       # IMenuCommand + 14 个命令类
-│   ├── Modules/                  # 推理模块 (12 个, 全部继承 PipelineModuleBase)
-│   │   ├── CoTSolidModule.cs / CoTStreamModule.cs  # CoT 思维链
-│   │   ├── ReActSolidModule.cs / ReActStreamModule.cs  # ReAct 推理
-│   │   ├── ReflectionModule.cs   # 自我反思纠错
-│   │   ├── RAGModule.cs          # RAG 检索增强生成
-│   │   ├── UnifiedDialogModule.cs # 智能对话系统
-│   │   ├── ComplianceCheckModule.cs # 化工合规自查 ★核心
-│   │   ├── TicketFollowupModule.cs  # [P1] 整改工单跟进
-│   │   ├── RegulatoryAuditModule.cs # [P3] 监管核查辅助
-│   │   ├── EmergencyResponseModule.cs # [P3] 应急响应方案
-│   │   └── KnowledgeGraphModule.cs   # [P3] 知识图谱查询
-│   ├── Services/
-│   │   ├── AI/                   # LLM 服务
-│   │   │   ├── LlmService.cs     # llama.cpp 集成/Thinking控制/熔断器/死循环检测
-│   │   │   ├── TokenBudgetManager.cs  # Token 预算管理 (T13 无状态架构 Layer 2)
-│   │   │   ├── ReflectionVerifier.cs  # 代码级反思验证(GB编号幻觉检测)
-│   │   │   ├── ToolService.cs    # 工具服务接口
-│   │   │   ├── MultimodalService.cs   # [P2] 多模态 GHS 标签识别
-│   │   │   └── ILlmService.cs / IToolService.cs  # 服务接口
-│   │   ├── Compliance/           # 化工合规
-│   │   │   ├── ChemicalComplianceTools.cs  # 8 个 SK Plugin 工具
-│   │   │   ├── ChemicalDatabaseService.cs  # 918行 化工数据库服务 (零失误架构核心)
-│   │   │   ├── FactExtractor.cs       # 事实提取器(双通道:正则+AsyncLocal双路径)
-│   │   │   ├── FactAssembler.cs       # 确定性事实渲染器(双通道:C#模板不走LLM)
-│   │   │   ├── PromptSanitizer.cs     # Prompt消毒器(双通道:剥离法规编号)
-│   │   │   ├── OutputSanitizer.cs     # 输出消毒器(双通道:白名单硬拦截兜底)
-│   │   │   ├── ResponseMerger.cs      # 响应合并器(双通道:事实通道+解释通道)
-│   │   │   ├── OutputValidator.cs          # 328行 输出校验器 (安全围栏)
-│   │   │   ├── ComplianceAuditLogger.cs    # 249行 合规审计日志
-│   │   │   ├── ConclusionVerifier.cs       # Post-hoc 结论验证
-│   │   │   ├── EmergencyResponseService.cs # [P3] 应急响应引擎
-│   │   │   ├── KnowledgeGraphService.cs    # [P3] 知识图谱 (BFS遍历)
-│   │   │   ├── SafetyGuardService.cs       # [P3] Prompt注入+输出检测
-│   │   │   ├── ChemicalSubstanceDatabase.cs # 58 种危化品结构化数据
-│   │   │   └── ChemicalRAG.cs    # 化工 RAG 管道 (含增量更新)
-│   │   ├── Knowledge/            # 知识库
-│   │   │   ├── KnowledgeBaseService.cs          # BM25 检索
-│   │   │   ├── HybridKnowledgeBaseService.cs    # BM25+向量混合检索(RRF融合)
-│   │   │   ├── RerankerService.cs               # Cross-Encoder Reranker
-│   │   │   ├── QueryCacheService.cs             # LRU查询缓存
-│   │   │   ├── PdfExtractor.cs / DocExtractor.cs # 文档解析
-│   │   │   ├── TextCleaner.cs / SemanticChunker.cs  # 清洗分块
-│   │   │   └── RetrievedChunk.cs / ChemicalDocumentRecord.cs
-│   │   ├── Dialog/               # 对话管理
-│   │   │   ├── AgentDialog.cs    # Agent 对话编排
-│   │   │   ├── SessionManager.cs / SessionService.cs
-│   │   │   └── IntentRouter.cs   # 意图路由
-│   │   ├── Memory/               # 记忆系统
-│   │   │   ├── MemoryService.cs  # 短期记忆
-│   │   │   ├── MemoryCoordinator.cs  # 记忆协调器
-│   │   │   └── ResponseCacheService.cs # 响应缓存(SHA256 键/TTL)
-│   │   ├── Infrastructure/       # 基础设施
-│   │   │   ├── DatabaseService.cs # PostgreSQL + pgvector
-│   │   │   ├── AuditService.cs    # 等保三级审计
-│   │   │   ├── PipelineModuleBase.cs    # 模块抽象基类 (6步流水线)
-│   │   │   ├── ModuleDispatcher.cs / ModuleFactory.cs
-│   │   │   ├── IInferenceModule.cs      # 推理模块接口
-│   │   │   ├── MetricsCollector.cs # Prometheus 指标
-│   │   │   └── SensitiveDataMasker.cs # 数据脱敏
-│   │   └── Eval/                 # 评测引擎
-│   │       └── EvalEngine.cs     # T13 无状态评测 (按意图裁剪工具+Token预算)
-│   ├── Config/
-│   │   ├── AppConfig.cs          # 配置中心（外部化）
-│   │   └── ModelConfig.cs        # 模型配置入口
-│   └── Program.cs                # 控制台入口
-├── Agent1.Api/                   # Web API 层
-│   ├── Controllers/
-│   │   ├── AuthController.cs     # JWT 登录/刷新（BCrypt + RefreshToken 轮转）
-│   │   ├── ComplianceController.cs # 合规检查/Hazard查询/储存兼容性
-│   │   ├── InspectionController.cs  # 巡检计划管理
-│   │   └── TicketsController.cs     # 整改工单管理
-│   ├── Middleware/
-│   │   ├── GlobalExceptionMiddleware.cs    # 全局异常处理
-│   │   ├── RateLimitingMiddleware.cs       # 速率限制(100次/分钟/IP)
-│   │   ├── RequestIdMiddleware.cs          # 请求ID透传
-│   │   └── RequestMetricsMiddleware.cs     # 请求指标
-│   └── Program.cs                # API 启动（DI/Serilog/JWT/OTel/健康检查）
-├── Agent1.Tests/                 # xUnit 测试（152 tests, 含双通道4项+架构收敛+熔断器验证）
-├── ArchitectureTest/             # 架构收敛测试
-├── Benchmark/                    # C# HTTP 压测工具
-├── SshRunner/                    # SSH 远程执行工具 (流式模式)
-├── prometheus/                   # Prometheus 录制规则
-├── grafana/                      # Grafana 仪表盘 JSON
-├── .github/workflows/            # CI/CD（构建→测试）
-├── Data/ComplianceEvalSet.json   # 64 条化工合规评测集
-├── Data/ComplianceBlindEvalSet.json  # 543 条化工盲评集
-├── knowledgebase/                # 化工合规知识库
-│   ├── 国标/ 园区规则/ 历史案例/ 化工专业条例/
-│   └── H166-危险化学品化工企业安全生产三级标准化/
-├── docs/                         # 项目文档
-│   ├── architecture/             # 架构设计文档 (13个文件)
-│   ├── deploy/                   # 部署运维文档
-│   ├── technical-principles/     # 技术原理文档 (9个文件)
-│   ├── testing/                  # 测试文档
-│   ├── troubleshooting/          # 故障排查文档
-│   └── project/                  # 项目文档
-├── scripts/                      # 测试与运维脚本
-│   ├── auto_test.sh              # CLI 全功能自动化测试 (25条, bash)
-│   ├── auto_test_v2.sh           # 自动化测试 v2 (含监控看板)
-│   ├── int-test-task11.sh        # Task 11 集成测试脚本 (592行, bash)
-│   ├── zh-diag.sh                # 中文系统诊断 + llama-server 一键启动
-│   ├── test-status.sh            # 测试状态文件生成
-│   ├── monitor-test.ps1          # 远程测试实时监控看板
-│   ├── run_t13_heartbeat.sh      # T13 心跳检测
-│   └── download_logs.ps1         # 远程日志下载
-├── docker-compose.yml            # Docker 容器化部署
-├── Dockerfile / Dockerfile.llama # 多阶段构建 (CPU/CUDA)
-├── .env / .env.example           # 环境变量配置
-├── cache-monitor/                # DeepSeek Cache 监控 MCP 服务
-├── agent1-web/                   # Vue 3 前端 (详见下方前端项目)
-└── Agent1.sln                    # 解决方案文件
+Agent1/                 # .NET 8 核心类库
+├── Models/             # 数据模型（CliExecutionResult/PipelineMetrics/ChemicalSubstance等）
+├── Commands/           # 命令模式（14 个菜单命令）
+├── Modules/            # 推理模块（CoT/ReAct/Reflection/RAG/合规检查等 12 个）
+├── Services/
+│   ├── AI/             # LLM 推理 + Token预算 + 反射验证 + 熔断器
+│   ├── Compliance/     # 化工合规（双通道解耦架构 + 58种危化品数据库）
+│   ├── Knowledge/      # 知识库（BM25+向量混合检索 + Reranker + 缓存）
+│   ├── Dialog/         # 对话管理 + 意图路由
+│   ├── Memory/         # 记忆系统 + 响应缓存
+│   ├── Infrastructure/ # 数据库 + 审计 + 指标 + 脱敏
+│   └── Eval/           # T13 无状态评测引擎
+├── Config/             # 配置中心
+└── Program.cs          # 控制台入口
+Agent1.Api/             # Web API 层（15 个 Controller + 5 个 Middleware）
+Agent1.Tests/           # xUnit 测试（152 通过）
+agent1-web/             # Vue 3 前端（MSW Mock 并行开发）
+docs/                   # 项目文档（架构/部署/测试/排障）
+scripts/                # 开发者工具箱（日志下载/远程监控）
 ```
 
 ## 🛠️ 技术栈
 
-| 层级 | 技术 | 版本 | 状态 |
-|------|------|------|------|
-| 语言 | C# | 12.0 | ✅ |
-| 框架 | .NET | 8.0 | ✅ |
-| AI 框架 | Semantic Kernel | 1.74.0 | ✅ |
-| **推理引擎** | **llama.cpp (llama-server)** | **b4857** | ✅ |
-| **推理模型** | **Qwen3-8B (Q4_K_M GGUF)** | **8B** | ✅ |
-| **嵌入模型** | **nomic-embed-text-v1.5 (F16 GGUF)** | **latest** | ✅ |
-| **精排模型** | **bge-reranker-v2-m3** | **Python sidecar** | ✅ |
-| 数据库 | PostgreSQL + pgvector | 16.x | ✅ |
-| PDF 解析 | PdfPig | 0.1.9 | ✅ |
-| DOCX 解析 | DocumentFormat.OpenXml | 3.2.0 | ✅ |
-| 认证 | JWT Bearer + BCrypt | 8.0+ | ✅ |
-| 速率限制 | 自定义 Middleware | - | ✅ |
-| 结构化日志 | Serilog + Seq | 4.0+ | ✅ |
-| 指标监控 | Prometheus Text Format | - | ✅ |
-| 可视化 | Grafana 仪表盘 | latest | ✅ |
-| 分布式追踪 | OpenTelemetry | 1.9+ | ✅ |
-| CI/CD | GitHub Actions | - | ✅ |
-| 负载测试 | Benchmark 模块 | 内置 | ✅ |
-| **GPU** | **RTX 3090 24GB (sm_86)** | — | ✅ |
-
-### 🖥️ Linux 生产环境服务架构
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    RTX 3090 24GB Linux                       │
-├───────────────┬───────────────┬───────────────┬─────────────┤
-│ llama-server  │ llama-server  │ bge-reranker  │ PostgreSQL  │
-│ :8080         │ :8081         │ :8082         │ :5432       │
-│               │               │               │ + pgvector  │
-│ Qwen3-8B      │ nomic-embed   │ Python        │             │
-│ Q4_K_M        │ F16 GGUF      │ sidecar       │             │
-│ -ngl 99       │ --embeddings  │ (可选)        │             │
-│ -c 32768      │ --batch 1024  │               │             │
-│ -sps 0.0      │               │               │             │
-│ --cache q8_0  │               │               │             │
-│ -fa           │               │               │             │
-│ ~7.0 GB VRAM  │ ~1.0 GB VRAM  │ ~1.5 GB VRAM  │             │
-├───────────────┴───────────────┴───────────────┴─────────────┤
-│                   Agent1.Api :5000                           │
-│              .NET 8 + Semantic Kernel + JWT                  │
-└─────────────────────────────────────────────────────────────┘
-```
+| 层级 | 技术 | 说明 |
+|------|------|------|
+| 语言/框架 | C# 12 / .NET 8 | Semantic Kernel 1.74 |
+| **推理引擎** | **llama.cpp (llama-server)** | Qwen3-8B Q4_K_M + nomic-embed F16 |
+| **精排** | **bge-reranker-v2-m3** | Python sidecar（可选降级） |
+| 数据库 | PostgreSQL 16 + pgvector | BM25 + 向量混合检索 |
+| 认证 | JWT Bearer + BCrypt | RefreshToken 轮转 |
+| 可观测性 | Serilog + Prometheus + Grafana + OTel | 结构化日志 + 分布式追踪 |
+| CI/CD | GitHub Actions | 编译→测试→Docker→GHCR |
+| **GPU** | **RTX 3090 24GB (sm_86)** | CUDA 编译 llama.cpp |
 
 ## ✨ 核心功能
 
-### 1. 推理引擎模块
-- **RAG检索增强生成**：BM25 + 向量混合检索 (RRF 融合)，支持查询缓存
-- **CoT思维链推理**：支持同步/流式输出
-- **ReAct交互式推理**：支持工具调用与反馈循环
-- **Reflection反思纠错**：代码级事实核查（非 LLM 自我评价）
-- **合规规则验证**：集成化工行业合规知识库
-
-### 2. 会话管理
-- 基于内存的对话历史管理
-- 支持多轮对话上下文保持
-
-### 3. 知识库管理
-- 支持国标、园区规则、历史案例、化工专业条例四级知识体系
-- BM25 + 向量混合检索策略 (RRF 融合)
-- GPU 向量索引（内存余弦相似度搜索）
-- Cross-Encoder Reranker 精排（远程 Python sidecar + 本地启发式降级）
-- QueryCache 查询缓存（LRU + TTL）
-- 业务优先级重排序
-
-### 4. 双通道解耦架构 — 零幻觉法规引用输出（★ v4.0 核心）
-
-LLM 与确定性代码彻底分层，各司其职：
-
-```
-事实通道 (C# 确定性代码)              解释通道 (LLM)
-┌──────────────────────────┐      ┌─────────────────────────┐
-│ FactExtractor             │      │ PromptSanitizer          │
-│ 从工具结果提取法规编号      │      │ 传给LLM前剥离所有法规编号   │
-│ FactAssembler             │      │ LLM 只做推理+建议         │
-│ C#模板确定性渲染法规引用    │      │ OutputSanitizer          │
-│ 100%准确，不走LLM          │      │ 白名单比对硬拦截兜底       │
-└──────────────────────────┘      └─────────────────────────┘
-              ↓                            ↓
-         ResponseMerger 合并 → 最终输出
-```
-
-- **设计哲学**：法规引用归代码（100% 确定性），推理分析归 LLM（专业解读）
-- **四道防线**：PromptSanitizer（源头掐断）→ LLM 无编号可编造 → OutputSanitizer（白名单兜底）→ FactAssembler（唯一法规来源）
-- **配置开关**：`UseDecoupledArchitecture = true`（默认启用），可灰度切换
-
-### 5. 合规审查能力
-- 危化品存储合规检查
-- 安全距离合规验证
-- 危险类别精准匹配
-- 化学品属性结构化查询
-- 法规版本状态追踪
-- 重大危险源临界量查询
-- [P3] 监管核查辅助（逐条比对法规）
-- [P3] 应急响应方案（ERG疏散/PPE/灭火/急救）
-- [P3] 知识图谱（化学品-法规-事故关联网）
-- [P2] 风险评估 3×3 矩阵
-- [P2] 多模态 GHS 标签识别
-
-### 6. 结构化化学品数据库（58 种危化品）
-- 30+ 常见工业危化品结构化属性（CAS号/UN编号/分子式/闪点/沸点/爆炸极限）
-- 危险类别与 GB 30000 标准号精确映射
-- 20+ 精确化学品储存禁忌配对规则 + 类别级自动推断
-- 20 对安全距离规则（GB 50160 / GB 50016）
-- GB 18218 重大危险源临界量集成
-- 8 项关键法规标准版本追踪（GB 15603/18218/30871 等）
-- 40+ 化学品别名自动归一化
-
-### 7. AI 工具集（8 个 KernelFunction）
-- `CheckHazardCategory` — 危险类别查询
-- `CheckStorageCompatibility` — 储存兼容性检查
-- `GetSafetyDistance` — 安全距离查询
-- `LookupChemicalProperties` — 化学品全属性查询
-- `LookupRegulationReferences` — 法规引用查询
-- `LookupHazardLabel` — [P2] GHS 标签识别 (多模态)
-- `GetCurrentTime` / `Calculate` — 通用工具
-
-### 8. RAG GPU 全链路加速（★ Sprint 1-5）
-- **Sprint 1**: 批量 GPU 嵌入 (`GetEmbeddingsBatchAsync`)
-- **Sprint 2**: GPU 向量检索 (`GpuVectorIndexService` 内存索引)
-- **Sprint 3**: Cross-Encoder Reranker (`RerankerService`)
-- **Sprint 4**: 智能分块 + 查询扩展 + RRF 融合
-- **Sprint 5**: LRU 查询缓存 + GPU 监控 (nvidia-smi VRAM 采集)
-- **性能预期**：嵌入延迟 -85% | 检索延迟 -84% | 总延迟 -75%
+- **双通道解耦架构** ★：法规引用归 C# 确定性代码（100% 准确），推理分析归 LLM — 四道防线防幻觉
+- **RAG GPU 全链路加速**：批量嵌入 + GPU 向量索引 + Cross-Encoder Reranker + 查询缓存
+- **结构化化学品数据库**：58 种危化品（CAS/UN编号/闪点/爆炸极限）+ 20 组储存禁忌 + 安全距离
+- **8 个 AI 工具**：危险类别查询/储存兼容性/安全距离/化学品属性/法规引用 + GHS 标签识别
+- **12 个推理模块**：CoT/ReAct/Reflection/RAG/合规自查/工单跟进/监管核查/应急响应/知识图谱
+- **等保三级审计**：SHA256 哈希链防篡改 + 启动自愈
 
 ## 🚀 快速开始
 
-### Linux 生产环境（RTX 3080 Ti / 3090 + llama.cpp 原生编译）⭐ 推荐
-
-> 以下流程在 RTX 3080 Ti + CUDA 12.4 + Ubuntu 22.04 上亲测通过，0 残留问题。
-
-#### 第 1 步：安装 .NET 8 SDK
+### 本地开发
 
 ```bash
-# APT 安装（不要用 dotnet-install.sh，国内太慢）
-wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb
-dpkg -i /tmp/packages-microsoft-prod.deb
-apt update
-apt install -y dotnet-sdk-8.0
-dotnet --version   # 验证: 应为 8.0.xxx
+# 前置：PostgreSQL 16 + pgvector（见 init_database.sql）
+dotnet run --project Agent1      # 控制台菜单
+dotnet run --project Agent1.Api  # API 服务 (localhost:52320)
 ```
 
-#### 第 2 步：安装 PostgreSQL 16 + pgvector
+### 前端开发
 
 ```bash
-curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql.gpg --yes
-echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt jammy-pgdg main" | tee /etc/apt/sources.list.d/pgdg.list
-apt update
-apt install -y postgresql-16 postgresql-client-16 postgresql-16-pgvector
-
-# 手动启动（容器环境禁止自动启动）
-pg_ctlcluster 16 main start
-
-# 设置密码 + 建库
-su - postgres -c "psql -c \"ALTER USER postgres PASSWORD '7758521';\""
-su - postgres -c "psql -c \"CREATE DATABASE chemical_park_ai_agent;\""
-su - postgres -c "psql -d chemical_park_ai_agent -c \"CREATE EXTENSION IF NOT EXISTS vector;\""
+cd agent1-web && npm install
+npm run dev:mock   # Mock 模式（纯前端，不需要后端）
+npm run dev        # 真实 API 模式
 ```
 
-#### 第 3 步：编译 llama.cpp（CUDA GPU 版）
-
-```bash
-cd /root/autodl-tmp
-rm -rf llama.cpp
-git clone https://gitclone.com/github.com/ggerganov/llama.cpp.git
-cd llama.cpp
-
-# CUDA 编译 — 必须显式指定 nvcc 路径
-cmake -B build \
-  -DGGML_CUDA=ON \
-  -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
-  -DCMAKE_CUDA_ARCHITECTURES="86"
-
-cmake --build build --config Release -j$(nproc)
-
-# 验证
-ls -lh build/bin/llama-server
-```
-
-#### 第 4 步：下载 GGUF 模型文件
-
-```bash
-mkdir -p /root/autodl-tmp/models
-
-# LLM 模型（~4.7GB）
-wget -O /root/autodl-tmp/models/Qwen_Qwen3-8B-Q4_K_M.gguf \
-  https://hf-mirror.com/bartowski/Qwen_Qwen3-8B-GGUF/resolve/main/Qwen_Qwen3-8B-Q4_K_M.gguf
-
-# 嵌入模型（~274MB）
-wget -O /root/autodl-tmp/models/nomic-embed-text-v1.5.f16.gguf \
-  https://hf-mirror.com/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.f16.gguf
-```
-
-> 如容器网络不通，走 JupyterLab 上传 → `find / -name "*.gguf"` 定位 → `mv` 到 models/。
-
-#### 第 5 步：克隆代码 + 初始化数据库
-
-```bash
-cd /root/autodl-tmp
-git clone https://gitee.com/liuchao_yue/agent-system.git
-cd agent-system
-git checkout linux原生编译模型llama.cpp && git pull origin linux原生编译模型llama.cpp
-
-# 初始化数据库
-cp init_database.sql /tmp/
-PGPASSWORD=7758521 psql -h localhost -U postgres -f /tmp/init_database.sql
-```
-
-#### 第 6 步：验证配置（默认已正确）
-
-`Agent1/appsettings.json` 中 LLM 端点已默认为 llama-server（v4.3 已修复），无需手动改：
-
-```
-"Llm": {
-    "Endpoint": "http://localhost:8080/v1"     ← 已默认正确
-},
-"VectorSearch": {
-    "EmbeddingEndpoint": "http://localhost:8081/v1"  ← 已默认正确
-}
-```
-
-> 环境变量 `LLM_ENDPOINT` 和 `KNOWLEDGE_BASE_PATH` 也可覆盖默认值。
-
-#### 第 7 步：启动 AI 推理服务
-
-```bash
-mkdir -p /root/autodl-tmp/logs
-
-# LLM 推理服务（端口 8080）
-nohup /root/autodl-tmp/llama.cpp/build/bin/llama-server \
-  -m /root/autodl-tmp/models/Qwen_Qwen3-8B-Q4_K_M.gguf \
-  --host 0.0.0.0 --port 8080 -ngl 99 -c 32768 \
-  --cache-type-k q8_0 --cache-type-v q8_0 -fa \
-  -sps 0.0 \
-  > /root/autodl-tmp/logs/llama-server.log 2>&1 &
-
-# Embedding 嵌入服务（端口 8081）
-nohup /root/autodl-tmp/llama.cpp/build/bin/llama-server \
-  -m /root/autodl-tmp/models/nomic-embed-text-v1.5.f16.gguf \
-  --host 0.0.0.0 --port 8081 --embeddings \
-  -ngl 99 -c 2048 --batch-size 1024 \
-  > /root/autodl-tmp/logs/llama-embed.log 2>&1 &
-
-sleep 5
-
-# 健康检查
-curl -s http://localhost:8080/health  # → {"status":"ok"}
-curl -s http://localhost:8081/health  # → {"status":"ok"}
-```
-
-#### 第 8 步：编译并启动
-
-```bash
-cd /root/autodl-tmp/agent-system
-dotnet build Agent1/Agent1.csproj -c Release
-
-DOTNET_ENVIRONMENT=Production \
-JWT_KEY=qazwsxedcrfvtgbyhnujmikolpqazwsx \
-DB_PASSWORD=7758521 \
-dotnet run --project Agent1
-```
-
-启动后选择菜单项：
-- **10** — 数据库连接验证
-- **12** — 工具调用诊断验证
-- **8** — 化工合规自查（核心功能）
-- **13** — 合规评测集（GPU 加速核心验证）⭐
-
-#### 可选：启动 API 服务
-
-```bash
-nohup dotnet run --project Agent1.Api \
-  --environment Production \
-  > /root/autodl-tmp/logs/agent1-api.log 2>&1 &
-
-curl http://localhost:5000/health/live
-```
-
-### 🐳 Docker 容器化部署
+### Linux 生产环境（GPU）
 
 > 完整部署文档：[Docker 容器化一键部署](docs/deploy/Docker容器化一键部署.md) | [Linux 快速启动指南](docs/deploy/Linux快速启动指南.md)
 
-核心命令（开发环境）：
-```powershell
-docker compose pull postgres prometheus grafana    # 拉取基础镜像
-docker compose build llama-server llama-embed api   # 构建服务镜像（首次 10~30 分钟）
-docker compose up -d                                 # 启动全部服务
-docker compose logs -f                               # 实时查看日志
-```
+核心步骤：安装 .NET 8 SDK → PostgreSQL 16 + pgvector → 编译 llama.cpp(CUDA) → 下载 GGUF 模型 → 启动 llama-server(:8080) + llama-embed(:8081) → `dotnet run`
 
-> **Windows 注意**：无 GPU 直通，模型文件需手动放入 `models/` 目录。无模型时仍可启动 `postgres api prometheus grafana` 做 Mock 测试。详见部署文档。
-
-### API 端点
-
-| 方法 | 路径 | 说明 | 认证 |
-|------|------|------|------|
-| `POST` | `/api/auth/login` | 登录获取 Token | 否 |
-| `POST` | `/api/auth/refresh` | 刷新 Token | Bearer |
-| `POST` | `/api/compliance/hazard/query` | 危化品危险类别查询 | Bearer |
-| `POST` | `/api/compliance/storage/check` | 储存兼容性检查 | Bearer |
-| `POST` | `/api/compliance/check` | 合规综合检查 | Bearer |
-| `GET` | `/health` | 全量健康检查（DB + LLM + KB） | 否 |
-| `GET` | `/health/live` | 存活检查 | 否 |
-| `GET` | `/health/ready` | 就绪检查 | 否 |
-| `GET` | `/metrics` | Prometheus 指标 | 否 |
-| `GET` | `/swagger` | Swagger 文档 | 否 |
-
-调用示例：
-```bash
-# 1. 登录
-curl -X POST http://localhost:5000/api/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"your_password"}'
-
-# 2. 查询危化品（用返回的 token）
-curl -X POST http://localhost:5000/api/compliance/hazard/query \
-  -H 'Authorization: Bearer <token>' \
-  -H 'Content-Type: application/json' \
-  -d '{"substanceName":"苯"}'
-```
-
-## 🔐 安全配置指南
-
-所有敏感信息通过外部配置注入，**绝不**硬编码到源码或提交 Git。系统提供三层优先级机制，
-确保从开发到生产的每个阶段都有合适的配置方式。
-
-### 账号密码配置
-
-系统按以下优先级（从高到低）加载账号：
-
-```
-环境变量 AUTH_ACCOUNTS_JSON  >  appsettings.json Auth.Accounts  >  开发随机密码（仅非生产环境）
-```
-
-#### 方式一：环境变量（Docker / 生产推荐）
+### Docker 部署
 
 ```bash
-# Linux / macOS
-export AUTH_ACCOUNTS_JSON='[{"Username":"admin","Password":"MySecureP@ss","Role":"admin"},{"Username":"auditor","Password":"AuditP@ss","Role":"auditor"}]'
-
-# Windows PowerShell
-$env:AUTH_ACCOUNTS_JSON = '[{"Username":"admin","Password":"MySecureP@ss","Role":"admin"}]'
+docker compose build llama-server llama-embed api
+docker compose up -d
+curl http://localhost:5000/health/live
 ```
 
-**Docker Compose** 中注入（`docker-compose.yml`）：
+## 🔐 安全配置
 
-```yaml
-api:
-  environment:
-    - AUTH_ACCOUNTS_JSON=[{"Username":"admin","Password":"MySecureP@ss","Role":"admin"}]
-```
-
-#### 方式二：appsettings.json（本地开发推荐）
-
-在 `Agent1/appsettings.json` 中添加：
-
-```json
-{
-  "Auth": {
-    "Accounts": [
-      { "Username": "admin",   "Password": "MyPassword123",   "Role": "admin" },
-      { "Username": "auditor", "Password": "AuditorPwd123",   "Role": "auditor" },
-      { "Username": "viewer",  "Password": "ViewerPwd123",    "Role": "viewer" }
-    ]
-  }
-}
-```
-
-> 💡 明文密码在首次加载时会被**自动升级为 BCrypt 哈希**（`workFactor=12`），
-> 控制台会打印升级后的哈希值。你可以用哈希值替换明文，此后只做哈希比对，更加安全。
-
-#### 方式三：开发随机密码（零配置启动）
-
-如果未配置任何账号且非 `Production` 环境，系统会**自动生成密码学强度的随机密码**
-并打印在控制台（带醒目分隔框）：
-
-```
-═══════════════════════════════════════════════════════════
-  开发环境默认账号（随机生成，仅本次启动有效）：
-  admin   → aB3xK9mW7pQ2
-  auditor → dR8nL4vF6hJ1
-  viewer  → tY5cG2sE8wM0
-  请通过 AUTH_ACCOUNTS_JSON 环境变量或 appsettings.json 配置固定密码
-═══════════════════════════════════════════════════════════
-```
-
-> ⚠️ 每次重启密码都会变。如需固定密码，请使用方式一或方式二。
-
-#### 生产环境保护
-
-若 `ASPNETCORE_ENVIRONMENT=Production` 且未配置任何账号，系统会**拒绝启动**并抛出异常：
-
-```
-System.InvalidOperationException: 生产环境必须通过 AUTH_ACCOUNTS_JSON 环境变量配置账号
-```
-
-### JWT 签名密钥
+三层优先级：`环境变量 AUTH_ACCOUNTS_JSON` > `appsettings.json` > 开发随机密码（仅非生产）
 
 ```bash
-# .env 文件或环境变量（推荐）
-JWT_KEY=your-key-at-least-32-characters-long-please-change-me
+# 生产环境必须设置
+export JWT_KEY=your-key-at-least-32-chars
+export DB_PASSWORD=your_pg_password
+export AUTH_ACCOUNTS_JSON='[{"Username":"admin","Password":"...","Role":"admin"}]'
 ```
-
-或在 `appsettings.json` 中：
-
-```json
-{
-  "Jwt": {
-    "Key": "your-key-at-least-32-characters-long-please-change-me",
-    "Issuer": "Agent1",
-    "Audience": "Agent1.Api",
-    "AccessTokenExpireMinutes": "60",
-    "RefreshTokenExpireDays": "7"
-  }
-}
-```
-
-| 变量 | 说明 | 生产要求 |
-|------|------|----------|
-| `JWT_KEY` | JWT 签名密钥（≥32 字符） | **强制设置** |
-| `DB_PASSWORD` | PostgreSQL 密码 | **强制设置** |
-| `AUTH_ACCOUNTS_JSON` | 账号列表 JSON | **强制设置**（至少 admin 角色） |
-| `ASPNETCORE_ENVIRONMENT` | 运行环境 | 设为 `Production` |
-
-### 预置角色与权限
 
 | 角色 | 权限 |
 |------|------|
-| `admin` | 全部功能：仪表盘 + 合规审核 + 巡检 + 工单 + 系统管理 + GPU 监控 |
-| `auditor` | 核心业务：仪表盘 + 合规审核 + 巡检 + 工单 |
-| `viewer` | 只读：仪表盘 + 查看巡检报告 |
+| `admin` | 全部功能 + GPU 监控 + 系统管理 |
+| `auditor` | 仪表盘 + 合规审核 + 巡检 + 工单 |
+| `viewer` | 只读：仪表盘 + 查看报告 |
 
-## 🖥️ 前端项目 (Vue 3 SPA)
+## 🖥️ 前端项目
 
-前端基于 Vue 3 + TypeScript + Element Plus + Vite 5，详见 [前端架构设计方案](docs/architecture/Agent1前端架构设计方案.md)。
-
-### ⚡ 前后端并行开发（MSW Mock）
-
-前端通过 **MSW (Mock Service Worker)** 在浏览器端模拟后端 API，实现前后端完全解耦并行开发：
-
-```bash
-cd agent1-web
-npm install
-
-# Mock 模式（后端不需要启动，纯前端开发）
-npm run dev:mock
-
-# 真实 API 模式（连接后端 Agent1.Api:5000）
-npm run dev
-```
-
-**原理**：MSW 在浏览器的 Service Worker 线程中拦截 HTTP 请求，返回与后端 API 格式一致的假数据。Vue 组件完全不感知 Mock 层——关掉开关即切换真实 API，**零代码改动**。
-
-```
-Mock 模式:  Vue 3 → Axios → MSW (浏览器拦截) → 假数据返回
-真实模式:  Vue 3 → Axios → 网线 → Agent1.Api:5000 → PostgreSQL
-```
-
-Mock 数据包含：
-- **合规审核模拟** — 关键词匹配返回不同合规结论，3-45 秒模拟 LLM 推理延迟（v2.5 基于 Task 11 实测校准）
-- **工单状态流转引擎** — 完整实现 New→Confirmed→InProgress→Remediated→Verified 状态机
-- **巡检/资产/报告假数据** — 覆盖全部 27 个 API 端点，响应结构与后端 96% 对齐
-
-> 详见 `agent1-web/src/mocks/README.md`
-
-### 前端技术栈
-
-| 层级 | 技术 | 说明 |
-|------|------|------|
-| 框架 | Vue 3 (Composition API) | `<script setup lang="ts">`，与后端 C# 强类型体系对齐 |
-| 语言 | TypeScript 5 | 编译期类型安全 |
-| 构建 | Vite 5 | 秒级 HMR，原生 ESM |
-| UI | Element Plus + Tailwind CSS 3 | 中文企业级组件库 + 原子化 CSS |
-| 路由 | Vue Router 4 | 嵌套路由 + 懒加载 + 角色守卫 |
-| 服务端状态 | Vue Query (@tanstack/vue-query) | LLM 长耗时请求的缓存/重试/失效 |
-| 客户端状态 | Pinia | Vue 3 官方推荐，轻量无 Boilerplate |
-| HTTP | Axios | JWT 拦截器 + Token 自动刷新 |
-| Mock | MSW 2 | Service Worker 拦截（框架无关），前后端并行 |
-| 图表 | ECharts 5 + vue-echarts | 合规态势仪表盘/风险分布 |
-| 表单 | vee-validate + zod | 声明式校验，zod schema 与 C# record 对齐 |
-| 测试 | Vitest + Playwright | 单元 + E2E + 视觉回归 |
-
-### 页面地图
-
-```
-/login                          # 登录页
-/dashboard                      # 合规态势总览仪表盘
-/compliance/check               # 合规审核（核心）
-/compliance/hazard              # 危化品类别查询
-/compliance/storage             # 储存兼容性检查
-/inspection/plans               # 巡检计划管理
-/inspection/assets              # 资产台账
-/knowledge-graph                # 知识图谱大屏
-/emergency                      # 应急响应
-/gpu-monitor                    # GPU 推理监控（admin）
-/tickets                        # 整改工单
-/admin                          # 系统管理（admin）
-```
+Vue 3 + TypeScript + Element Plus + Vite 5，支持 MSW Mock 前后端并行开发。页面覆盖：登录/仪表盘/合规审核/危化品查询/巡检/资产台账/知识图谱/应急响应/工单/系统管理。
 
 ## 📊 可观测性
 
 ```
-http://localhost:5000/metrics                # Prometheus 指标
-http://localhost:5000/health                 # 全量健康检查（DB + LLM + KB）
-http://localhost:9090                        # Prometheus UI（需单独启动）
-http://localhost:3000                        # Grafana（需单独启动）
+/metrics       → Prometheus 指标
+/health        → 全量健康检查（DB + LLM + KB）
+/health/live   → 存活检查
+/health/ready  → 就绪检查
 ```
-
-Prometheus 录制规则位于 `prometheus/` 目录，Grafana 仪表盘 JSON 位于 `grafana/` 目录。
 
 ## 🔄 CI/CD
 
-GitHub Actions 工作流（`.github/workflows/ci.yml`），4 个 Job 串联：
+Push → `build-and-test`（编译+单元测试+架构收敛）→ `integration-test`（PostgreSQL 集成）→ `docker`（仅 main 分支，推送 GHCR）→ `notify`（失败 QQ 邮箱告警）
 
-```
-Push → build-and-test (编译+单元测试+架构收敛) → integration-test (PostgreSQL集成测试)
-                                                    → docker (Docker构建推送GHCR, 仅main分支)
-                                                    → notify (失败时QQ邮箱SMTP告警)
-```
-
-| Job | 触发条件 | 说明 |
-|-----|----------|------|
-| `build-and-test` | 所有 push/PR | 编译 + 148 单元测试 + 架构收敛 + 性能基准 |
-| `integration-test` | 所有 push/PR | PostgreSQL + pgvector 集成测试 |
-| `docker` | 仅 main 分支 | Docker 构建 → 推送 `ghcr.io/spirder-man/agentsystem-agent:latest` |
-| `notify` | 任意 job 失败 | QQ 邮箱 SMTP 告警（需配置 `QQ_EMAIL` / `QQ_SMTP_CODE` Secrets） |
-
-## 📁 文档结构
+## 📁 文档
 
 ```
 docs/
-├── architecture/              # 架构设计文档 (14个文件)
-│   ├── Agent1宏观架构导向图.md
-│   ├── 架构设计文档.md
-│   ├── ModelScope模型选型决策框架.md
-│   ├── Agent1前端开发快速上手指南.md   # 前端 Mock 并行开发完整指南
-│   └── ...
-├── deploy/                    # 部署运维文档
-│   └── Linux服务器一键启动与测试命令.md
-├── articles/                  # 技术文章与参数注入方案 (4个文件)
-├── technical-principles/      # 技术原理文档 (9个文件)
-├── testing/                  # 测试文档 (10+个文件)
-│   ├── integration/               # 集成测试
-│   │   ├── Task11-集成测试部署指南.md       # Linux 一键部署执行流程
-│   │   └── ...
-│   ├── Agent1-Linux完整测试方案.html    # 变量级测试方案 (120+ 条)
-│   ├── Agent1-手动测试执行手册.html     # 逐菜单操作指南
-│   ├── Agent1无GPU全链路测试方案.html   # 无GPU 测试方案
-│   ├── 软件测试基础概念与实践方法.md     # 测试基础概念文档 (353行)
-│   └── ...
-├── troubleshooting/           # 故障排查文档 (5个文件)
-├── learning-notes/            # 学习笔记 (4个文件)
-├── project/                   # 项目文档 (6个文件)
-│   └── Bug知识库.md            # 结构化Bug知识库 + 系统弱点了然表
-└── README.md                  # 文档库索引
+├── architecture/         # 架构设计
+├── deploy/               # 部署运维
+├── technical-principles/ # 技术原理
+├── testing/              # 测试方案与手册
+├── troubleshooting/      # 故障排查
+├── project/              # Bug知识库 + 自检清单
+└── learning-notes/       # 学习笔记
 ```
-
-## 📚 学习路径
-
-**初学者路径**：
-1. 先看 learning-notes/ 了解学习过程
-2. 再看 architecture/ 理解整体架构
-3. 然后看 technical-principles/ 深入技术原理
-
-**架构师路径**：
-1. 先看 architecture/ 掌握架构设计
-2. 再看 technical-principles/ 深入技术细节
-3. 最后看 testing/ 和 troubleshooting/ 了解验证与改进
-
-**运维部署路径**：
-1. 先看 deploy/ 了解标准部署流程
-2. 再看 troubleshooting/ 掌握常见故障处理
-3. 结合 prometheus/ + grafana/ 搭建监控体系
-
-## 📋 软考知识点映射
-
-本项目覆盖软考「系统架构设计师」核心考点：
-- 软件架构设计（分层架构、策略模式、依赖注入）
-- 信息检索系统（BM25 算法、倒排索引、向量检索、RRF 融合）
-- 知识管理与知识图谱
-- 系统安全与等保三级
-
-## 📝 许可证
-
-MIT License
-
----
-
-**文档版本**：v4.13  
-**最后更新**：2026年7月3日  
-**分支**：`linux原生编译模型llama.cpp`  
-**状态**：双通道解耦架构 v4.0 (对话+评测双路径) | E023 评测路径补全 T13 验证通过 | CI/CD 全线通过 | Docker 镜像推送 GHCR | T13 无状态评测架构 | 零失误架构 v2.0 | 容器化 (llama.cpp)
 
 ## 📋 近期更新
 
-### 双通道解耦架构 — 零幻觉法规引用输出（2026-07-03）★ v4.0
-- **核心设计**：LLM 与确定性代码彻底分层 — 法规引用归代码（100% 确定），推理分析归 LLM（专业解读）
-- **事实通道**：`FactExtractor`（正则+AsyncLocal双路径提取）→ `FactAssembler`（C# 模板确定性渲染，不走 LLM）
-- **解释通道**：`PromptSanitizer`（传给 LLM 前剥离所有法规编号）→ LLM 推理 → `OutputSanitizer`（白名单硬拦截兜底）
-- **合并输出**：`ResponseMerger` 合并双通道输出，`ExtractedFacts` 结构化事实模型承载法规数据
-- **四道防线**：PromptSanitizer（源头掐断）→ LLM 无编号可编造 → OutputSanitizer（白名单兜底）→ FactAssembler（唯一法规来源）
-- **配置开关**：`UseDecoupledArchitecture = true`（默认启用），可灰度切换回传统单通道
-- **新增文件**：6 个服务（355+99+97+164+52+93 = 860 行）+ 4 项单元测试（475 行）
-- **改造集成**：`AgentDialog` 三处双通道逻辑 + `AppConfig` 开关与模板 | 编译 0 errors
+### v4.4 — Bug-032 v2 回马枪：防御代码位置正确性（2026-07-20）
 
-### E023 评测路径双通道补全 — T13 验证通过（2026-07-03）
-- **问题发现**：T13 评测日志中 `[DecoupledPipeline]` 标记为 0，评测路径未走双通道架构
-- **根因**：`UseDecoupledArchitecture = true` 仅在 `AgentDialog.cs`（对话路径）中检查，`EvalEngine.cs`（评测路径）未注入双通道逻辑
-- **修复方案**：`EvalEngine.cs` 注入两处双通道逻辑 — `FactAssembler`（确定性事实渲染） + `ResponseMerger`（双通道合并） + `OutputSanitizer` + `BuildNoResult` 兜底
-- **权限修正**：`FactAssembler.BuildNoResult()` `private` → `public`，使评测路径可跨类调用兜底方法
-- **T13 验证结果**：60/63 案例评测完成，`[DecoupledPipeline]` 标记 126 个（上轮 0）
-- **BuildNoResult 兜底**：6 条日志覆盖 3 个案例（D004 / D007 / G005），全部成功介入
-- **对比**：上一轮 4 个「未触发任何工具」案例无兜底 → 本轮全部有 `BuildNoResult` 确定性输出
-- **文件**：2 files, +29/-1 | 已推送 Gitee + GitHub
+- **Bug-032 v2**：FC=Required 违约检测从 `HasAnyToolResult` 之后提升为独立最高优先级闸门
+  - v1 (7/18, `5dcf4f2`)：`toolCalls==0` 检查放在 `else` 分支内，被 `HasAnyToolResult==true` 时提前 return 绕过
+  - v2 (7/20, `94e4818`)：`toolCalls==0` 提升为 `HasAnyToolResult` 之前的独立闸门，无条件拦截 FC 违约
+  - 远程 3 轮扫描验证：v1 拦截 0 次，v2 拦截 10 次（Prometheus: `agent1_fc_contract_violation_total=10`）
+- **编译缓存陷阱**：`dotnet run` 增量编译可能不反映源码变更 → 远程部署关键修复需 `rm -rf bin/obj && dotnet build --force`
+- **Bug 知识库**：新增 N8 思维节点，记录防御代码"位置正确性"与"逻辑正确性"双维度分析方法论
 
-### CI Docker 构建三阶段修复 — GHCR 镜像推送全线通过（2026-07-02）
-- **Bug1 (.dockerignore)**: `.dockerignore` 排除了 `Dockerfile` 自身，buildx 在构建上下文中找不到 Dockerfile，docker job 16s 秒挂
-- **Bug2 (global.json SDK冲突)**: Dockerfile COPY 了 `global.json`（SDK 8.0.417 + rollForward: latestFeature），Docker 镜像 `mcr.microsoft.com/dotnet/sdk:8.0` 自带不同 feature band SDK，`dotnet restore` 秒挂
-- **Bug3 (GHCR tag大写)**: `ghcr.io/Spirder-Man/AgentSystem-agent:latest` 含大写字母，GHCR 要求仓库名全小写 → 构建成功但推送失败
-- **修复方案**: `.dockerignore` 移除 Dockerfile 排除项 | Dockerfile 移除 global.json COPY（容器镜像自带SDK） | CI 新增 `REPO_LOWER=${GITHUB_REPOSITORY,,}` bash 转小写步骤 | `build-push-action` v5→v6 + `provenance: false`
-- **notify job**: 新增 Secrets 检查步骤（缺 `QQ_EMAIL`/`QQ_SMTP_CODE` 时输出 warning 跳过而非报 FAIL）；已配置 QQ 邮箱 SMTP 告警
-- **文件**: 3 files, +28/-7 | CI #67 全线通过 ✅ | 镜像: `ghcr.io/spirder-man/agentsystem-agent:latest`
+### v4.3 — P0 Bug 修复批次（2026-07-18）
 
-### T13 无状态评测架构 — 三层防御根治 KV Cache 跨请求累积（2026-06-30）
-- **根因发现**: llama-server 默认 `-sps 0.5` (LCP slot 复用) 导致 63 条评测 case 共享同一 Slot → KV Cache 跨请求累积 → 第 8 条溢出 → FC 退化 + 死亡螺旋
-- **Layer 1 (服务端)**: `scripts/zh-diag.sh` — `-sps 0.0` 禁用 LCP slot 匹配 + `-c 32768` (4倍扩容) + `--cache-type-k q8_0 --cache-type-v q8_0 -fa` (KV Cache 量化 + Flash Attention)
-- **Layer 2 (客户端)**: `Agent1/Services/AI/TokenBudgetManager.cs` (234行, 新建) — 混合中英文 token 估算 (中文 1.5 字符/token, 英文 3.5 字符/token) + 80% 安全预算 (26214/32768) + 按优先级 Prompt 裁剪 (输出格式→反幻觉→FC指令)
-- **Layer 3 (评测层)**: `EvalEngine` 按意图裁剪工具集 (info_query 3工具 ~500 tokens vs compliance 5工具 ~800 tokens vs 全量 7工具 ~1200 tokens); `AgentDialog.ExecuteEvalPerCaseAsync` 独立 Session + GUID; `LlmService.InvokeEvalWithToolsAsync` 临时 Kernel 隔离 (KernelPluginFactory.CreateFromFunctions) + 所有路径 `cache_prompt: false`
-- **三层防御冗余**: `-sps 0.0` (主防线) + `cache_prompt: false` (副防线) + `TokenBudgetManager` (预警), 任一失效不影响结果
-- **架构对齐**: 参考 Qoder/Cursor/豆包 的无状态服务端设计 — 客户端管理所有上下文, 服务端只负责 "给定 prompt → 返回 completion"
-- **Bug知识库 v1.2**: 根因从 "`-c 8192` 太小" 修正为 "LCP slot 复用导致 KV Cache 跨请求累积"; Bug-015/Bug-016 修复方案更新为三层防御架构
-- **文件**: 6 files, +576/-8 | 新建 `TokenBudgetManager.cs` | 编译 0 errors, 0 warnings
+- **Bug-031**：审计哈希链彻底修复 — 移除 createTime 依赖 + 启动自愈
+- **Bug-032**：FC=Required 违约兜底 — toolCalls==0 时丢弃 LLM 废话，走确定性拒绝模板（v2 回马枪见 v4.4）
+- **IsDirty 阈值**：短文本拦截 `< 20` → `< 5`，H166 模板不再误拦截
+- **IntentRouter**：新增 25 个关键词，覆盖化学品名/仓库/消防/安全术语
+- **LLM 扫描预检**：`CheckLlmHealthAsync()` 3 秒快速预检，不可用时 503
+- **缓存预热修复**：JSON 反序列化兼容双格式
+- **API 端口对齐**：前端代理端口修正为 52320
+- 详见 [Bug知识库](docs/project/Bug知识库.md) Bug-029/030/031/032
 
-### P0 紧急修复: LLM流式死循环检测 + GB编号幻觉后校验（2026-06-30）
-- **Bug1 (T5 Reflection 死循环)**: `LlmService.InvokeStreamAsync` 3维度通用死循环检测 — 连续相同行(>8次) / 字符级联(>12个) / 总长度硬截断(>5000字符)，替代旧版仅匹配"是否合规"的窄检测
-- **Bug2 (T6 RAG 校验死循环)**: 同上通用检测，拦截"不通过..."重复200+次 + 82.2s慢请求告警
-- **Bug3 (Qwen3:8b GB编号幻觉)**: `ReflectionVerifier.ValidateGbNumberHallucinations()` — GB编号格式纠错(GB3025→GB 30000.25 缺零 / GB300026→GB 30000.26 多余零) + ChemicalSubstanceDatabase权威映射交叉验证 + 集成到`EvalEngine`忠实度评分
-- **UTF-8 控制台编码修复**: `Program.cs` + `Agent1.Api/Program.cs` + `Agent1.Tests/ModuleInitializer.cs` 三层强制 `Console.OutputEncoding = UTF-8`，防止Windows GB2312误解码为"锟斤拷"乱码
-- **CPU 降级模式**: `appsettings.json` GPU开关关闭(GpuEmbeddingEnabled/RerankerEnabled=false) + GpuFallbackEnabled=true
-- **Mock 参数修复**: `BusinessOrchestrationTests` null参数类型修正 `null→(string?)null`
-- **文件**: 8 files, +281/-17 | 编译 0 errors
+---
 
-### 六阶段架构重构全部交付 + P1 格式修复（2026-06-29）
-- **零失误架构 v2.0**：`OutputValidator` (328行) + `ComplianceAuditLogger` (249行) + `ChemicalDatabaseService` (918行) + 化工盲评集 543 条
-- **混合检索增强**：`HybridKnowledgeBaseService` 大幅扩展 (+482/-1) + `KnowledgeBaseService` 优化
-- **合规工具升级**：`ChemicalComplianceTools` 增强 (+258/-1) + `ToolService` 修正 + 评测模型新增 10 项指标
-- **P1 格式修复**：`ReflectionVerifier` 百分号前多余空格消除 (100.0 % → 100.0%)
-- **文件**：14 files, +3413/-56 | 新增 `OutputValidator.cs` / `ComplianceAuditLogger.cs` / `ChemicalDatabaseService.cs` / `ComplianceBlindEvalSet.json` | 远程测试分析日志 (606行)
-
-### 记忆缓存质量反哺策略落地 + 测试覆盖大幅扩展（2026-06-27）
-- **质量规则系统**：新增 `QualityRules.cs` (161行) + `quality-rules.json` (59行) — 工具调用质量评分与过滤
-- **记忆协调器增强**：`MemoryCoordinator` 质量反哺闭环 (+79/-1) + `MemoryService` 扩展 (+48) + `ResponseCacheService` 优化
-- **可观测性升级**：新增 `MetricsCollectorService` (136行) — Prometheus 指标采集 + 数据库指标
-- **测试覆盖扩展**：新增/扩展 13 个测试文件 — `BusinessOrchestrationTests` (1652行) + `MemorySystemTests` (1543行) + `ApiAndMiddlewareTests` (1042行) + `ObservabilityTests` (913行) + `AiInferenceTests` (644行) + `KnowledgePipelineTests` (514行) + `AppConfigTests` (434行) + `InfrastructureServicesTests` (420行) + `KnowledgeBaseServiceTests` (+369) + `ChemicalDatabaseTests` (321行) + `ModelsCoreTests` (239行) + `QueryCacheServiceTests` (215行) + `ModelConfigTests` (98行)
-- **工具结果模型化**：新增 `ToolResult.cs` (55行)
-- **文件**：31 files, +9144/-152
-
-### 补充遗漏服务启动脚本 + 前端开发指南（2026-06-26~27）
-- **诊断脚本**：`scripts/zh-diag.sh` (275行) — 中文系统诊断一键脚本
-- **API 启动脚本**：`scripts/start-api.sh` (10行) — API 服务快速启动
-- **前端开发指南**：`docs/architecture/Agent1前端开发快速上手指南.md` (599行) — 完整交互架构 + 页面开发指南
-- **文件**：4 files, +884
-
-### 前端 Mock v2.5 修复 — 与后端 API 结构对齐（2026-06-25）
-- **P0 修复**: `execute` 端点不再返回 `results`（对齐后端仅返回摘要）、`export` 端点响应结构重写为 `{meta,plan,summary,findings,tickets,audit}`
-- **P0 修复**: LLM 推理延迟从 2-5s 升级为 3-45s 三级概率分布（基于 Task 11 实测：RTX 3090 + Qwen3-8B）
-- **P1 修复**: `tickets/:id/status` 响应改为 `{ticketId,newStatus,logCount}`、`rounds/:id` 的 `warnings` 改为返回数量
-- **P1 补全**: `hazard/query` 和 `storage/compatibility` 补全 LLM 延迟模拟、`scan` 和 `execute` 增加 503 错误注入
-- **P2**: `maybeSimulateError()` 的 `retryAfter` 5→10 对齐后端、login 角色判断大小写不敏感
-- **端点一致性**: 27 个端点中 26 个（96%）响应结构与后端对齐
-- **文件**: `handlers.ts` (+102/-15) | `README.md` (Mock 文档同步更新)
-
-### Task 11 集成测试补全 — Top-10 检索评估 + 测试脚本 + 部署指南（2026-06-25）
-- **Top-10 检索评估**: `EvalModels.cs` 新增 `TopKPrecision`/`TopKRecall`/`MRR`/`NDCG` 等 10 项指标字段
-- **评估引擎**: `EvalEngine.cs` 实现 Top-10 检索评测逻辑（+47/-5 行）
-- **集成测试脚本**: `scripts/int-test-task11.sh` — 592 行 bash，自动创建时间戳结果目录，逐用例 PASS/FAIL/SKIP 判定，生成 summary.txt 汇总报告
-- **部署指南**: `docs/testing/integration/Task11-集成测试部署指南.md` — Linux 一键部署执行流程
-- **测试基础文档**: `docs/testing/软件测试基础概念与实践方法.md` — 353 行软件测试方法论
-- **前端开发指南**: `docs/architecture/Agent1前端开发快速上手指南.md` — 600 行完整交互架构 + 页面开发指南
-- **改动**: 6 files, +1744/-5 lines | 知识点覆盖 软件测试基础概念 + RAG 评测指标 + 前端 Mock 开发流程
-
-### Linux 3080 Ti 全功能自动化测试通过（2026-06-24）
-- **自动化测试脚本**: `scripts/auto_test.sh` — 25 条 CLI 全功能一键测试, 独立日志 + 汇总报告
-- **测试结果**: 22/25 Pass (88%), 0 Fail, 3 Timeout — RTX 3080 Ti 12GB
-- **LLM 端点修复**: appsettings.json Endpoint 从 Ollama 11434 改为 llama-server 8080/v1
-- **新增测试文档**: 3 份 HTML 测试方案 (变量级方案 + 执行手册 + 无GPU方案)
-- **双仓库同步**: Gitee + GitHub 全部 4 分支实时同步
-
-### CLI 安全管道统一整改 + 结构化可观测性升级（2026-06-23）
-- **P0 安全加固**: AgentDialog 合规路径注入 SafetyGuardService 输入/输出双防线
-- **P0 审计追踪**: IntentRouter 添加 LastMatchedKeyword + Serilog 审计日志
-- **P1 架构收敛**: CliExecutionResult 统一输出契约 + PipelineModuleBase 抽象基类
-- **P1 枚举补全**: ModuleType 新增 EmergencyResponse(11) + KnowledgeGraph(12)
-- **P2 可观测性**: PipelineMetrics (7步耗时+TraceId+业务指标) + Serilog 结构化日志
-- **P2 事件溯源**: PipelineEvent record + IEventStore + ExecuteAsync 中 9 类事件记录
-- **测试**: 架构收敛测试(8项) + 熔断器验证测试(6项) — 新增 15 个测试
-- **改动**: 27 files, +1079/-152 lines | 编译 0 errors | 测试 148/148 通过
-
-### P3 大工程 + 架构审查 + 生产加固（2026-06-16）
-- **应急响应模块**: `EmergencyResponseService` (302行) + `EmergencyResponseModule` (134行) — 对标 ERG 指南
-- **知识图谱模块**: `KnowledgeGraphService` (370行) + `KnowledgeGraphModule` (53行) — BFS 多跳遍历
-- **监管核查模块**: `RegulatoryAuditModule` (187行) — 逐条比对法规
-- **多模态识别**: `MultimodalService` (139行) — HttpClient 直调 Ollama /api/chat
-- **安全加固**: `SafetyGuardService` (150行) — Prompt 注入+输出高危断言双防线
-- **风险评估**: `RiskAssessmentService` (159行) — 3×3 矩阵 MVP
-- **整改工单**: `TicketFollowupModule` (173行) — LLM 提取整改项
-- **架构审查**: 硬编码治理 (12 个常量→配置)、空 catch 修复 (4 处)、优雅关闭 (已存在)
-- **配置外部化**: MemoryConfig + SafetyConfig + CircuitBreakerThreshold
-- **架构优化**: Lazy\<T\> 替代 null! 循环依赖、命令模式重构 Program.cs、SearchModeType enum
-- **审核完整性**: SHA256 哈希链 DB 持久化 + VerifyIntegrityAsync()
-- **增量更新**: 知识库文件追踪 + 新增/修改/删除全周期清理
-
-### P0 级 Bug 系统性修复（2026-06-16）
-针对全项目代码扫描发现的 16 个 Bug 进行系统性修复（10 项已完成）：
-- **P0-1**: `ChemicalComplianceTools.cs` L334 — 正则表达式 `>=s*` → `>=\s*`，修复安全距离提取失效
-- **P0-2**: `ChemicalComplianceTools.cs` L49 — `RagCache` 从 `Dictionary` 升级为 `ConcurrentDictionary` + TTL + LRU 淘汰
-- **P0-3**: `GpuVectorIndexService.cs` L242 — `Timer(async void)` 替换为 `PeriodicTimer` + `Task.Run`，避免并发同步冲突
-- **P0-4**: `HybridKnowledgeBaseService.cs` L527 — RRF 去重键从 `Guid.NewGuid()` 改为确定性 `GetDedupKey()`
-- **P1-5**: `KnowledgeBaseService.cs` L190 — BM25 `_avgDocLength` 除零保护 (`Math.Max(1.0, ...)`)
-- **P1-9**: `ReflectionVerifier.cs` L165 — 检索异常时标记 `[KB检索异常]` 而非错误标记 `FoundInSource=true`
-- **P1-10**: `KnowledgeBaseService.cs` L154 — `AddDocumentsAsync` 从 `.Wait()` 改为 `async/await`
-- **P2-12**: `ConclusionVerifier.cs` L79 — 同时匹配 `【合规判断】` 和 `[判定:is_compliant=...]` 两种输出格式
-- **P2-14**: `MetricsCollector.cs` L70 — 快照从多次 `Interlocked.Read` 改为单次原子读取
-
-### Sprint 1-5: RAG GPU 全链路加速优化（2026-06-12）
-针对 RTX 3090 24GB Linux 环境实施 RAG 检索全链路 GPU 加速，五个 Sprint 全部完成：
-- **Sprint 1**: 嵌入 GPU 加速 + 批量处理 — `GetEmbeddingsBatchAsync()` 单次 API 调用处理多条文本
-- **Sprint 2**: GPU 向量检索 + FAISS 内存索引 — `GpuVectorIndexService` 全量加载 + 余弦相似度搜索
-- **Sprint 3**: Cross-Encoder Reranker — Python sidecar 远程调用 + 本地启发式降级
-- **Sprint 4**: 智能分块 + 查询扩展 + RRF 融合 — 语义边界识别 + 同义词扩展 + k=60 融合
-- **Sprint 5**: LRU 查询缓存 + GPU 监控 — TTL 5min + nvidia-smi VRAM 采集
-
-### RAG 评估体系重设计 + 紧急修复（2026-06-11）
-- **fix1b**: Prompt 格式约束 — 禁止输出法规全文
-- **fix1c**: Faithfulness 评估改进 — 过滤 RAG 原文引用块
-- **fix2**: CheckStorageCompatibility 描述强化
-- **fix3**: 危险类别空数据检测
-- **eval1-3**: Answer Relevance + Citation Accuracy + 工程指标
-
-### Task 10: 化工知识库专业覆盖增强（2026-06-06）
-30+ 危化品结构化属性数据库、40+ 别名归一化、3 个新 KernelFunction 工具、56 个单元测试
-
-### Phase 2a: 评测体系生产级修复（2026-06-06 → 2026-06-04 → 2026-06-03）
-- FC 就绪性检查 + 意图路由分离 + 结构化判定标签
-- Qwen3 Thinking 控制（OllamaThinkingHandler 反射注入）
-- 50 条业务评测 + 三维度量化
-
-### 编译状态
-✅ `dotnet build`：0 错误，30 警告（全部为既有的 nullable 引用类型警告）
-✅ `dotnet test`：152 通过，0 失败
-✅ `dotnet run`：本地启动正常，安全拦截生效，PipelineMetrics 完整采集
+**文档版本**：v4.17 | **最后更新**：2026-07-20 | **许可证**：MIT

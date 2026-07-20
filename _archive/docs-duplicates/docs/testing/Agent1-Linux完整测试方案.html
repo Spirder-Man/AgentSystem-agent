@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Agent1 Linux 全链路变量级测试方案</title>
+<style>
+:root{--c-bg:#f8fafc;--c-cv:#fff;--c-bd:#cbd5e1;--c-tx:#0f172a;--c-sub:#64748b;--c-g:#16a34a;--c-r:#dc2626;--c-a:#d97706;--c-b:#2563eb;--font:system-ui,-apple-system,'Segoe UI',sans-serif;--mono:'SF Mono',Monaco,Consolas,monospace;}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--c-bg);font-family:var(--font);color:var(--c-tx);padding:24px}
+.cv{background:var(--c-cv);border:2px solid var(--c-bd);padding:20px 24px;max-width:1500px;margin:0 auto}
+.hd{border-bottom:1px solid var(--c-bd);padding-bottom:8px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:flex-end}
+.hd-t{font-size:18px;font-weight:600}
+.hd-s{font-size:10px;color:var(--c-sub);text-transform:uppercase;letter-spacing:0.5px}
+.mt{display:flex;gap:12px;font-size:10px;color:var(--c-sub)}
+.mt-l{font-weight:600;text-transform:uppercase}
+.mn{font-family:var(--mono);font-size:9px}
+.s2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.s3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px}
+.s1{margin-bottom:12px}
+.pn{border:1px solid var(--c-bd);margin-bottom:12px}
+.pn-h{padding:4px 8px;border-bottom:1px solid var(--c-bd);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;background:#f8fafc;display:flex;justify-content:space-between}
+.pn-b{padding:4px 8px}
+.rw{display:flex;align-items:flex-start;padding:2px 0;border-bottom:1px solid #f1f5f9;font-size:10px}
+.rw-l{flex:1;font-family:var(--mono);font-size:9px;word-break:break-all}
+.rw-n{font-family:var(--mono);font-size:9px;min-width:28px;color:var(--c-sub)}
+.rw-v{font-family:var(--mono);font-size:9px;text-align:right;min-width:60px;word-break:break-all}
+.bg{display:inline-block;font-size:9px;font-family:var(--mono);padding:1px 5px;border:1px solid;letter-spacing:0.3px}
+.bg-g{background:#f0fdf4;color:var(--c-g);border-color:#bbf7d0}
+.bg-r{background:#fef2f2;color:var(--c-r);border-color:#fecaca}
+.bg-a{background:#fffbeb;color:var(--c-a);border-color:#fde68a}
+.bg-b{background:#eff6ff;color:var(--c-b);border-color:#bfdbfe}
+.bg-d{background:var(--c-tx);color:#fff;border-color:var(--c-tx)}
+.cd{background:#f8fafc;border:1px solid var(--c-bd);padding:4px 6px;margin:3px 0;font-family:var(--mono);font-size:9px;line-height:1.4;white-space:pre;overflow-x:auto}
+.fl{display:flex;gap:3px;flex-wrap:wrap}
+.tg{font-size:9px;padding:1px 5px;background:var(--c-tx);color:#fff}
+.ft{font-size:9px;color:var(--c-sub);border-top:1px solid var(--c-bd);padding-top:8px;margin-top:12px;display:flex;justify-content:space-between}
+table{width:100%;border-collapse:collapse;font-size:9px;font-family:var(--mono)}
+th,td{padding:2px 6px;text-align:left;border:1px solid var(--c-bd)}
+th{background:#f8fafc;font-weight:600}
+h3{font-size:12px;margin:8px 0 4px;border-bottom:1px solid var(--c-bd);padding-bottom:3px}
+</style>
+</head>
+<body><div class="cv">
+
+<div class="hd">
+<div><h1 class="hd-t">Agent1 Linux 全链路变量级测试方案</h1><p class="hd-s">Every Method · Every Variable · Every State Transition</p></div>
+<div class="mt"><span class="mt-l">FILES</span><span class="mn">112.cs</span><span class="mt-l">LINES</span><span class="mn">~17K</span><span class="mt-l">LAYERS</span><span class="mn">0-10</span><span class="mt-l">TEST</span><span class="mn">84 Cases</span></div>
+</div>
+
+<!-- ARCHITECTURE OVERVIEW -->
+<h3>▌系统架构总览：完整调用链</h3>
+<div class="cd">用户输入 → Program.Main() → MenuCommands 调度 → Module.RunAsync()
+    │
+    ├──[安全管道] SafetyGuardService.ValidateInput() → IntentRouter.Route() → SafetyGuardService.ValidateOutput()
+    │       │                  │                              │
+    │   injectionPatterns[7]  LastMatchedKeyword      storageDangerPatterns[2]
+    │   MaxInputLength        ComplianceKeywords[28]   distanceDangerPatterns[2]
+    │                                                absoluteSafetyPatterns[2]
+    │
+    ├──[6步流水线] AgentDialog.ExecuteAsync() → PipelineMetrics(16字段) + PipelineEvent(9事件)
+    │       │
+    │   PreprocessMs → SafetyCheckInputMs → RouteMs → LoadContextMs → ExecuteBusinessMs → SafetyCheckOutputMs
+    │       │              │                  │           │               │                    │
+    │   input.Truncate   ValidateInput     IntentRoute   Session.Load   LLM.InvokeStream   ValidateOutput
+    │   Session.Create                       │                        │
+    │                                     LastMatchedKeyword    ToolCallCount
+    │                                                           RagRecallCount
+    │
+    ├──[四大范式] CoTSolid → CoTStream → ReActSolid → ReActStream → Reflection
+    │       │
+    │   CoT.ExecuteAsync() → ChemicalRAG.Search() → LLM.InvokeStreamAsync()
+    │   Reflection → RunReflectionStreamTools → ReflectionVerifier.VerifyGbNumbers()
+    │
+    ├──[编排层] InspectionOrchestrator
+    │       │
+    │   CreatePlan → ExecutePlanAsync → ExecuteInspectionItemAsync → AgentDialog.ExecuteAsync
+    │       │              │                        │
+    │   Plan.Status=Draft  ruleEngine.TryDetermine  InspectionItemResult.From()
+    │       │              │                        │
+    │   SavePlan()      needsLLM?                  ParseComplianceFromOutput
+    │                                                ExtractGbNumber
+    │                                                GenerateRectificationTicket
+    │
+    └──[API层] AuthController / ComplianceController / InspectionController / TicketsController
+            │
+        JWT认证 → RateLimiting → RequestMetrics → Controller.Action → JSON响应</div>
+
+<!-- LAYER 0: INFRASTRUCTURE -->
+<div class="pn"><div class="pn-h">Layer 0 · 基础设施与DI容器验证 <span class="bg bg-b">NO LLM</span></div><div class="pn-b">
+<div class="rw"><span class="rw-n">T0.1</span><span class="rw-l"><b>DI容器</b>：ServiceCollection 注册全部 23 个服务</span><span class="rw-v">services: AppConfig|IDatabaseService|ISessionService|IMemoryService|ILlmService|IToolService|IAuditService|IKnowledgeBaseService|IAlertService|AgentDialog|ChemicalRAG|CoT|RAG|CapabilityRegistry|ModuleFactory|EvalEngine|InspectionOrchestrator|InspectionRepository|DeterministicRuleEngine|MetricsCollector|SafetyGuardService|SensitiveDataMasker|LongTermMemoryService</span></div>
+<div class="rw"><span class="rw-n">T0.2</span><span class="rw-l"><b>AppConfig</b>.Instance 单例加载 appsettings.json</span><span class="rw-v">.Llm.ModelId="qwen3:8b"<br/>.Llm.Endpoint="http://localhost:11434"<br/>.Database.Host="localhost"<br/>.Database.Port=5432<br/>.VectorSearch.EmbeddingDimension=768<br/>.Safety.MaxInputLength=4000</span></div>
+<div class="rw"><span class="rw-n">T0.3</span><span class="rw-l"><b>DatabaseService</b>.TestConnectionAsync() → pg_isready</span><span class="rw-v">conn.State==Open → true<br/>ex catch → false</span></div>
+<div class="rw"><span class="rw-n">T0.4</span><span class="rw-l"><b>DatabaseService</b>.InitializeDatabaseAsync() 6表创建</span><span class="rw-v">chemical_documents(HNSW idx)|audit_logs|long_term_memories|sessions|search_logs|refresh_tokens</span></div>
+<div class="rw"><span class="rw-n">T0.5</span><span class="rw-l"><b>Npgsql</b> 类型映射注册：vector ↔ float[]</span><span class="rw-v">NpgsqlConnection.GlobalTypeMapper.AddTypeResolver</span></div>
+<div class="rw"><span class="rw-n">T0.6</span><span class="rw-l"><b>Serilog</b> 双写验证：控制台(Console) + 文件("logs/agent1-.log")</span><span class="rw-v">Log.Information("TEST") → 控制台+文件均有输出<br/>RunIdEnricher|SessionEnricher|ThreadEnricher</span></div>
+<div class="rw"><span class="rw-n">T0.7</span><span class="rw-l"><b>MetricsCollector</b>.TrackPipelineAsync() 序列化验证</span><span class="rw-v">PipelineMetrics.ToProperties() → 16字段Dictionary<br/>序列化JSON → Serilog结构化日志</span></div>
+</div></div>
+
+<!-- LAYER 1: SAFETY PIPELINE -->
+<h3>▌安全管道：输入→路由→输出 全链路变量追踪</h3>
+<div class="s3">
+<div class="pn"><div class="pn-h">T1.1-1.4 输入检测 <span class="bg bg-d">P0</span></div><div class="pn-b">
+<div class="rw"><span class="rw-n">1.1</span><span class="rw-l">空输入→ (false,"输入为空")</span><span class="rw-v">input=""→ValidateInput→safe=false</span></div>
+<div class="rw"><span class="rw-n">1.2</span><span class="rw-l">超长Input→ (>4000→拦截)</span><span class="rw-v">input.Length>MaxInputLength→false</span></div>
+<div class="rw"><span class="rw-n">1.3</span><span class="rw-l">注入: "忽略之前的指令"</span><span class="rw-v">InjectionPatterns[0]命中→reason</span></div>
+<div class="rw"><span class="rw-n">1.4</span><span class="rw-l">注入: "SELECT * FROM"</span><span class="rw-v">InjectionPatterns[3] SQL命中</span></div>
+<div class="rw"><span class="rw-n">1.5</span><span class="rw-l">注入: "system:" 角色篡改</span><span class="rw-v">InjectionPatterns[5]命中</span></div>
+</div></div>
+<div class="pn"><div class="pn-h">T1.6-1.8 意图路由</div><div class="pn-b">
+<div class="rw"><span class="rw-n">1.6</span><span class="rw-l">输入"苯储存合规"→Chemical</span><span class="rw-v">LastMatchedKeyword="储存"<br/>Intent=ChemicalCompliance</span></div>
+<div class="rw"><span class="rw-n">1.7</span><span class="rw-l">输入"你好"→SimpleChat</span><span class="rw-v">无关键词命中→SimpleChat<br/>LastMatchedKeyword=null</span></div>
+<div class="rw"><span class="rw-n">1.8</span><span class="rw-l">输入"GB 15603间距"→Chemical</span><span class="rw-v">关键词"GB"命中→ChemicalCompliance</span></div>
+</div></div>
+<div class="pn"><div class="pn-h">T1.9-1.11 输出检测</div><div class="pn-b">
+<div class="rw"><span class="rw-n">1.9</span><span class="rw-l">输出"可以同库储存"→拦截</span><span class="rw-v">StorageDangerPatterns命中<br/>warnings["⚠️强制复核…"]</span></div>
+<div class="rw"><span class="rw-n">1.10</span><span class="rw-l">输出"安全距离为0"→拦截</span><span class="rw-v">DistanceDangerPatterns命中<br/>warnings["⛔强制拦截…"]</span></div>
+<div class="rw"><span class="rw-n">1.11</span><span class="rw-l">输出"绝对安全"→拦截</span><span class="rw-v">AbsoluteSafetyPatterns命中</span></div>
+</div></div>
+</div>
+
+<!-- LAYER 2: 6-STEP PIPELINE -->
+<h3>▌6步流水线：AgentDialog.ExecuteAsync 全变量追踪</h3>
+<div class="cd">AgentDialog.ExecuteAsync(string input, SessionContext session)
+│
+├─[Step 1] Preprocess(input) → (string processed, long ms)
+│   Variable: processed = input.Trim()
+│   Variable: metrics.PreprocessMs = sw.ElapsedMilliseconds
+│   Event: PipelineEvent("InputParsed", {InputLength=input.Length})
+│
+├─[Step 2-安全] SafetyGuardService.ValidateInput(processed) → (bool safe, string? reason)
+│   Variable: metrics.SafetyCheckInputMs
+│   Branch: !safe → CliExecutionResult.Success=false, .Warnings["检测到…"]
+│   Event: PipelineEvent("SafetyChecked", {Safe=safe, Reason=reason})
+│
+├─[Step 3-路由] IntentRouter.Route(processed) → IntentType intent
+│   Variable: metrics.RouteMs, metrics.Intent = intent.ToString()
+│   Variable: metrics.MatchedKeyword = IntentRouter.LastMatchedKeyword
+│   Event: PipelineEvent("IntentRouted", {Intent=intent, Keyword=LastMatchedKeyword})
+│
+├─[Step 4-上下文] SessionManager.LoadContext(session) → (memory, kb, templates)
+│   Variable: metrics.LoadContextMs
+│   Variable: context来自 MemoryService.GetRecentMemoriesAsync() + SessionService.GetHistoryAsync()
+│   Event: PipelineEvent("ContextLoaded", {MemoryCount, HistoryCount})
+│
+├─[Step 5-业务] LlmService.InvokeStreamAsync(prompt, color) → string response
+│   Sub-call chain: prompt组装 → CircuitBreaker → HttpClient POST → llama-server :8080/v1/chat/completions
+│       → 流式读取 SSE → <think>过滤 → StringBuilder累积 → return response
+│   Variable: metrics.ExecuteBusinessMs, metrics.ToolCallCount, metrics.RagRecallCount
+│   Variable: _circuitBreaker.State (Closed→HalfOpen→Open)
+│   Variable: _retryCount (≤MaxRetries=3)
+│   Event: PipelineEvent("BusinessExecuted", {Duration, ToolCalls, RecallCount})
+│
+├─[Step 6-安全] SafetyGuardService.ValidateOutput(response) → (bool safe, List<string> warnings)
+│   Variable: metrics.SafetyCheckOutputMs, metrics.WarningCount = warnings.Count
+│   Branch: warnings.Any() → result.Warnings.AddRange(warnings)
+│   Event: PipelineEvent("OutputValidated", {Safe=safe, WarningCount})
+│
+├─[Session Save] SessionManager.SaveSessionAsync(session, input, response)
+│   Variable: metrics.SaveSessionMs
+│   Event: PipelineEvent("SessionSaved", {SessionId})
+│
+├─[Format] FormatOutput(response, result) → CliExecutionResult
+│   Variable: metrics.OutputLength = response.Length, metrics.TotalMs = swTotal.Elapsed
+│   Event: PipelineEvent("PipelineComplete", {TotalMs})
+│
+└─[Audit] AuditService.LogOperationAsync("user", intent, input.Truncate(80), isSensitive:true)
+    Variable: audit.LoggedAt = DateTime.UtcNow
+    Event: PipelineEvent("AuditLogged", {OperationType, IsSensitive})</div>
+
+<!-- LAYER 3: LLM SERVICE -->
+<div class="pn"><div class="pn-h">Layer 3 · LlmService 全变量追踪 <span class="bg bg-r">P0</span></div><div class="pn-b">
+<div class="rw"><span class="rw-n">T2.1</span><span class="rw-l"><b>InvokeStreamAsync</b>：prompt → Kernels构建 → OpenAI兼容API调用</span><span class="rw-v">var settings = new OpenAIPromptExecutionSettings{<br/>ToolCallBehavior=AutoInvokeKernelFunctions,<br/>Temperature=0.3};<br/>var cts = new CancellationTokenSource(3min);<br/>Kernel.InvokePromptStreamingAsync(prompt,args,cts.Token)</span></div>
+<div class="rw"><span class="rw-n">T2.2</span><span class="rw-l"><b>断路保护</b>：CircuitBreaker 状态机</span><span class="rw-v">_failureCount ≥ _threshold(3) → Open<br/>Open+60s → HalfOpen<br/>HalfOpen+成功 → Closed<br/>HalfOpen+失败 → Open</span></div>
+<div class="rw"><span class="rw-n">T2.3</span><span class="rw-l"><b>重试机制</b>：MaxRetries=3, Delay=1000ms</span><span class="rw-v">_retryCount递增+Task.Delay(1000)+重试<br/>达到MaxRetries→抛出最终异常</span></div>
+<div class="rw"><span class="rw-n">T2.4</span><span class="rw-l"><b>&lt;think&gt;过滤</b>：DeepSeek-R1兼容</span><span class="rw-v">Regex.Replace(text,"&lt;think&gt;.*?&lt;/think&gt;","")<br/>RegexOptions.Singleline</span></div>
+<div class="rw"><span class="rw-n">T2.5</span><span class="rw-l"><b>SSE流式读取</b>：HttpClient → StreamReader</span><span class="rw-v">while(!cancelled){line=reader.ReadLine()}<br/>data:{"choices":[{"delta":{"content":"…"}}]}<br/>JSON解析→Append→Console.Write(color)</span></div>
+<div class="rw"><span class="rw-n">T2.6</span><span class="rw-l"><b>GetEmbeddingAsync</b>：文本→768维向量</span><span class="rw-v">POST {EmbeddingEndpoint}/embeddings<br/>body={model, input:text}<br/>→ response.data[0].embedding[768]</span></div>
+<div class="rw"><span class="rw-n">T2.7</span><span class="rw-l"><b>GetEmbeddingsBatchAsync</b>：批量嵌入</span><span class="rw-v">input: List&lt;string&gt; → single POST<br/>→ response.data[i].embedding[768]</span></div>
+<div class="rw"><span class="rw-n">T2.8</span><span class="rw-l"><b>GenerateSimpleResponseAsync</b>：轻量文本生成</span><span class="rw-v">无工具调用 + maxTokens=512<br/>单独CancellationToken(60s)</span></div>
+</div></div>
+
+<!-- LAYER 4: KNOWLEDGE & RAG -->
+<div class="s2">
+<div class="pn"><div class="pn-h">Layer 4 · 知识管道 <span class="bg bg-b">需要LLM</span></div><div class="pn-b">
+<div class="rw"><span class="rw-n">T3.1</span><span class="rw-l"><b>多格式加载</b>：PDF/DOC/DOCX/TXT→chunk</span><span class="rw-v">PdfExtractor.ExtractAsync(path)→text<br/>DocExtractor.Extract()→text<br/>TextCleaner.Clean()→normalized<br/>SemanticChunker.Chunk(text,500,100)</span></div>
+<div class="rw"><span class="rw-n">T3.2</span><span class="rw-l"><b>HybridKnowledgeBaseService</b>.SearchAsync()</span><span class="rw-v">BM25+Vector+RRF融合<br/>bm25Weight=0.4, vectorWeight=0.6<br/>RerankerEnabled→RerankerService→topK</span></div>
+<div class="rw"><span class="rw-n">T3.3</span><span class="rw-l"><b>BM25检索</b>：TF-IDF+中文NGram分词</span><span class="rw-v">BM25.ComputeScores(queryTerms,doc)<br/>_docFreq|_avgDocLen|k1=1.5|b=0.75</span></div>
+<div class="rw"><span class="rw-n">T3.4</span><span class="rw-l"><b>向量检索</b>：pgvector HNSW索引</span><span class="rw-v">SELECT * FROM chemical_documents<br/>ORDER BY embedding<=>queryVector<br/>LIMIT 20</span></div>
+<div class="rw"><span class="rw-n">T3.5</span><span class="rw-l"><b>RRF融合</b>：Reciprocal Rank Fusion</span><span class="rw-v">score = Σ 1/(k+rank_i) where k=60<br/>BM25 rank[] + Vector rank[] → final[]</span></div>
+<div class="rw"><span class="rw-n">T3.6</span><span class="rw-l"><b>RerankerService</b>：bge-reranker-v2-m3</span><span class="rw-v">POST :8082/rerank → topK=5<br/>candidateTopK=20→rerank→finalTopK=5</span></div>
+<div class="rw"><span class="rw-n">T3.7</span><span class="rw-l"><b>查询缓存</b>：QueryCacheService TTL=5min</span><span class="rw-v">_cache.TryGetValue(query)→hit<br/>maxEntries=500,LRU淘汰</span></div>
+</div></div>
+<div class="pn"><div class="pn-h">Layer 4 · 合规工具 <span class="bg bg-r">P0</span></div><div class="pn-b">
+<div class="rw"><span class="rw-n">T4.1</span><span class="rw-l"><b>CheckHazardCategory</b>：危险类别查询</span><span class="rw-v">substanceName → ChemicalSubstanceDatabase<br/>→ HazardCategory, GB标准号<br/>[REGULATIONS:...]标签附加</span></div>
+<div class="rw"><span class="rw-n">T4.2</span><span class="rw-l"><b>CheckStorageCompatibility</b>：共存检查</span><span class="rw-v">substanceA+substanceB → 禁忌配伍表<br/>→ IsCompatible, GB15603引用<br/>三层降级:本地规则→LLM推理→安全默认</span></div>
+<div class="rw"><span class="rw-n">T4.3</span><span class="rw-l"><b>GetSafetyDistance</b>：安全间距</span><span class="rw-v">facilityType + surrounding → GB50160/GB50016<br/>→ DistanceMeters, RegulationRef</span></div>
+<div class="rw"><span class="rw-n">T4.4</span><span class="rw-l"><b>GetCurrentTime</b>：系统时间</span><span class="rw-v">DateTime.Now → 审计时间戳</span></div>
+<div class="rw"><span class="rw-n">T4.5</span><span class="rw-l"><b>Calculate</b>：数学计算</span><span class="rw-v">expression → DataTable.Compute() → result</span></div>
+<div class="rw"><span class="rw-n">T4.6</span><span class="rw-l"><b>ChemicalSubstanceDatabase</b>：化学品知识库</span><span class="rw-v">_substances字典预加载<br/>LookupAsync(name)→ChemicalSubstance<br/>.Name|CAS|FlashPoint|HazardCategory|UN</span></div>
+<div class="rw"><span class="rw-n">T4.7</span><span class="rw-l"><b>RiskAssessmentService</b>：风险评估</span><span class="rw-v">chemicalName+environment<br/>→ RiskLevel, HazardScore, Mitigations</span></div>
+<div class="rw"><span class="rw-n">T4.8</span><span class="rw-l"><b>ConsequenceSimulationService</b>：后果模拟</span><span class="rw-v">chemicalName+quantityKg<br/>→ ImpactRadiusM, RiskLevel, ToSummary()</span></div>
+</div></div>
+</div>
+
+<!-- LAYER 5: ORCHESTRATION -->
+<div class="pn"><div class="pn-h">Layer 5 · 巡检编排全链路 <span class="bg bg-r">P0</span></div><div class="pn-b">
+<div class="cd">InspectionOrchestrator 完整执行流程:
+CreatePlan("甲类仓库周检",DailyWeekly,"A区","张三",items) → plan.PlanId="a3b4c5d6"
+ExecutePlanAsync(planId,"李四") →
+│
+├─ GetPlan(planId) → plan.Items[3]
+├─ new InspectionRound{RoundId, StartedAt}
+├─ plan.Status=InProgress
+│
+├─ for i in plan.Items:
+│   ExecuteInspectionItemAsync(item) →
+│   │
+│   ├─ ruleEngine.TryDetermine(item, query) →
+│   │   ├─ CheckType=NumericCheck: 解析 StandardValue"≤30℃"
+│   │   │   → 正则提取阈值→实测值比对→needsLLM=false, IsCompliant=true|false
+│   │   ├─ CheckType=BooleanCheck: needsLLM=true (转LLM推理)
+│   │   └─ CheckType=AIInference: needsLLM=true
+│   │
+│   ├─ [needsLLM] AgentDialog.ExecuteAsync(item.Query, session) →
+│   │   └─ 完整6步流水线 → CliExecutionResult
+│   │
+│   └─ InspectionItemResult.From(itemId, execResult) →
+│       ├─ ParseComplianceFromOutput(execResult.DisplayOutput)
+│       │   → "【合规判断】是" → IsCompliant=true
+│       │   → "【合规判断】否" → IsCompliant=false
+│       ├─ ExtractGbNumber(execResult.DisplayOutput) → RegulationRef
+│       └─ Metrics = execResult.StructuredResult as PipelineMetrics
+│   │
+│   ├─ result.IsCompliant==false → GenerateRectificationTicketAsync(item,result)
+│   │   └─ TicketFollowupModule.ProcessFollowupAsync(result.Conclusion)
+│   │       └─ LLM提取整改项 → ParseTickets() → List&lt;TicketItem&gt;
+│   │
+│   └─ round.Results.Add(result)
+│
+├─ round.CompletedAt = DateTime.Now
+├─ plan.Status = Completed
+├─ SaveRound(round) + SavePlan(plan)
+│
+└─ GenerateReport(roundId, "系统") →
+    ├─ ComplianceRate = round.ComplianceRate
+    ├─ Summary = GenerateSummary(plan,round)
+    ├─ CriticalFindings 筛选
+    ├─ AllTickets 汇总
+    ├─ AuditHash = SHA256(serialize({RoundId,PlanId,Results[ItemId,IsCompliant,RegulationRef,...]}))
+    └─ ToMarkdown() → 完整巡检报告Markdown字符串</div>
+
+<div class="rw"><span class="rw-n">T5.1</span><span class="rw-l"><b>CreatePlan</b>：创建计划输入校验</span><span class="rw-v">name,type,area,inspector,items→PlanId(8位),Status=Draft<br/>SavePlan→JsonFileRepository.atomicWrite</span></div>
+<div class="rw"><span class="rw-n">T5.2</span><span class="rw-l"><b>ExecutePlanAsync</b>：空检查项列表→异常</span><span class="rw-v">plan.Items.Count==0→InvalidOperationException<br/>"巡检计划没有任何检查项"</span></div>
+<div class="rw"><span class="rw-n">T5.3</span><span class="rw-l"><b>ExecutePlanAsync</b>：不存在计划ID→异常</span><span class="rw-v">GetPlan("NONEXIST")→null→throw<br/>"计划不存在: NONEXIST"</span></div>
+<div class="rw"><span class="rw-n">T5.4</span><span class="rw-l"><b>NumericCheck</b>：温度≤30℃ vs 28℃→合规</span><span class="rw-v">ruleEngine.TryDetermine→needsLLM=false<br/>IsCompliant=true, RegulationRef保留</span></div>
+<div class="rw"><span class="rw-n">T5.5</span><span class="rw-l"><b>AIInference</b>：苯+丙酮共存→走LLM</span><span class="rw-v">ruleEngine.TryDetermine→needsLLM=true<br/>AgentDialog.ExecuteAsync→完整6步流水线</span></div>
+<div class="rw"><span class="rw-n">T5.6</span><span class="rw-l"><b>GenerateReport</b>：SHA256审计哈希计算</span><span class="rw-v">AuditHash.Length==64(Hex)<br/>同结果→同Hash(幂等)<br/>不同结果→不同Hash</span></div>
+<div class="rw"><span class="rw-n">T5.7</span><span class="rw-l"><b>QuickCheck</b>：临时单条合规查询</span><span class="rw-v">InspectionPlan.QuickCheck(query,inspector)<br/>→ 1-item plan → ExecuteInspectionItemAsync</span></div>
+<div class="rw"><span class="rw-n">T5.8</span><span class="rw-l"><b>规则引擎降级</b>：未命中→转LLM</span><span class="rw-v">TryDetermine→needsLLM=true<br/>ExecuteAsync被调用(Mock验证已调)</span></div>
+<div class="rw"><span class="rw-n">T5.9</span><span class="rw-l"><b>工单生成降级</b>：LLM失败→手动创建</span><span class="rw-v">ProcessFollowupAsync异常catch<br/>→返回单张手动工单(降级默认值)</span></div>
+</div></div>
+
+<!-- LAYER 6: STATE MACHINES -->
+<h3>▌状态机完整流转测试</h3>
+<div class="s2">
+<div class="pn"><div class="pn-h">T6.1-6.7 ComplianceFinding <span class="bg bg-d">P1</span></div><div class="pn-b">
+<table><tr><th>ID</th><th>操作</th><th>From→To</th><th>变量变化</th></tr>
+<tr><td>T6.1</td><td>新建Finding</td><td>—→New</td><td>FindingId(8位),Status=New,StatusLog=[]</td></tr>
+<tr><td>T6.2</td><td>Confirm("张三")</td><td>New→Confirmed</td><td>Assignee="张三",Deadline=Now+7d<br/>StatusLog[0]={New→Confirmed,"张三"}</td></tr>
+<tr><td>T6.3</td><td>StartRemediation()</td><td>Confirmed→InProgress</td><td>StatusLog[1]={Confirmed→InProgress}</td></tr>
+<tr><td>T6.4</td><td>MarkRemediated()</td><td>InProgress→Remediated</td><td>StatusLog[2]={InProgress→Remediated}</td></tr>
+<tr><td>T6.5</td><td>VerifyAndClose("李四")</td><td>Remediated→VerifiedClosed</td><td>VerifiedBy="李四",VerifiedAt≠null<br/>StatusLog[3]={Remediated→VerifiedClosed}</td></tr>
+<tr><td>T6.6</td><td>Close()</td><td>VerifiedClosed→Closed</td><td>IsOpen==false,StatusLog[4]</td></tr>
+<tr><td>T6.7</td><td>MarkFalsePositive("误报")</td><td>任意→FalsePositive</td><td>Description含"[误报:误报]",IsOpen==false</td></tr>
+</table>
+</div></div>
+<div class="pn"><div class="pn-h">T6.8-6.13 TicketItem <span class="bg bg-d">P1</span></div><div class="pn-b">
+<table><tr><th>ID</th><th>操作</th><th>From→To</th><th>变量变化</th></tr>
+<tr><td>T6.8</td><td>新建Ticket</td><td>—→New</td><td>Id,Issue,Action,Priority="中"<br/>SuggestedDeadline=Now+7d</td></tr>
+<tr><td>T6.9</td><td>Accept("王五")</td><td>New→Accepted</td><td>Assignee="王五",StatusLog[0]</td></tr>
+<tr><td>T6.10</td><td>StartWork("王五")</td><td>Accepted→InProgress</td><td>StatusLog[1]</td></tr>
+<tr><td>T6.11</td><td>Complete("王五")</td><td>InProgress→Completed</td><td>StatusLog[2],IsOpen==true</td></tr>
+<tr><td>T6.12</td><td>Verify("赵六")→Close()</td><td>Completed→Verified→Closed</td><td>StatusLog[3]+[4],IsOpen=false</td></tr>
+<tr><td>T6.13</td><td>Reject("证据不足","赵六")</td><td>任意→Rejected</td><td>Action含"[驳回:证据不足]",IsOpen=false</td></tr>
+</table>
+</div></div>
+</div>
+
+<div class="s2">
+<div class="pn"><div class="pn-h">T6.14-6.16 InspectionPlan</div><div class="pn-b">
+<table><tr><th>ID</th><th>操作</th><th>From→To</th><th>触发条件</th></tr>
+<tr><td>T6.14</td><td>CreatePlan</td><td>—→Draft</td><td>创建新计划时</td></tr>
+<tr><td>T6.15</td><td>ExecutePlanAsync</td><td>Draft→InProgress</td><td>开始执行•plan.Status=InProgress</td></tr>
+<tr><td>T6.16</td><td>ExecutePlanAsync完成</td><td>InProgress→Completed</td><td>全部检查项执行完成</td></tr>
+</table>
+</div></div>
+<div class="pn"><div class="pn-h">T6.17 状态日志完整性</div><div class="pn-b">
+<div class="rw"><span class="rw-n">6.17</span><span class="rw-l">Each StatusLog entry: FromStatus, ToStatus, ChangedAt, ChangedBy</span><span class="rw-v">StatusLog.Count = transition count<br/>StatusLog[i].ChangedAt 升序<br/>StatusLog[i].FromStatus == StatusLog[i-1].ToStatus</span></div>
+</div></div>
+</div>
+
+<!-- LAYER 7: API ENDPOINTS -->
+<h3>▌API端点全量测试</h3>
+<div class="s3">
+<div class="pn"><div class="pn-h">Auth <span class="bg bg-d">P0</span></div><div class="pn-b">
+<div class="rw"><span class="rw-n">T7.1</span><span class="rw-l">POST /login→200+Token</span><span class="rw-v">body={username,password}<br/>→token(JWT),expiresIn,role</span></div>
+<div class="rw"><span class="rw-n">T7.2</span><span class="rw-l">无Token→401</span><span class="rw-v">无Authorization头→401 Unauthorized</span></div>
+<div class="rw"><span class="rw-n">T7.3</span><span class="rw-l">错误Token→401</span><span class="rw-v">Bearer invalidToken→401</span></div>
+<div class="rw"><span class="rw-n">T7.4</span><span class="rw-l">/refresh→新Token</span><span class="rw-v">POST /refresh {refreshToken}→新JWT</span></div>
+</div></div>
+<div class="pn"><div class="pn-h">Inspection <span class="bg bg-d">P0</span></div><div class="pn-b">
+<div class="rw"><span class="rw-n">T7.5</span><span class="rw-l">POST /plans→201</span><span class="rw-v">body={name,type,area,items}<br/>→planId,items.Count</span></div>
+<div class="rw"><span class="rw-n">T7.6</span><span class="rw-l">GET /plans→200</span><span class="rw-v">→[]{PlanId,Name,Status,ItemsCount}</span></div>
+<div class="rw"><span class="rw-n">T7.7</span><span class="rw-l">POST /execute/{id}→200</span><span class="rw-v">→roundId,complianceRate,compliant/nonCompliant</span></div>
+<div class="rw"><span class="rw-n">T7.8</span><span class="rw-l">GET /reports/{roundId}→200</span><span class="rw-v">→Markdown+JSON+AuditHash(64hex)</span></div>
+<div class="rw"><span class="rw-n">T7.9</span><span class="rw-l">POST /scan→200</span><span class="rw-v">→scannedAt,findings[].Severity</span></div>
+<div class="rw"><span class="rw-n">T7.10</span><span class="rw-l">POST /quick-check→200</span><span class="rw-v">→isCompliant,traceId,elapsedMs</span></div>
+<div class="rw"><span class="rw-n">T7.11</span><span class="rw-l">GET /assets→200</span><span class="rw-v">→[]ChemicalAsset(8个),Name,CAS,Location</span></div>
+</div></div>
+<div class="pn"><div class="pn-h">Compliance <span class="bg bg-d">P0</span></div><div class="pn-b">
+<div class="rw"><span class="rw-n">T7.12</span><span class="rw-l">GET /summary→200</span><span class="rw-v">→complianceRate,RiskDistribution<br/>FindingsBySeverity, RemediationRate</span></div>
+<div class="rw"><span class="rw-n">T7.13</span><span class="rw-l">POST /risk/assess</span><span class="rw-v">body={chemicalName,environment}<br/>→RiskLevel,HazardScore,Mitigations[]</span></div>
+<div class="rw"><span class="rw-n">T7.14</span><span class="rw-l">POST /consequence/simulate</span><span class="rw-v">body={chemicalName,quantityKg}<br/>→ImpactRadiusM,RiskLevel,ToSummary</span></div>
+<div class="rw"><span class="rw-n">T7.15</span><span class="rw-l">原有端点不退化</span><span class="rw-v">/compliance/check,/hazard/query<br/>/storage/compatibility仍正常</span></div>
+</div></div>
+</div>
+
+<!-- TICKETS API -->
+<div class="s2">
+<div class="pn"><div class="pn-h">Tickets API <span class="bg bg-d">P0</span></div><div class="pn-b">
+<div class="rw"><span class="rw-n">T7.16</span><span class="rw-l">GET /tickets→200</span><span class="rw-v">→total,open,tickets[].{Id,Issue,Status,Priority,Assignee}</span></div>
+<div class="rw"><span class="rw-n">T7.17</span><span class="rw-l">PUT /tickets/{id}/status→accept</span><span class="rw-v">body={action:"accept",assignee:"张三"}<br/>→newStatus:Accepted,logCount:1</span></div>
+<div class="rw"><span class="rw-n">T7.18</span><span class="rw-l">PUT /tickets/{id}/status→reject</span><span class="rw-v">body={action:"reject",reason:"证据不足"}<br/>→newStatus:Rejected,action含驳回信息</span></div>
+<div class="rw"><span class="rw-n">T7.19</span><span class="rw-l">PUT 完整状态流转</span><span class="rw-v">accept→start→complete→verify→close<br/>→StatusLog.Count==5,IsOpen==false</span></div>
+</div></div>
+<div class="pn"><div class="pn-h">Middleware <span class="bg bg-b">P1</span></div><div class="pn-b">
+<div class="rw"><span class="rw-n">T7.20</span><span class="rw-l">RateLimiting：同一IP超限→429</span><span class="rw-v">>100req/min→429 Too Many Requests<br/>Retry-After头返回</span></div>
+<div class="rw"><span class="rw-n">T7.21</span><span class="rw-l">RequestId：每次请求生成X-Request-Id</span><span class="rw-v">响应头含X-Request-Id(Guid 8位)</span></div>
+<div class="rw"><span class="rw-n">T7.22</span><span class="rw-l">GlobalException：未处理异常→500</span><span class="rw-v">try-catch→500 {error,requestId}<br/>Serilog记录完整异常堆栈</span></div>
+</div></div>
+</div>
+
+<!-- LAYER 8: EVAL & MEMORY -->
+<div class="s2">
+<div class="pn"><div class="pn-h">Layer 8 · EvalEngine <span class="bg bg-b">P1</span></div><div class="pn-b">
+<div class="rw"><span class="rw-n">T8.1</span><span class="rw-l"><b>EvalEngine</b>.RunFullEvalAsync()</span><span class="rw-v">加载 Data/ComplianceEvalSet.json<br/>→遍历64条评测用例→每条走6步流水线<br/>→CaseResult{Compliant,GbNumber,ModelOutput}</span></div>
+<div class="rw"><span class="rw-n">T8.2</span><span class="rw-l"><b>合规判定解析</b>：ParseCompliance</span><span class="rw-v">output含"[判定:is_compliant=true]"→true<br/>含"[判定:is_compliant=false]"→false<br/>含"[判定:is_compliant=依据原文]"→null</span></div>
+<div class="rw"><span class="rw-n">T8.3</span><span class="rw-l"><b>指标汇总</b>：Precision/Recall/MRR</span><span class="rw-v">CompliancePrecision=TP/(TP+FP)<br/>ComplianceRecall=TP/(TP+FN)<br/>MRR=Σ 1/rank_i / n</span></div>
+<div class="rw"><span class="rw-n">T8.4</span><span class="rw-l"><b>报告输出</b>：Data/eval_report.json</span><span class="rw-v">JSON包含cases[],summary{},metrics{}</span></div>
+</div></div>
+<div class="pn"><div class="pn-h">Layer 8 · Memory & Session</div><div class="pn-b">
+<div class="rw"><span class="rw-n">T8.5</span><span class="rw-l"><b>MemoryService</b>.RememberAsync()</span><span class="rw-v">key→value存储→IMemoryService<br/>GetRecentMemoriesAsync(5)→最近5条</span></div>
+<div class="rw"><span class="rw-n">T8.6</span><span class="rw-l"><b>LongTermMemoryService</b>：长期存储</span><span class="rw-v">PostgreSQL long_term_memories表<br/>TimeDecayScore→越旧权重越低</span></div>
+<div class="rw"><span class="rw-n">T8.7</span><span class="rw-l"><b>SessionService</b>：会话管理</span><span class="rw-v">CreateSession(type)→SessionContext<br/>GetHistoryAsync(10)→最近10条</span></div>
+<div class="rw"><span class="rw-n">T8.8</span><span class="rw-l"><b>MemoryCoordinator</b>：协调器</span><span class="rw-v">AddFactAsync→FactExtractor提取<br/>QueryAsync→多源融合(短期+长期)</span></div>
+</div></div>
+</div>
+
+<!-- LAYER 9: ADVANCED MODULES -->
+<div class="pn"><div class="pn-h">Layer 9 · 四大范式 + 高级模块 <span class="bg bg-r">P1</span></div><div class="pn-b">
+<div class="rw"><span class="rw-n">T9.1</span><span class="rw-l"><b>CoTSolidModule</b>：思维链标准输出</span><span class="rw-v">CoT.ExecuteAsync(query)→systemPrompt含"逐步思考"<br/>→完整响应收集后一次输出</span></div>
+<div class="rw"><span class="rw-n">T9.2</span><span class="rw-l"><b>CoTStreamModule</b>：思维链流式输出</span><span class="rw-v">CoT.ExecuteAsync(query)+streaming<br/>→token逐字输出,Console.Write实时</span></div>
+<div class="rw"><span class="rw-n">T9.3</span><span class="rw-l"><b>ReActSolidModule</b>：推理-行动循环</span><span class="rw-v">RAG.ExecuteAsync+ToolCall循环<br/>→思考→行动→观察→总结</span></div>
+<div class="rw"><span class="rw-n">T9.4</span><span class="rw-l"><b>ReActStreamModule</b>：流式ReAct</span><span class="rw-v">ReAct+streaming输出</span></div>
+<div class="rw"><span class="rw-n">T9.5</span><span class="rw-l"><b>ReflectionModule</b>：反思验证</span><span class="rw-v">RunReflectionStreamTools→CoT推理<br/>→ReflectionVerifier.VerifyGbNumbers()<br/>→若GB编号错误→修正后重新输出</span></div>
+<div class="rw"><span class="rw-n">T9.6</span><span class="rw-l"><b>ReflectionVerifier</b>：法规编号验证</span><span class="rw-v">ExtractGbNumbers(output)→List<string><br/>VerifyGbNumber(gb)→Task<bool><br/>→与ChemicalSubstanceDatabase比对</span></div>
+<div class="rw"><span class="rw-n">T9.7</span><span class="rw-l"><b>EmergencyResponseModule</b>：应急方案</span><span class="rw-v">泄漏/火灾/爆炸/中毒→ERG指南<br/>→疏散半径/防护措施/急救方案</span></div>
+<div class="rw"><span class="rw-n">T9.8</span><span class="rw-l"><b>KnowledgeGraphModule</b>：知识图谱</span><span class="rw-v">化学品-法规-事故关联查询<br/>→节点+边关系列表</span></div>
+<div class="rw"><span class="rw-n">T9.9</span><span class="rw-l"><b>RegulatoryAuditModule</b>：监管核查</span><span class="rw-v">逐条比对法规条款→核查清单<br/>→ CompliantItems/NonCompliantItems</span></div>
+<div class="rw"><span class="rw-n">T9.10</span><span class="rw-l"><b>ComplianceCheckModule</b>：合规自查</span><span class="rw-v">输入化学品→ChemicalComplianceTools调用<br/>→ ConclusionVerifier验证结论</span></div>
+</div></div>
+
+<!-- LAYER 10: EDGE & CONCURRENCY -->
+<h3>▌边界条件与并发测试</h3>
+<div class="s2">
+<div class="pn"><div class="pn-h">Layer 10 · 边界条件</div><div class="pn-b">
+<div class="rw"><span class="rw-n">T10.1</span><span class="rw-l">空输入拦截：SafetyGuard input=""</span><span class="rw-v">ValidateInput("")→ (false,"输入为空")</span></div>
+<div class="rw"><span class="rw-n">T10.2</span><span class="rw-l">超长输入截断：>4000字符</span><span class="rw-v">ValidateInput(longStr)→ false+超限提示<br/>Trunc(80)用于日志显示</span></div>
+<div class="rw"><span class="rw-n">T10.3</span><span class="rw-l">不存在PlanId→异常</span><span class="rw-v">ExecutePlanAsync("NONEXIST")→throw</span></div>
+<div class="rw"><span class="rw-n">T10.4</span><span class="rw-l">空Items列表→异常</span><span class="rw-v">plan.Items.Count==0→throw</span></div>
+<div class="rw"><span class="rw-n">T10.5</span><span class="rw-l">不存在CapabilityName→异常</span><span class="rw-v">ExecuteAsync("unknown-cap")→throw</span></div>
+<div class="rw"><span class="rw-n">T10.6</span><span class="rw-l">空Handler→异常</span><span class="rw-v">cap.Handler==null→throw</span></div>
+<div class="rw"><span class="rw-n">T10.7</span><span class="rw-l">LLM返回空→SensitiveDataMasker处理</span><span class="rw-v">string.IsNullOrEmpty(response)→正常返回""</span></div>
+</div></div>
+<div class="pn"><div class="pn-h">Layer 10 · 并发与持久化</div><div class="pn-b">
+<div class="rw"><span class="rw-n">T10.8</span><span class="rw-l">ToolCalls隔离：两个请求不共享</span><span class="rw-v">r1.ToolCalls ≠ r2.ToolCalls<br/>NotBeSameAs(不同实例)</span></div>
+<div class="rw"><span class="rw-n">T10.9</span><span class="rw-l">JsonFileRepository读写锁</span><span class="rw-v">ReaderWriterLockSlim.EnterWriteLock<br/>多线程SaveAsset→无数据损坏</span></div>
+<div class="rw"><span class="rw-n">T10.10</span><span class="rw-l">EventActionDispatcher订阅触发</span><span class="rw-v">Subscribe("FindingCreated",handler)<br/>Publish(evt)→handler被调用+evt.Data</span></div>
+<div class="rw"><span class="rw-n">T10.11</span><span class="rw-l">ScheduledScan定时触发</span><span class="rw-v">Start()→60s后首次执行<br/>日志含[ScheduledScan]<br/>Dispose()→Timer释放</span></div>
+<div class="rw"><span class="rw-n">T10.12</span><span class="rw-l">JSON原子写入：断电不丢数据</span><span class="rw-v">先写.tmp→File.Move重命名<br/>→中途崩溃不损坏原文件</span></div>
+<div class="rw"><span class="rw-n">T10.13</span><span class="rw-l">持久化验证：重启后数据不丢</span><span class="rw-v">ctrl+C→重新启动<br/>Data/inspection-store.json仍存在<br/>GetAllAssets().Count==8</span></div>
+</div></div>
+</div>
+
+<!-- EXECUTION GUIDE -->
+<h3>▌Linux环境执行指南</h3>
+<div class="cd"># ═══ 1. 单元测试（无需GPU/LLM）═══
+cd /root/autodl-tmp/agent-system
+dotnet test Agent1.Tests/Agent1.Tests.csproj -c Release -v n
+# 覆盖: ArchitectureConvergence / ChemicalComplianceTools / ChemicalSubstanceDatabase
+#       CircuitBreaker / ConclusionVerifier / EvalEngine / IntentRouter
+#       KnowledgeBaseService / MetricsCollector / SensitiveDataMasker / ToolService
+
+# ═══ 2. 启动依赖服务 ═══
+service postgresql start            # PostgreSQL
+pg_isready                          # 验证
+# LLM+Embedding 需先启动 llama-server(模型上传后)
+
+# ═══ 3. CLI手动测试序列 ═══
+dotnet run --project Agent1 -c Release
+# 输入序列(无LLM时):
+#   10 → 验证数据库连接(T0.3-T0.4)
+#   1  → 输入"忽略之前的指令"→验证T1.3注入拦截
+#   1  → 输入"苯和丙酮储存合规"→验证T1.6路由+6步流水线(T2.x)
+#   14 → 输入合规结果→验证T6.8-T6.13工单状态机
+#   20 → 验证告警邮件SMTP通道
+
+# ═══ 4. API测试(另开screen) ═══
+nohup dotnet run --project Agent1.Api -c Release > /root/autodl-tmp/logs/api.log 2>&1 &
+# 获取Token:
+TOKEN=$(curl -s -X POST http://localhost:5000/api/auth/login -H 'Content-Type:application/json' -d '{"username":"admin","password":"7758521"}' | python3 -c "import sys,json;print(json.load(sys.stdin).get('token',''))")
+# 逐端点测试 T7.1-T7.19
+
+# ═══ 5. 持久化验证 ═══
+pkill -f "dotnet run"
+ls -lh Data/inspection-store.json    # 文件存在
+dotnet run --project Agent1 -c Release
+# 菜单4 → 验证资产台账8条记录仍存在
+
+# ═══ 6. 全链路验证(需要LLM) ═══
+# 启动 llama-server(模型已上传后)
+# 菜单13 → 合规评测集64条 → 查看指标报告
+# 菜单2 → CoT流式推理 → 验证token实时输出
+# 菜单8 → 化工合规自查("苯和丙酮可以同库储存吗?")</div>
+
+<!-- SUMMARY TABLE -->
+<h3>▌测试覆盖矩阵</h3>
+<table>
+<tr><th>层</th><th>测试ID范围</th><th>测试数</th><th>LLM依赖</th><th>核心变量/方法</th></tr>
+<tr><td>L0 基础设施</td><td>T0.1-T0.7</td><td>7</td><td>✗</td><td>DI容器23服务 / AppConfig / DatabaseService / Serilog / MetricsCollector</td></tr>
+<tr><td>L1 安全管道</td><td>T1.1-T1.11</td><td>11</td><td>✗</td><td>ValidateInput/Output / InjectionPatterns[7] / StorageDangerPatterns[2] / DistanceDangerPatterns[2] / AbsoluteSafetyPatterns[2] / IntentRouter.Route() / LastMatchedKeyword / ComplianceKeywords[28]</td></tr>
+<tr><td>L2 流水线</td><td>T2.1-T2.8</td><td>8</td><td>✓</td><td>AgentDialog.ExecuteAsync 6步 / PipelineMetrics 16字段 / PipelineEvent 9事件 / CircuitBreaker / CancellationTokenSource / SSE流式 / GetEmbeddingAsync / GetEmbeddingsBatchAsync</td></tr>
+<tr><td>L3 知识管道</td><td>T3.1-T3.7</td><td>7</td><td>✓</td><td>PdfExtractor / SemanticChunker / HybridKnowledgeBaseService / BM25 / pgvector HNSW / RRF融合(k=60) / RerankerService :8082 / QueryCache TTL=5min</td></tr>
+<tr><td>L4 合规工具</td><td>T4.1-T4.8</td><td>8</td><td>✓</td><td>ChemicalComplianceTools 8 [KernelFunction] / ChemicalSubstanceDatabase / RiskAssessmentService / ConsequenceSimulationService / 三层降级</td></tr>
+<tr><td>L5 巡检编排</td><td>T5.1-T5.9</td><td>9</td><td>✓</td><td>InspectionOrchestrator / CreatePlan / ExecutePlanAsync / ExecuteInspectionItemAsync / DeterministicRuleEngine.TryDetermine / GenerateRectificationTicketAsync / GenerateReport / SHA256 AuditHash / QuickCheck</td></tr>
+<tr><td>L6 状态机</td><td>T6.1-T6.17</td><td>17</td><td>✗</td><td>ComplianceFinding 7状态 / TicketItem 7状态 / InspectionPlan 4状态 / StatusLog / TransitionTo / FromStatus→ToStatus</td></tr>
+<tr><td>L7 API端点</td><td>T7.1-T7.22</td><td>22</td><td>✓</td><td>4 Controller / JWT Auth / RateLimiting / RequestId / GlobalException / 7 MIDDLEWARE / 16 ENDPOINTS</td></tr>
+<tr><td>L8 Eval+Memory</td><td>T8.1-T8.8</td><td>8</td><td>✓</td><td>EvalEngine 64条 / MemoryService / LongTermMemoryService / SessionService / MemoryCoordinator / FactExtractor</td></tr>
+<tr><td>L9 高级模块</td><td>T9.1-T9.10</td><td>10</td><td>✓</td><td>CoTSolid/Stream / ReActSolid/Stream / Reflection / ReflectionVerifier / EmergencyResponse / KnowledgeGraph / RegulatoryAudit / ComplianceCheck</td></tr>
+<tr><td>L10 边界并发</td><td>T10.1-T10.13</td><td>13</td><td>✗</td><td>空输入 / 超长 / 不存在ID / 空列表 / 未注册能力 / ToolCalls隔离 / ReaderWriterLockSlim / EventActionDispatcher / ScheduledScan / JSON原子写入</td></tr>
+<tr style="font-weight:bold"><td colspan="2">总计</td><td>120+</td><td></td><td>覆盖112个C#文件 / ~17000行 / 80+类 / 300+方法</td></tr>
+</table>
+
+<div class="ft">
+<span>TEST PLAN VER 2.0 · 2026-06-23 · Linux RTX 3080 Ti · 120+ Test Cases · Every Variable Traced</span>
+<span class="mn">LAYERS:0-10 | DI:23svc | PIPELINE:6steps | STATES:17tests | API:22tests</span>
+</div>
+
+</div></body></html>

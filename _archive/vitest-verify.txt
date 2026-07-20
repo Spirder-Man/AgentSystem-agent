@@ -1,0 +1,703 @@
+﻿
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/妗岄潰/agent/椤圭洰/Agent1/agent1-web[39m
+
+ [32m鉁?[39m src/mocks/__tests__/tickets-state-machine.test.ts [2m([22m[2m20 tests[22m[2m)[22m[90m 16[2mms[22m[39m
+ [32m鉁?[39m src/mocks/__tests__/compliance-templates.test.ts [2m([22m[2m15 tests[22m[2m)[22m[90m 15[2mms[22m[39m
+ [32m鉁?[39m src/mocks/__tests__/data-types.test.ts [2m([22m[2m18 tests[22m[2m)[22m[90m 28[2mms[22m[39m
+ [32m鉁?[39m src/stores/__tests__/auth.test.ts [2m([22m[2m20 tests[22m[2m)[22m[90m 46[2mms[22m[39m
+ [32m鉁?[39m src/pages/__tests__/LoginPage.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 254[2mms[22m[39m
+node.exe : [90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m鏃ュ織鍒楄〃鍔犺浇[2
+m > [22m[2m鍔犺浇鏃跺簲鏄剧ず楠ㄦ灦琛?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMExce
+ption {} 
+所在位置 D:\Nodejs\npx.ps1:29 字符: 3
++   & $NODE_EXE $NPX_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([90mstderr[2m...OMException {} :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m鏃ュ織鍒楄〃鍔犺浇[2m > [22m[
+2m鍔犺浇鎴愬姛搴旀覆鏌撴棩蹇楄褰曞拰缁熻鍗＄墖
+[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m鏃ュ織鍒楄〃鍔犺浇[2m > [22m[
+2m鍔犺浇澶辫触搴旀樉绀洪敊璇俊鎭?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {}
+ 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m鏃ュ織鍒楄〃鍔犺浇[2m > [22m[
+2m403 搴旀樉绀烘棤鏉冮檺鎻愮ず
+[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+ [32m鉁?[39m src/pages/__tests__/KnowledgeBasePage.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 242[2mms[22m[39m
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m鏃ュ織鍒楄〃鍔犺浇[2m > [22m[
+2m绌哄垪琛ㄥ簲鏄剧ず绌虹姸鎬?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m鏃ュ織鍒楄〃鍔犺浇[2m > [22m[
+2m鍒锋柊搴旈噸鏂板姞杞芥棩蹇?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m瀹¤缁熻[2m > [22m[2m搴
+斿睍绀烘€昏褰曟暟銆佹搷浣滃垎甯冦€佹椿璺冪敤鎴峰拰鏈€鍚庤褰曟椂闂?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invali
+d. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m瀹¤缁熻[2m > [22m[2m搴
+斿睍绀烘椿璺冪敤鎴锋暟閲?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m瀹¤缁熻[2m > [22m[2m搴
+斿睍绀烘渶鍚庤褰曟椂闂?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+ [32m鉁?[39m src/pages/__tests__/EvalAndSettingsPage.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 221[2mms[22m[39m
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m瀹¤缁熻[2m > [22m[2m搴
+斿睍绀虹敤鎴锋椿璺冨垎甯冩爣绛?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m瀹¤缁熻[2m > [22m[2m缁
+熻鍔犺浇澶辫触搴旈潤榛樺鐞嗕笉闃诲椤甸潰
+[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m鏃ュ織绛涢€?[2m > [22m[2m鐐
+瑰嚮鏌ヨ搴旈噸鏂拌姹傛棩蹇?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+ [32m鉁?[39m src/mocks/__tests__/handlers.test.ts [2m([22m[2m33 tests[22m[2m)[22m[90m 99[2mms[22m[39m
+ [32m鉁?[39m src/pages/__tests__/AssetDetailPage.test.ts [2m([22m[2m29 tests[22m[2m)[22m[33m 878[2mms[22m[39m
+ [32m鉁?[39m src/pages/__tests__/DatabaseDiagnosticsPage.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 772[2mms[22m[39m
+   [33m[2m鉁?[22m[39m DatabaseDiagnosticsPage[2m > [22m杩炴帴楠岃瘉[2m > [22m鐐瑰嚮搴旇皟鐢?GET /api/Admin/db/validate [33m414[2mms[22m[39m
+ [32m鉁?[39m src/pages/__tests__/SystemMonitorPage.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 1228[2mms[22m[39m
+   [33m[2m鉁?[22m[39m SystemMonitorPage[2m > [22m鍋ュ悍鐘舵€佸姞杞?[2m > [22m鍔犺浇鎴愬姛搴旀樉绀虹郴缁熺増鏈拰鐘舵€佸窘绔?[33m984[2mms[22m[39m
+ [32m鉁?[39m src/pages/__tests__/AIChatPage.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 1194[2mms[22m[39m
+   [33m[2m鉁?[22m[39m AIChatPage[2m > [22m鍙戦€佹秷鎭?[2m > [22m鍙戦€佸簲璋冪敤 POST /api/Compliance/check [33m968[2mms[22m[39m
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m鏃ュ織绛涢€?[2m > [22m[2m绛
+涢€夋爮搴斿寘鍚煡璇㈡寜閽?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m鏃ュ織绛涢€?[2m > [22m[2m绌
+虹瓫閫夋潯浠朵笅鏃ュ織璇锋眰搴斿寘鍚垎椤靛弬鏁?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMExcept
+ion {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m鍒嗛〉[2m > [22m[2mtota
+l > pageSize 鏃跺簲鏄剧ず鍒嗛〉鍣?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMExcepti
+on {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m鍒嗛〉[2m > [22m[2mtota
+l <= pageSize 鏃朵笉鏄剧ず鍒嗛〉鍣?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMExcept
+ion {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m鍒嗛〉[2m > [22m[2m缈婚〉搴
+旈噸鏂拌Е鍙戞棩蹇楄姹?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m鍝堝笇閾鹃獙璇?[2m > [22m[2m
+鍝堝笇閾惧畬鏁村簲璋冪敤 integrity 绔偣骞舵樉绀烘垚鍔?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. 
+DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m鍝堝笇閾鹃獙璇?[2m > [22m[2m
+鍝堝笇閾炬柇瑁傚簲鏄剧ず璀﹀憡寮圭獥
+[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m鍝堝笇閾鹃獙璇?[2m > [22m[2m
+楠岃瘉澶辫触搴斿脊鍑洪敊璇彁绀?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m瀵煎嚭鎶ュ憡[2m > [22m[2m瀵
+煎嚭鎸夐挳瀛樺湪
+[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m瀵煎嚭鎶ュ憡[2m > [22m[2m瀵
+煎嚭鎴愬姛搴旇皟鐢?export 绔偣
+[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m瀵煎嚭鎶ュ憡[2m > [22m[2m瀵
+煎嚭澶辫触搴旀樉绀洪敊璇彁绀?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m鏁忔劅鎿嶄綔鏍囪[2m > [22m[
+2misSensitive=true 鐨勬棩蹇楀簲鏄剧ず鏁忔劅鏍囪
+[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m鏁忔劅鎿嶄綔鏍囪[2m > [22m[
+2misSensitive=false 鐨勬棩蹇椾笉搴旀樉绀烘晱鎰熸爣璁?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invali
+d. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m杈圭晫鎯呭喌[2m > [22m[2mc
+hainHash 涓?null 鏃舵樉绀?鈥?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMExceptio
+n {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m杈圭晫鎯呭喌[2m > [22m[2m澶
+氭潯鏃ュ織搴斿叏閮ㄦ覆鏌?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+ [32m鉁?[39m src/pages/__tests__/AuditPage.test.ts [2m([22m[2m29 tests[22m[2m)[22m[33m 824[2mms[22m[39m
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m杈圭晫鎯呭喌[2m > [22m[2mb
+yUser 涓虹┖瀵硅薄鏃朵笉鏄剧ず鐢ㄦ埛娲昏穬鍖哄煙
+[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/AuditPage.test.ts[2m > [22m[2mAuditPage[2m > [22m[2m杈圭晫鎯呭喌[2m > [22m[2ml
+astLogAt 涓?null 鏃舵樉绀?鈥?[22m[39m[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMExceptio
+n {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn placeholder="鐢ㄦ埛鍚?  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed setting prop "size" on <input>: value small is invalid. DOMException {} 
+  at <Anonymous modelValue="" onUpdate:modelValue=fn type="date"  ... > 
+  at <AuditPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+ [32m鉁?[39m src/pages/__tests__/DashboardPage.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 1488[2mms[22m[39m
+   [33m[2m鉁?[22m[39m DashboardPage[2m > [22mOverview 鍔犺浇[2m > [22m鍔犺浇鎴愬姛搴旀樉绀虹粺璁″崱鐗?[33m1003[2mms[22m[39m
+[90mstderr[2m | src/api/__tests__/compliance.test.ts[2m > [22m[2mcomplianceApi 鈥?閿欒澶勭悊[2m > [22m[2m401 鍝嶅簲鎶涘嚭閿
+欒
+[22m[39mError: Not implemented: navigation (except hash changes)
+    at module.exports (D:\妗岄潰\agent\椤圭洰\Agent1\agent1-web\node_modules\jsdom\lib\jsdom\browser\not-implemented.js:9:17)
+    at navigateFetch (D:\妗岄潰\agent\椤圭洰\Agent1\agent1-web\node_modules\jsdom\lib\jsdom\living\window\navigation.js:77:3)
+    at exports.navigate (D:\妗岄潰\agent\椤圭洰\Agent1\agent1-web\node_modules\jsdom\lib\jsdom\living\window\navigation.js:55
+:3)
+    at LocationImpl._locationObjectNavigate (D:\妗岄潰\agent\椤圭洰\Agent1\agent1-web\node_modules\jsdom\lib\jsdom\living\win
+dow\Location-impl.js:31:5)
+    at LocationImpl._locationObjectSetterNavigate (D:\妗岄潰\agent\椤圭洰\Agent1\agent1-web\node_modules\jsdom\lib\jsdom\livi
+ng\window\Location-impl.js:25:17)
+    at LocationImpl.set href [as href] (D:\妗岄潰\agent\椤圭洰\Agent1\agent1-web\node_modules\jsdom\lib\jsdom\living\window\L
+ocation-impl.js:47:10)
+    at Location.set href [as href] (D:\妗岄潰\agent\椤圭洰\Agent1\agent1-web\node_modules\jsdom\lib\jsdom\living\generated\Lo
+cation.js:125:37)
+    at D:\妗岄潰\agent\椤圭洰\Agent1\agent1-web\src\lib\axios.ts:135:25
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at Axios.request (file:///D:/%E6%A1%8C%E9%9D%A2/agent/%E9%A1%B9%E7%9B%AE/Agent1/agent1-web/node_modules/axios/lib/c
+ore/Axios.js:41:14) [90mundefined[39m
+
+ [32m鉁?[39m src/api/__tests__/compliance.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 273[2mms[22m[39m
+ [32m鉁?[39m src/pages/__tests__/EvalPageDeep.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 16[2mms[22m[39m
+ [32m鉁?[39m src/pages/__tests__/EmergencyPage.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 234[2mms[22m[39m
+ [32m鉁?[39m src/pages/__tests__/ComplianceCheckPage.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 173[2mms[22m[39m
+ [32m鉁?[39m src/pages/__tests__/StorageCompatibilityPage.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 213[2mms[22m[39m
+[90mstderr[2m | src/pages/__tests__/InspectionPlansPage.test.ts[2m > [22m[2mInspectionPlansPage[2m > [22m[2m娓叉煋
+娴嬭瘯[2m > [22m[2m鍔犺浇鐘舵€佸簲鏄剧ず楠ㄦ灦灞?[22m[39m[Vue warn]: Failed to resolve component: router-link
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <InspectionPlansPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/InspectionPlansPage.test.ts[2m > [22m[2mInspectionPlansPage[2m > [22m[2m娓叉煋
+娴嬭瘯[2m > [22m[2m绌烘暟鎹簲鏄剧ず绌虹姸鎬?[22m[39m[Vue warn]: Failed to resolve component: router-link
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <InspectionPlansPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: router-link
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <InspectionPlansPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/InspectionPlansPage.test.ts[2m > [22m[2mInspectionPlansPage[2m > [22m[2m娓叉煋
+娴嬭瘯[2m > [22m[2m鏈夋暟鎹椂搴旀湁鍒犻櫎鎸夐挳
+[22m[39m[Vue warn]: Failed to resolve component: router-link
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <InspectionPlansPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: router-link
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <InspectionPlansPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+ [32m鉁?[39m src/pages/__tests__/ComplianceHistoryPage.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 318[2mms[22m[39m
+[90mstderr[2m | src/pages/__tests__/InspectionPlansPage.test.ts[2m > [22m[2mInspectionPlansPage[2m > [22m[2mAPI
+ 璋冪敤娴嬭瘯[2m > [22m[2m鍔犺浇鏃惰皟鐢?GET /api/Inspection/plans
+[22m[39m[Vue warn]: Failed to resolve component: router-link
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <InspectionPlansPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: router-link
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <InspectionPlansPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/InspectionPlansPage.test.ts[2m > [22m[2mInspectionPlansPage[2m > [22m[2mAPI
+ 璋冪敤娴嬭瘯[2m > [22m[2mAPI 澶辫触搴旀樉绀洪敊璇?[22m[39m[Vue warn]: Failed to resolve component: router-link
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <InspectionPlansPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: router-link
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <InspectionPlansPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/InspectionPlansPage.test.ts[2m > [22m[2mInspectionPlansPage[2m > [22m[2m杩涘害
+鎻愮ず锛圥1-5 淇楠岃瘉锛?[2m > [22m[2m鏈夋湭瀹屾垚璁″垝鏃跺簲鎻愮ず宸℃杩涘害
+[22m[39m[Vue warn]: Failed to resolve component: router-link
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <InspectionPlansPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: router-link
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <InspectionPlansPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+ [32m鉁?[39m src/pages/__tests__/InspectionPlansPage.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 235[2mms[22m[39m
+ [32m鉁?[39m src/pages/__tests__/RegulatoryAuditPage.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 278[2mms[22m[39m
+ [32m鉁?[39m src/pages/__tests__/HazardQueryPage.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 172[2mms[22m[39m
+ [32m鉁?[39m src/pages/__tests__/KnowledgeGraphPage.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 130[2mms[22m[39m
+ [32m鉁?[39m src/composables/__tests__/useGlobalLoading.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 10[2mms[22m[39m
+[90mstderr[2m | src/pages/__tests__/TicketListPage.test.ts[2m > [22m[2mTicketListPage 鈥?瑙掕壊鏉冮檺鎺у埗[2m > [22m[2mc
+anOperate 璁＄畻灞炴€?[2m > [22m[2madmin 瑙掕壊搴斿彲浠ユ搷浣?[22m[39m[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <TicketListPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <TicketListPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/TicketListPage.test.ts[2m > [22m[2mTicketListPage 鈥?瑙掕壊鏉冮檺鎺у埗[2m > [22m[2mc
+anOperate 璁＄畻灞炴€?[2m > [22m[2mauditor 瑙掕壊搴斿彲浠ユ搷浣?[22m[39m[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <TicketListPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <TicketListPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/TicketListPage.test.ts[2m > [22m[2mTicketListPage 鈥?瑙掕壊鏉冮檺鎺у埗[2m > [22m[2mc
+anOperate 璁＄畻灞炴€?[2m > [22m[2mviewer 瑙掕壊搴斾笉鑳芥搷浣?[22m[39m[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <TicketListPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <TicketListPage ref="VTU_COMPONENT" > 
+ [32m鉁?[39m src/pages/__tests__/TicketListPage.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 152[2mms[22m[39m
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/TicketListPage.test.ts[2m > [22m[2mTicketListPage 鈥?瑙掕壊鏉冮檺鎺у埗[2m > [22m[2mc
+anOperate 璁＄畻灞炴€?[2m > [22m[2m鏈櫥褰曪紙鏃犺鑹诧級搴斾笉鑳芥搷浣?[22m[39m[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <TicketListPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <TicketListPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/TicketListPage.test.ts[2m > [22m[2mTicketListPage 鈥?瑙掕壊鏉冮檺鎺у埗[2m > [22m[2m鎿
+嶄綔鍒楁覆鏌?[2m > [22m[2mviewer 瑙掕壊涓嶅簲娓叉煋鎿嶄綔鍒?[22m[39m[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <TicketListPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <TicketListPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/TicketListPage.test.ts[2m > [22m[2mTicketListPage 鈥?瑙掕壊鏉冮檺鎺у埗[2m > [22m[2m鎿
+嶄綔鍒楁覆鏌?[2m > [22m[2madmin 瑙掕壊搴旀覆鏌撴搷浣滃垪
+[22m[39m[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <TicketListPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <TicketListPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/pages/__tests__/TicketListPage.test.ts[2m > [22m[2mTicketListPage 鈥?瑙掕壊鏉冮檺鎺у埗[2m > [22m[2mA
+PI 璋冪敤[2m > [22m[2m鍔犺浇鏃惰皟鐢?GET /api/Tickets
+[22m[39m[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <TicketListPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <TicketListPage ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+ [32m鉁?[39m src/api/__tests__/tickets.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 161[2mms[22m[39m
+ [32m鉁?[39m src/api/__tests__/auth.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 162[2mms[22m[39m
+ [32m鉁?[39m src/api/__tests__/inspection.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 222[2mms[22m[39m
+ [32m鉁?[39m src/api/__tests__/eval.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m鉁?[39m src/api/__tests__/admin.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m鉁?[39m src/api/__tests__/knowledgeBase.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 8[2mms[22m[39m
+ [32m鉁?[39m src/api/__tests__/audit.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 8[2mms[22m[39m
+[90mstderr[2m | src/components/common/__tests__/CommonComponents.test.ts[2m > [22m[2mErrorBoundary[2m > [22m[2m
+鏃犻敊璇椂搴旀覆鏌撳瓙缁勪欢
+[22m[39m[Vue warn]: Failed to resolve component: el-icon
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <ErrorBoundary ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <ErrorBoundary ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/components/common/__tests__/CommonComponents.test.ts[2m > [22m[2mErrorBoundary[2m > [22m[2m
+鏃犻敊璇椂涓嶅簲鏄剧ず寮傚父鎻愮ず
+[22m[39m[Vue warn]: Failed to resolve component: el-icon
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <ErrorBoundary ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <ErrorBoundary ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/components/common/__tests__/CommonComponents.test.ts[2m > [22m[2mTicketStatusBadge[2m > [22m
+[2m搴旀覆鏌撳伐鍗曠姸鎬?(New)
+[22m[39m[Vue warn]: Failed to resolve component: el-tag
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <TicketStatusBadge status="New" ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/components/common/__tests__/CommonComponents.test.ts[2m > [22m[2mTicketStatusBadge[2m > [22m
+[2mClosed 鐘舵€佸簲姝ｅ父娓叉煋
+[22m[39m[Vue warn]: Failed to resolve component: el-tag
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <TicketStatusBadge status="Closed" ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | src/components/common/__tests__/CommonComponents.test.ts[2m > [22m[2mTicketStatusBadge[2m > [22m
+[2mInProgress 鐘舵€佸簲姝ｅ父娓叉煋
+[22m[39m[Vue warn]: Failed to resolve component: el-tag
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomEleme
+nt. 
+  at <TicketStatusBadge status="InProgress" ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+ [32m鉁?[39m src/components/common/__tests__/CommonComponents.test.ts [2m([22m[2m12 tests[22m[2m)[22m[90m 116[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m34 passed[39m[22m[90m (34)[39m
+[2m      Tests [22m [1m[32m356 passed[39m[22m[90m (356)[39m
+[2m   Start at [22m 14:57:22
+[2m   Duration [22m 33.69s[2m (transform 17.29s, setup 4.28s, collect 46.30s, tests 10.20s, environment 343.51s, prepare 17.23s)[22m
+

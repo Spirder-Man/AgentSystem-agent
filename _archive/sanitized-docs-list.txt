@@ -1,0 +1,15 @@
+﻿docs\deploy\2026-06-13_AutoDL服务器Agent1部署全流程操作记录.md
+docs\deploy\3090服务器评测.md
+docs\deploy\3090算力机重启后服务恢复与API集成测试排障记录.md
+docs\deploy\Agent1-3090-remaining-tests.md
+docs\deploy\Agent1-3090启动与全量测试手册.md
+docs\deploy\AgentSystem_a800-prod_部署指南.md
+docs\deploy\GPU服务器一键部署命令清单.md
+docs\deploy\Linux新机快速启动.md
+docs\deploy\Linux服务器一键启动与测试命令.md
+docs\project\项目分析与下一步计划.md
+docs\testing\integration\Agent1-Linux-3090系统测试与架构分析方案.md
+docs\testing\integration\Agent1-Linux完整测试方案.html
+docs\testing\integration\Agent1无GPU全链路测试方案.html
+docs\testing\integration\真实集成测试方案.md
+docs\testing\manual\Agent1-手动测试执行手册.html

@@ -1185,8 +1185,8 @@ public class ConclusionVerifierAdditionalTests
     [Fact]
     public void HasValidRegulation_GBWithoutYearDash_RequiresFullFormat()
     {
-        // The regex requires GB XXXX-XXXX format; "GB 15603" alone doesn't match
-        ConclusionVerifier.HasValidRegulation("依据 GB 15603").Should().BeFalse();
+        // P1-2: 统一 GB 正则后 GB 15603（无年份）也视为有效编号
+        ConclusionVerifier.HasValidRegulation("依据 GB 15603").Should().BeTrue();
         ConclusionVerifier.HasValidRegulation("依据 GB 15603-2022").Should().BeTrue();
     }
 

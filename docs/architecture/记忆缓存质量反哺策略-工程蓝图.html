@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>记忆缓存质量反哺策略 · 工程蓝图</title>
+<style>
+:root {
+  --c-bg: #f8fafc; --c-canvas: #ffffff; --c-border: #cbd5e1;
+  --c-border-light: #e2e8f0; --c-text-main: #0f172a; --c-text-sub: #64748b;
+  --c-text-weak: #94a3b8; --c-accent: #1e293b; --c-red: #dc2626;
+  --c-green: #16a34a; --c-amber: #d97706; --c-blue: #2563eb; --c-purple: #7c3aed;
+  --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'SF Mono', Monaco, Consolas, 'Cascadia Code', monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--c-bg); font-family: var(--font-ui); color: var(--c-text-main); padding: 40px; }
+.diagram-canvas { background: var(--c-canvas); border: 2px solid var(--c-border); padding: 40px; max-width: 1400px; margin: 0 auto; }
+.diagram-header { border-bottom: 2px solid var(--c-text-main); padding-bottom: 16px; margin-bottom: 32px; display: flex; justify-content: space-between; align-items: flex-end; }
+.diagram-title { font-size: 28px; font-weight: 700; }
+.diagram-subtitle { font-size: 11px; font-weight: 600; color: var(--c-text-sub); text-transform: uppercase; letter-spacing: 1.5px; margin-top: 4px; }
+.diagram-meta { text-align: right; font-size: 11px; font-family: var(--font-mono); color: var(--c-text-sub); }
+
+.section { margin-bottom: 36px; }
+.section-hd { border-bottom: 1px solid var(--c-border); padding-bottom: 8px; margin-bottom: 16px; display: flex; align-items: baseline; gap: 12px; }
+.section-num { font-family: var(--font-mono); font-size: 11px; color: var(--c-text-sub); font-weight: 600; }
+.section-title { font-size: 16px; font-weight: 700; }
+.section-p { font-size: 13px; color: var(--c-text-sub); line-height: 1.7; margin-bottom: 12px; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
+.grid-5 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; gap: 10px; }
+
+.card { border: 1px solid var(--c-border); padding: 16px; }
+.card-hd { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; color: var(--c-text-sub); }
+.card-body { font-size: 13px; line-height: 1.6; }
+.card--red { border-left: 3px solid var(--c-red); }
+.card--amber { border-left: 3px solid var(--c-amber); }
+.card--green { border-left: 3px solid var(--c-green); }
+.card--blue { border-left: 3px solid var(--c-blue); }
+.card--purple { border-left: 3px solid var(--c-purple); }
+
+.badge { display: inline-block; font-size: 10px; font-family: var(--font-mono); padding: 2px 6px; border: 1px solid var(--c-text-main); text-transform: uppercase; font-weight: 600; }
+.badge--fill { background: var(--c-text-main); color: var(--c-canvas); }
+.badge--red { border-color: var(--c-red); color: var(--c-red); }
+.badge--green { border-color: var(--c-green); color: var(--c-green); }
+.badge--amber { border-color: var(--c-amber); color: var(--c-amber); }
+.badge--blue { border-color: var(--c-blue); color: var(--c-blue); }
+.badge--purple { border-color: var(--c-purple); color: var(--c-purple); }
+
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+.tbl th { text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--c-text-sub); padding: 10px 12px; border-bottom: 2px solid var(--c-border); }
+.tbl td { padding: 10px 12px; border-bottom: 1px solid var(--c-border-light); vertical-align: top; line-height: 1.5; }
+.tbl .mono { font-family: var(--font-mono); font-size: 12px; }
+
+.decision { background: #f8fafc; border: 1px solid var(--c-border); padding: 16px 20px; margin-top: 12px; }
+.decision-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--c-text-sub); margin-bottom: 6px; }
+.decision-body { font-size: 13px; line-height: 1.7; }
+
+.code-block { background: #f1f5f9; border: 1px solid var(--c-border-light); padding: 14px 18px; font-family: var(--font-mono); font-size: 12px; line-height: 1.7; overflow-x: auto; white-space: pre; margin-top: 8px; color: var(--c-text-main); }
+.code-block .kw { color: var(--c-blue); font-weight: 600; }
+.code-block .cmt { color: var(--c-text-weak); font-style: italic; }
+
+.layer { display: flex; gap: 12px; align-items: stretch; margin-bottom: 16px; }
+.layer-num { width: 36px; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; font-family: var(--font-mono); border-right: 2px solid var(--c-border); padding-right: 12px; }
+.layer-body { flex: 1; border: 1px solid var(--c-border); padding: 16px; }
+.layer-hd { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+.layer-p { font-size: 12px; color: var(--c-text-sub); line-height: 1.6; }
+
+.flow-row { display: flex; align-items: center; gap: 0; margin-bottom: 12px; flex-wrap: wrap; }
+.flow-node { border: 1px solid var(--c-border); padding: 10px 16px; font-size: 12px; font-weight: 600; text-align: center; min-width: 80px; }
+.flow-node--red { border-color: var(--c-red); color: var(--c-red); }
+.flow-node--green { border-color: var(--c-green); color: var(--c-green); }
+.flow-node--dark { background: var(--c-text-main); color: var(--c-canvas); }
+.flow-arrow { width: 28px; text-align: center; font-size: 14px; color: var(--c-text-sub); flex-shrink: 0; }
+.flow-label { font-size: 10px; color: var(--c-text-sub); font-family: var(--font-mono); margin-top: 3px; }
+
+.pillar { border: 1px solid var(--c-border); padding: 20px; }
+.pillar-icon { font-size: 24px; margin-bottom: 8px; }
+.pillar-hd { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+.pillar-body { font-size: 12px; color: var(--c-text-sub); line-height: 1.7; }
+
+.gate-row { display: flex; align-items: center; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--c-border-light); }
+.gate-row:last-child { border-bottom: none; }
+.gate-status { width: 80px; font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
+.gate-name { flex: 1; font-size: 13px; }
+.gate-rule { width: 220px; font-size: 11px; color: var(--c-text-sub); font-family: var(--font-mono); text-align: right; }
+</style>
+</head>
+<body>
+<div class="diagram-canvas">
+
+<div class="diagram-header">
+  <div>
+    <h1 class="diagram-title">记忆缓存质量反哺策略 · 工程设计</h1>
+    <p class="diagram-subtitle">Quality Feedback Loop Design — 从 StoreToolFacts 缺陷到系统性质量防护</p>
+  </div>
+  <div class="diagram-meta">
+    DOC ID: QF-2026-001<br/>
+    REV: v1.0 &nbsp;|&nbsp; 2026-06-27<br/>
+    STATUS: DRAFT
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 01: 缺陷复盘 -->
+<!-- ============================================================ -->
+<div class="section">
+  <div class="section-hd">
+    <span class="section-num">01</span>
+    <span class="section-title">缺陷复盘 · StoreToolFacts 双重质量漏洞</span>
+  </div>
+
+  <p class="section-p">从这个缺陷中提取出<strong>两个独立的质量缺失</strong>，只有同时理解它们才能构建正确的防御体系：</p>
+
+  <div class="grid-2">
+    <div class="card card--red">
+      <div class="card-hd"><span class="badge badge--red">漏洞 A</span>&nbsp; 写入时不区分质量等级</div>
+      <div class="card-body">
+        <p><strong>现象</strong>：<span class="mono">StoreToolFacts()</span> 将工具返回的所有文本（含"未找到/建议查阅"）无差别写入 <span class="mono">KeyFacts</span> 字典。</p>
+        <p><strong>根因</strong>：缓存层没有<strong>响应质量标记</strong>机制。任何从工具方法返回的字符串都被视为"领域事实"。</p>
+        <p style="color: var(--c-text-sub); font-size: 12px; margin-top: 6px;">类比：数据库写入时不校验字段约束 → 脏数据永久污染索引。</p>
+      </div>
+    </div>
+    <div class="card card--red">
+      <div class="card-hd"><span class="badge badge--red">漏洞 B</span>&nbsp; 读取时不检查可信度</div>
+      <div class="card-body">
+        <p><strong>现象</strong>：<span class="mono">TryAnswerFromMemory()</span> 仅做关键词子串匹配（<span class="mono">Contains</span>），命中即返回，不验证内容质量。</p>
+        <p><strong>根因</strong>：没有信任分级——"上次工具返回了有效法规编号"和"上次返回了兜底文本"被同等对待。</p>
+        <p style="color: var(--c-text-sub); font-size: 12px; margin-top: 6px;">类比：搜索引擎返回缓存结果时不检查页面是否已 404。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="decision">
+    <div class="decision-title">🔑 核心教训</div>
+    <div class="decision-body">
+      这是典型的 <strong>"信任链断裂"缺陷</strong>：写入方不告诉读取方"这条数据的质量如何"，读取方默认信任所有数据。在分布式缓存系统（如 Redis）中这个问题通过 <strong>TTL + 版本号 + 校验和</strong> 解决；在 AI 响应缓存中，等价物是 <strong>质量等级标签 + 工具调用签名 + 置信度阈值</strong>。
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 02: 三大工具质量策略对标 -->
+<!-- ============================================================ -->
+<div class="section">
+  <div class="section-hd">
+    <span class="section-num">02</span>
+    <span class="section-title">对标分析 · Cursor / Trae / Qoder 的质量控制模式</span>
+  </div>
+
+  <table class="tbl">
+    <tr>
+      <th style="width: 14%;">工具</th>
+      <th style="width: 28%;">质量策略模式</th>
+      <th style="width: 28%;">对当前缺陷的启示</th>
+      <th style="width: 30%;">可移植到 Agent1 的具体做法</th>
+    </tr>
+    <tr>
+      <td style="font-weight: 700;">Cursor<br/><span class="mono" style="font-size: 10px; color: var(--c-text-sub);">AI IDE</span></td>
+      <td>
+        <strong>Rule-based Code Analysis</strong><br/>
+        <span style="font-size: 12px; color: var(--c-text-sub);">
+        · Pre-commit hook + lint 门禁<br/>
+        · 语义级代码审查（AST 分析）<br/>
+        · 变更影响范围自动评估<br/>
+        · 类型系统强制（TS strict mode）
+        </span>
+      </td>
+      <td>
+        <span style="font-size: 12px;">对"任何写入缓存的数据必须先过类型检查"这一约束——<strong>用编译器/静态分析强制执行，而非依赖开发者自律。</strong></span>
+      </td>
+      <td>
+        <span style="font-size: 12px;">
+        <span class="badge badge--green">门禁 1</span> 缓存写入必须经过 <span class="mono">QualityTagger</span> 标记质量等级<br/>
+        <span class="badge badge--green">门禁 2</span> 缓存读取必须检查 <span class="mono">QualityTag</span> ≥ 阈值<br/>
+        <span class="badge badge--green">门禁 3</span> 编译期强制：Result 类型替代裸 string
+        </span>
+      </td>
+    </tr>
+    <tr>
+      <td style="font-weight: 700;">Trae<br/><span class="mono" style="font-size: 10px; color: var(--c-text-sub);">AI IDE</span></td>
+      <td>
+        <strong>Configuration-Driven Validation</strong><br/>
+        <span style="font-size: 12px; color: var(--c-text-sub);">
+        · .trae/rules 规则引擎（声明式）<br/>
+        · 配置 schema 自动校验<br/>
+        · 工作区级安全边界<br/>
+        · skills 沙箱隔离
+        </span>
+      </td>
+      <td>
+        <span style="font-size: 12px;">规则应该是<strong>声明式的、可版本化的、可审计的</strong>。每条质量规则有明确的"触发条件 → 动作 → 记录"三要素。</span>
+      </td>
+      <td>
+        <span style="font-size: 12px;">
+        <span class="badge badge--amber">规则 1</span> <span class="mono">quality-rules.json</span> 声明缓存质量门禁<br/>
+        <span class="badge badge--amber">规则 2</span> 兜底文本正则模式库（FallbackPatterns）<br/>
+        <span class="badge badge--amber">规则 3</span> 每次质量违规自动写审计日志
+        </span>
+      </td>
+    </tr>
+    <tr>
+      <td style="font-weight: 700;">Qoder<br/><span class="mono" style="font-size: 10px; color: var(--c-text-sub);">AI IDE</span></td>
+      <td>
+        <strong>Memory-Driven Pattern Recognition</strong><br/>
+        <span style="font-size: 12px; color: var(--c-text-sub);">
+        · 规则系统（.qoder/rules）<br/>
+        · 记忆/知识系统（长期上下文）<br/>
+        · 对话自动总结 + 缺陷模式归档<br/>
+        · Agent 自主诊断 + 修复
+        </span>
+      </td>
+      <td>
+        <span style="font-size: 12px;"><strong>缺陷发现后自动沉淀为规则</strong>——下次同类问题自动被拦截。这正是质量反哺的核心：把教训编码为约束。</span>
+      </td>
+      <td>
+        <span style="font-size: 12px;">
+        <span class="badge badge--fill">闭环</span> 缺陷 → 规则 → 门禁 → 测试 → 监控<br/>
+        <span class="badge badge--fill">闭环</span> 每次发现同类缺陷自动合并到规则库<br/>
+        <span class="badge badge--fill">闭环</span> 运行时质量数据反哺回规则阈值
+        </span>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<!-- 03: 五层防护体系 -->
+<!-- ============================================================ -->
+<div class="section">
+  <div class="section-hd">
+    <span class="section-num">03</span>
+    <span class="section-title">五层质量防护体系 · 从代码到运行时的全链路</span>
+  </div>
+
+  <div class="layer">
+    <div class="layer-num" style="color: var(--c-blue);">L1</div>
+    <div class="layer-body card--blue">
+      <div class="layer-hd">编译期类型约束 &nbsp;<span class="badge badge--blue">Cursor 模式</span></div>
+      <div class="layer-p">
+        <strong>目标</strong>：工具返回值从裸 <span class="mono">string</span> 升级为带质量标签的 <span class="mono">ToolResult</span> 结构体，编译期强制下游必须处理质量字段。<br/>
+        <strong>现状问题</strong>：所有 <span class="mono">[KernelFunction]</span> 返回 <span class="mono">Task&lt;string&gt;</span>，调用方无法区分"有效法规数据"和"兜底建议"。<br/>
+        <strong>改造</strong>：
+        <div class="code-block"><span class="kw">public class</span> ToolResult
+{
+    <span class="kw">public string</span> Content { <span class="kw">get</span>; <span class="kw">init</span>; }
+    <span class="kw">public</span> QualityLevel Quality { <span class="kw">get</span>; <span class="kw">init</span>; }  <span class="cmt">// 编译期强制字段</span>
+    <span class="kw">public</span> List&lt;<span class="kw">string</span>&gt; Regulations { <span class="kw">get</span>; <span class="kw">init</span>; }  <span class="cmt">// 提取到的法规编号</span>
+    <span class="kw">public bool</span> IsFallback => Quality == QualityLevel.Fallback;
+}
+
+<span class="kw">public enum</span> QualityLevel
+{
+    RAG_HIT,         <span class="cmt">// RAG 检索命中，有原文支撑</span>
+    DATABASE_HIT,    <span class="cmt">// 结构化数据库命中</span>
+    DICTIONARY_HIT,  <span class="cmt">// 硬编码字典命中</span>
+    FALLBACK,        <span class="cmt">// 兜底诚实声明</span>
+    ERROR            <span class="cmt">// 异常</span>
+}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="layer">
+    <div class="layer-num" style="color: var(--c-amber);">L2</div>
+    <div class="layer-body card--amber">
+      <div class="layer-hd">规则引擎检查 &nbsp;<span class="badge badge--amber">Trae 模式</span></div>
+      <div class="layer-p">
+        <strong>目标</strong>：声明式规则文件 <span class="mono">quality-rules.json</span>，缓存写入前逐条检查，不合格的拒绝写入。<br/>
+        <strong>规则示例</strong>：
+        <div class="code-block">{
+  <span class="str">"rules"</span>: [
+    {
+      <span class="str">"id"</span>: <span class="str">"R001"</span>,
+      <span class="str">"name"</span>: <span class="str">"禁止缓存兜底文本"</span>,
+      <span class="str">"trigger"</span>: <span class="str">"StoreToolFacts"</span>,
+      <span class="str">"condition"</span>: <span class="str">"result.Quality == FALLBACK"</span>,
+      <span class="str">"action"</span>: <span class="str">"REJECT"</span>,
+      <span class="str">"reason"</span>: <span class="str">"兜底文本不可作为领域事实缓存"</span>
+    },
+    {
+      <span class="str">"id"</span>: <span class="str">"R002"</span>,
+      <span class="str">"name"</span>: <span class="str">"兜底文本模式匹配"</span>,
+      <span class="str">"trigger"</span>: <span class="str">"StoreToolFacts"</span>,
+      <span class="str">"condition"</span>: <span class="str">"matchesAny(result.Content, FallbackPatterns)"</span>,
+      <span class="str">"action"</span>: <span class="str">"REJECT_AND_WARN"</span>,
+      <span class="str">"patterns"</span>: [
+        <span class="str">"未在常见.*中直接匹配"</span>,
+        <span class="str">"建议查阅.*全文"</span>,
+        <span class="str">"未找到.*数据"</span>,
+        <span class="str">"建议参考.*查询"</span>
+      ]
+    }
+  ]
+}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="layer">
+    <div class="layer-num" style="color: var(--c-green);">L3</div>
+    <div class="layer-body card--green">
+      <div class="layer-hd">自动化测试门禁 &nbsp;<span class="badge badge--green">CI/CD 卡口</span></div>
+      <div class="layer-p">
+        <strong>目标</strong>：将缺陷转化为不可变测试用例，CI 流水线中强制执行。
+        <table class="tbl" style="margin-top: 8px;">
+          <tr><th>测试 ID</th><th>测试场景</th><th>验证点</th></tr>
+          <tr><td class="mono">TQ-001</td><td>兜底文本不应进入 KeyFacts</td><td><span class="mono">StoreToolFacts("苯", {CheckHazardCategory: "未找到..."})</span> → <span style="color: var(--c-green);">KeyFacts 不新增条目</span></td></tr>
+          <tr><td class="mono">TQ-002</td><td>兜底缓存不应被返回</td><td><span class="mono">TryAnswerFromMemory("苯的危险类别")</span> 在仅有兜底缓存时 → <span style="color: var(--c-green);">返回 null</span></td></tr>
+          <tr><td class="mono">TQ-003</td><td>有效工具结果正确缓存</td><td>RAG返回有效数据 → <span class="mono">StoreToolFacts</span> → <span class="mono">TryAnswerFromMemory</span> → <span style="color: var(--c-green);">返回有效答案</span></td></tr>
+          <tr><td class="mono">TQ-004</td><td>质量标签完整传递</td><td>工具返回 → LLM回答 → 缓存 → 读取 → <span style="color: var(--c-green);">QualityLevel 不丢失</span></td></tr>
+          <tr><td class="mono">TQ-005</td><td>知识库更新后缓存失效</td><td>旧缓存(QUALITY=FALLBACK) + 新知识库数据 → <span style="color: var(--c-green);">LLM 推理不被跳过</span></td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="layer">
+    <div class="layer-num" style="color: var(--c-purple);">L4</div>
+    <div class="layer-body card--purple">
+      <div class="layer-hd">运行时质量监控 &nbsp;<span class="badge badge--purple">可观测性</span></div>
+      <div class="layer-p">
+        <strong>目标</strong>：Prometheus 指标 + Serilog 结构化日志，实时追踪缓存质量健康度。
+        <div class="grid-3" style="margin-top: 8px;">
+          <div style="border: 1px solid var(--c-border-light); padding: 12px;">
+            <div style="font-size: 20px; font-weight: 700; font-family: var(--font-mono); color: var(--c-purple);">cache_quality_ratio</div>
+            <div style="font-size: 11px; color: var(--c-text-sub); margin-top: 4px;">有效缓存 / 总缓存 比率<br/>告警阈值: &lt; 0.7</div>
+          </div>
+          <div style="border: 1px solid var(--c-border-light); padding: 12px;">
+            <div style="font-size: 20px; font-weight: 700; font-family: var(--font-mono); color: var(--c-purple);">fallback_reject_count</div>
+            <div style="font-size: 11px; color: var(--c-text-sub); margin-top: 4px;">被规则引擎拦截的兜底写入次数<br/>告警阈值: &gt; 50/h</div>
+          </div>
+          <div style="border: 1px solid var(--c-border-light); padding: 12px;">
+            <div style="font-size: 20px; font-weight: 700; font-family: var(--font-mono); color: var(--c-purple);">stale_cache_served</div>
+            <div style="font-size: 11px; color: var(--c-text-sub); margin-top: 4px;">低质量缓存被返回的次数<br/>告警阈值: &gt; 0 (P0)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="layer">
+    <div class="layer-num" style="color: var(--c-text-main);">L5</div>
+    <div class="layer-body" style="border-left: 3px solid var(--c-text-main);">
+      <div class="layer-hd">缺陷反哺闭环 &nbsp;<span class="badge badge--fill">Qoder 模式</span></div>
+      <div class="layer-p">
+        <strong>目标</strong>：每次发现新类型的质量缺陷 → 自动更新规则库 + 补充测试用例 + 更新文档。
+        <div class="flow-row" style="margin-top: 10px; gap: 8px;">
+          <div class="flow-node flow-node--red" style="font-size: 11px;">发现缺陷</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-node" style="font-size: 11px;">根因分析<br/><span class="flow-label">5 Whys</span></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-node" style="font-size: 11px;">补充规则<br/><span class="flow-label">quality-rules.json</span></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-node" style="font-size: 11px;">补充测试<br/><span class="flow-label">TQ-NNN</span></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-node" style="font-size: 11px;">更新门禁<br/><span class="flow-label">CI/CD</span></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-node" style="font-size: 11px;">监控告警<br/><span class="flow-label">Prometheus</span></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-node flow-node--green" style="font-size: 11px;">同类缺陷<br/>不再出现</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 04: 质量门禁 -->
+<!-- ============================================================ -->
+<div class="section">
+  <div class="section-hd">
+    <span class="section-num">04</span>
+    <span class="section-title">缓存质量门禁清单 · Gate Checklist</span>
+  </div>
+
+  <p class="section-p">每条门禁对应一个明确的"触发时机 → 检查条件 → 动作"，可逐步实现：</p>
+
+  <div class="card">
+    <div class="gate-row">
+      <div class="gate-status" style="color: var(--c-green);">✅ P0</div>
+      <div class="gate-name"><strong>G1 · 写入质量门禁</strong><br/><span style="font-size: 11px; color: var(--c-text-sub);">StoreToolFacts / PostInferenceAsync 写入缓存前</span></div>
+      <div class="gate-rule">result.Quality != FALLBACK<br/>AND result.Regulations.Count > 0</div>
+    </div>
+    <div class="gate-row">
+      <div class="gate-status" style="color: var(--c-green);">✅ P0</div>
+      <div class="gate-name"><strong>G2 · 读取质量门禁</strong><br/><span style="font-size: 11px; color: var(--c-text-sub);">TryAnswerFromMemory / PreInferenceAsync 返回缓存前</span></div>
+      <div class="gate-rule">cached.Quality >= DICTIONARY_HIT<br/>OR cached.ToolsUsed.Count > 0</div>
+    </div>
+    <div class="gate-row">
+      <div class="gate-status" style="color: var(--c-amber);">⚠️ P1</div>
+      <div class="gate-name"><strong>G3 · 兜底文本模式门禁</strong><br/><span style="font-size: 11px; color: var(--c-text-sub);">任何工具返回值在写入缓存前</span></div>
+      <div class="gate-rule">!Regex.IsMatch(content, FallbackPattern)</div>
+    </div>
+    <div class="gate-row">
+      <div class="gate-status" style="color: var(--c-amber);">⚠️ P1</div>
+      <div class="gate-name"><strong>G4 · 缓存TTL质量衰减</strong><br/><span style="font-size: 11px; color: var(--c-text-sub);">低质量缓存比高质量缓存更快过期</span></div>
+      <div class="gate-rule">TTL_FALLBACK=1min / TTL_DICT=5min / TTL_RAG=10min</div>
+    </div>
+    <div class="gate-row">
+      <div class="gate-status" style="color: var(--c-text-sub);">📋 P2</div>
+      <div class="gate-name"><strong>G5 · 交叉验证门禁</strong><br/><span style="font-size: 11px; color: var(--c-text-sub);">缓存命中后异步验证：当前知识库是否已有更新数据</span></div>
+      <div class="gate-rule">background: re-query RAG → diff → invalidate stale</div>
+    </div>
+    <div class="gate-row">
+      <div class="gate-status" style="color: var(--c-text-sub);">📋 P2</div>
+      <div class="gate-name"><strong>G6 · 用户反馈闭环</strong><br/><span style="font-size: 11px; color: var(--c-text-sub);">用户对缓存回答点踩 → 该条缓存立即失效 + 规则调整</span></div>
+      <div class="gate-rule">feedback.thumbs_down → cache.Invalidate(key)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 05: 实施路线图 -->
+<!-- ============================================================ -->
+<div class="section">
+  <div class="section-hd">
+    <span class="section-num">05</span>
+    <span class="section-title">实施路线 · P0 止血 → P1 加固 → P2 演进</span>
+  </div>
+
+  <div class="grid-3">
+    <div class="card card--red">
+      <div class="card-hd"><span class="badge badge--fill">P0</span>&nbsp; 止血（本周）</div>
+      <div class="card-body">
+        <ul style="font-size: 12px; line-height: 1.8; padding-left: 16px;">
+          <li><strong>G1 写入质量门禁</strong>：<span class="mono">StoreToolFacts</span> 增加 Quality 检查，FALLBACK 不写入</li>
+          <li><strong>G2 读取质量门禁</strong>：<span class="mono">MemoryPreResult</span> 增加 <span class="mono">HasToolCallsForThisAnswer</span>（已实现）</li>
+          <li><strong>TQ-001 ~ TQ-003</strong>：3 条核心测试用例</li>
+          <li>兜底文本正则库（FallbackPatterns）初版</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card card--amber">
+      <div class="card-hd"><span class="badge badge--amber">P1</span>&nbsp; 加固（本月）</div>
+      <div class="card-body">
+        <ul style="font-size: 12px; line-height: 1.8; padding-left: 16px;">
+          <li><strong>ToolResult 类型</strong>：替代裸 <span class="mono">string</span>，编译期强制质量字段</li>
+          <li><strong>G3 兜底文本模式门禁</strong>：<span class="mono">FallbackPatterns</span> 正则库上线</li>
+          <li><strong>G4 分级 TTL</strong>：低质量缓存短 TTL</li>
+          <li><strong>L4 运行时监控</strong>：3 个 Prometheus 指标上线</li>
+          <li><strong>TQ-004 ~ TQ-005</strong>：补充测试用例</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card card--blue">
+      <div class="card-hd"><span style="font-size: 10px; font-family: var(--font-mono); color: var(--c-text-sub);">P2</span>&nbsp; 演进（下季度）</div>
+      <div class="card-body">
+        <ul style="font-size: 12px; line-height: 1.8; padding-left: 16px;">
+          <li><strong>G5 交叉验证</strong>：缓存命中后异步验证知识库新鲜度</li>
+          <li><strong>G6 用户反馈闭环</strong>：点踩 → 缓存失效 → 规则调整</li>
+          <li><strong>L5 缺陷反哺闭环</strong>：自动化规则更新 pipeline</li>
+          <li>规则库版本化：<span class="mono">quality-rules.json</span> 纳入 Git 管理</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 06: 规则文件 -->
+<!-- ============================================================ -->
+<div class="section">
+  <div class="section-hd">
+    <span class="section-num">06</span>
+    <span class="section-title">规则文件结构 · quality-rules.json</span>
+  </div>
+
+  <div class="code-block">{
+  <span class="str">"version"</span>: <span class="str">"1.0.0"</span>,
+  <span class="str">"generated_from"</span>: <span class="str">"QF-2026-001 StoreToolFacts质量缺陷"</span>,
+  <span class="str">"rules"</span>: [
+    {
+      <span class="str">"id"</span>: <span class="str">"R001"</span>,
+      <span class="str">"name"</span>: <span class="str">"禁止缓存兜底文本"</span>,
+      <span class="str">"trigger"</span>: { <span class="str">"method"</span>: <span class="str">"StoreToolFacts"</span>, <span class="str">"file"</span>: <span class="str">"MemoryService.cs"</span> },
+      <span class="str">"condition"</span>: <span class="str">"result.Quality == QualityLevel.FALLBACK"</span>,
+      <span class="str">"action"</span>: <span class="str">"REJECT"</span>,
+      <span class="str">"fallback_patterns"</span>: [
+        <span class="str">"未在常见.*中直接匹配"</span>,
+        <span class="str">"建议查阅.*全文"</span>,
+        <span class="str">"未找到.*数据"</span>,
+        <span class="str">"建议参考.*查询"</span>,
+        <span class="str">"在常见禁忌表中未发现直接冲突"</span>
+      ],
+      <span class="str">"created"</span>: <span class="str">"2026-06-27"</span>,
+      <span class="str">"source_defect"</span>: <span class="str">"QF-2026-001"</span>
+    },
+    {
+      <span class="str">"id"</span>: <span class="str">"R002"</span>,
+      <span class="str">"name"</span>: <span class="str">"缓存读取必须验证置信度"</span>,
+      <span class="str">"trigger"</span>: { <span class="str">"method"</span>: <span class="str">"TryAnswerFromMemory"</span> },
+      <span class="str">"condition"</span>: <span class="str">"cached.Quality < QualityLevel.DICTIONARY_HIT"</span>,
+      <span class="str">"action"</span>: <span class="str">"RETURN_NULL"</span>,
+      <span class="str">"created"</span>: <span class="str">"2026-06-27"</span>
+    }
+  ]
+}</div>
+</div>
+
+<!-- FOOTER -->
+<div style="border-top: 1px solid var(--c-border); padding-top: 16px; margin-top: 32px; font-size: 11px; color: var(--c-text-sub); font-family: var(--font-mono); display: flex; justify-content: space-between;">
+  <span>Memory Cache Quality Feedback Loop · Engineering Blueprint</span>
+  <span>QF-2026-001 · PAGE 1/1</span>
+</div>
+
+</div>
+</body>
+</html>

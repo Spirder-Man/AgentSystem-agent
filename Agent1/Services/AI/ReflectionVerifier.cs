@@ -16,6 +16,8 @@ namespace Agent1.Services
     {
         public string ClaimedText { get; set; } = "";
         public string ClaimType { get; set; } = "";   // "RegulationNumber" | "Clause" | "SubstanceName"
+        public string SearchQuery { get; set; } = ""; // 发往 KB 的实际查询
+        public int ChunksReturned { get; set; }        // KB 返回的 chunk 数
         public bool FoundInSource { get; set; }
         public string? EvidenceSnippet { get; set; }
 
@@ -25,7 +27,7 @@ namespace Agent1.Services
             var note = FoundInSource
                 ? (EvidenceSnippet != null ? $" → {EvidenceSnippet.Truncate(80)}" : "")
                 : " ⚠️ 未在知识库中找到! 可能幻觉";
-            return $"  {mark} {ClaimedText,-25} {note}";
+            return $"  {mark} {ClaimedText,-25} query'{SearchQuery}'→{ChunksReturned}chunks {note}";
         }
     }
 
@@ -154,6 +156,8 @@ namespace Agent1.Services
                         {
                             ClaimedText = normalized,
                             ClaimType = type,
+                            SearchQuery = normalized,
+                            ChunksReturned = chunks.Count,
                             FoundInSource = found,
                             EvidenceSnippet = evidence?.Truncate(200)
                         });
@@ -166,6 +170,8 @@ namespace Agent1.Services
                         {
                             ClaimedText = normalized,
                             ClaimType = type,
+                            SearchQuery = normalized,
+                            ChunksReturned = 0,
                             FoundInSource = true,  // 无法验证时暂不标记为幻觉，但 EvidenceSnippet 标明异常
                             EvidenceSnippet = $"[KB检索异常] 无法验证 {normalized}"
                         });

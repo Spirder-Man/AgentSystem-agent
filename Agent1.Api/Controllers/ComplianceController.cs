@@ -11,7 +11,7 @@ namespace Agent1.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "Auditor")]
+[Authorize(Policy = "Viewer")]
 public class ComplianceController : ControllerBase
 {
     private readonly AgentDialog _agentDialog;
@@ -93,6 +93,7 @@ public class ComplianceController : ControllerBase
     /// 化工合规审核 — 提交查询并返回合规判断
     /// </summary>
     [HttpPost("check")]
+    [Authorize(Policy = "Auditor")]
     public async Task<IActionResult> CheckCompliance([FromBody] ComplianceRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Query))
@@ -159,8 +160,21 @@ public class ComplianceController : ControllerBase
                     isSensitive: true);
 
                 // [P3 工业集成] 查询库存台账 + EHS 工单（管线就绪）
-                var inventory = await _integrationService.GetWarehouseRecordsAsync(request.Query);
-                var tickets = await _integrationService.GetEHSTicketsAsync(false);
+                // P1-1: 外部系统未接入时显式降级，不阻断合规审核主流程
+                List<WarehouseRecord> inventory;
+                List<EHSTicket> tickets;
+                try
+                {
+                    inventory = await _integrationService.GetWarehouseRecordsAsync(request.Query);
+                    tickets = await _integrationService.GetEHSTicketsAsync(false);
+                }
+                catch (NotSupportedException ex)
+                {
+                    _logger.LogWarning("外部系统未接入，跳过库存/EHS查询: {Message}", ex.Message);
+                    inventory = new List<WarehouseRecord>();
+                    tickets = new List<EHSTicket>();
+                    allWarnings.Add("外部系统(ERP/EHS)未接入，库存台账和工单数据不可用");
+                }
 
                 // ═══ 存入缓存 ═══
                 _cache.Set(request.Query, new CachedComplianceResponse

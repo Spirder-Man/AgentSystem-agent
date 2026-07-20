@@ -20,10 +20,19 @@ namespace Agent1.Services.Orchestration
         private InspectionStore _cache = new();
 
         public InspectionRepository()
-        {
-            _store = new InspectionStoreRepository("inspection-store.json");
-            _cache = _store.Load();
-        }
+    {
+        _store = new InspectionStoreRepository("inspection-store.json");
+        _cache = _store.Load();
+    }
+
+    /// <summary>
+    /// 使用自定义存储路径（用于测试隔离，避免并行竞态）。
+    /// </summary>
+    public InspectionRepository(string storePath)
+    {
+        _store = new InspectionStoreRepository(storePath);
+        _cache = _store.Load();
+    }
 
         // ═══════════════════════════════════════
         // 巡检计划 CRUD
@@ -42,6 +51,14 @@ namespace Agent1.Services.Orchestration
             else
                 _cache.Plans.Add(plan);
             Save();
+        }
+
+        /// <summary>删除巡检计划，返回是否成功</summary>
+        public bool DeletePlan(string planId)
+        {
+            var removed = _cache.Plans.RemoveAll(p => p.PlanId == planId);
+            if (removed > 0) Save();
+            return removed > 0;
         }
 
         // ═══════════════════════════════════════

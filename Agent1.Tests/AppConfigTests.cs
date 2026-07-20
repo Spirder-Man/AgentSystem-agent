@@ -49,32 +49,56 @@ namespace Agent1.Tests
         [Fact]
         public void Load_WithMinimalConfig_ShouldSetDefaults()
         {
-            var config = BuildMinimalConfig();
+            // 保存并清除环境变量，避免远程 .env 覆盖内存默认值断言
+            var savedLlmEndpoint = Environment.GetEnvironmentVariable("LLM_ENDPOINT");
+            try
+            {
+                Environment.SetEnvironmentVariable("LLM_ENDPOINT", null);
 
-            AppConfig.Load(config);
-            var app = AppConfig.Instance;
+                var config = BuildMinimalConfig();
 
-            // 验证用户指定的值
-            app.Llm.ModelId.Should().Be("test-model");
-            app.Llm.Endpoint.Should().Be("http://localhost:11434");
-            app.Database.Host.Should().Be("localhost");
+                AppConfig.Load(config);
+                var app = AppConfig.Instance;
 
-            // 验证默认值未被覆盖
-            app.Llm.MaxRetries.Should().Be(3, "默认重试次数应为3");
-            app.Llm.RetryDelayMs.Should().Be(1000, "默认重试延迟应为1000ms");
-            app.Llm.CircuitBreakerThreshold.Should().Be(3, "默认熔断器阈值应为3");
-            app.Database.Port.Should().Be(5432, "默认端口应为5432");
-            app.Database.Provider.Should().Be("PostgreSQL", "默认数据库提供者");
-            app.Database.ConnectionTimeout.Should().Be(30, "默认连接超时30秒");
+                // 验证用户指定的值
+                app.Llm.ModelId.Should().Be("test-model");
+                app.Llm.Endpoint.Should().Be("http://localhost:11434");
+                app.Database.Host.Should().Be("localhost");
 
-            // 验证知识库配置默认值
-            app.KnowledgeBase.ChunkSize.Should().Be(500, "默认分块大小500");
-            app.KnowledgeBase.ChunkOverlap.Should().Be(100, "默认重叠窗口100");
-            app.KnowledgeBase.EnableSemanticChunking.Should().BeTrue("默认启用语义分块");
-            app.KnowledgeBase.EnableQueryExpansion.Should().BeTrue("默认启用查询扩展");
-            app.KnowledgeBase.QueryCacheTtlMinutes.Should().Be(5, "默认缓存TTL 5分钟");
-            app.KnowledgeBase.QueryCacheMaxEntries.Should().Be(500, "默认缓存最大条目500");
-            app.KnowledgeBase.SearchMode.Should().Be(SearchModeType.Hybrid, "默认混合检索模式");
+                // 验证默认值未被覆盖
+                app.Llm.MaxRetries.Should().Be(3, "默认重试次数应为3");
+                app.Llm.RetryDelayMs.Should().Be(1000, "默认重试延迟应为1000ms");
+                app.Llm.CircuitBreakerThreshold.Should().Be(3, "默认熔断器阈值应为3");
+                app.Database.Port.Should().Be(5432, "默认端口应为5432");
+                app.Database.Provider.Should().Be("PostgreSQL", "默认数据库提供者");
+                app.Database.ConnectionTimeout.Should().Be(30, "默认连接超时30秒");
+
+                // 验证知识库配置默认值
+                app.KnowledgeBase.ChunkSize.Should().Be(500, "默认分块大小500");
+                app.KnowledgeBase.ChunkOverlap.Should().Be(100, "默认重叠窗口100");
+                app.KnowledgeBase.EnableSemanticChunking.Should().BeTrue("默认启用语义分块");
+                app.KnowledgeBase.EnableQueryExpansion.Should().BeTrue("默认启用查询扩展");
+                app.KnowledgeBase.QueryCacheTtlMinutes.Should().Be(5, "默认缓存TTL 5分钟");
+                app.KnowledgeBase.QueryCacheMaxEntries.Should().Be(500, "默认缓存最大条目500");
+                app.KnowledgeBase.SearchMode.Should().Be(SearchModeType.Hybrid, "默认混合检索模式");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("LLM_ENDPOINT", savedLlmEndpoint);
+            }
+        }
+
+        // [P1 #4] 多模态(视觉)与 Reranker 默认端口必须分离，避免同占 8082 冲突
+        [Fact]
+        public void MultimodalAndRerankerEndpoints_ShouldNotShareSamePort()
+        {
+            var multimodal = new ChemicalLlmConfig().MultimodalEndpoint;
+            var reranker = new VectorSearchConfig().RerankerEndpoint;
+
+            multimodal.Should().NotBe(reranker, "多模态与 Reranker 端点不得完全相同");
+            new Uri(multimodal).Port.Should().NotBe(new Uri(reranker).Port, "两者不得共用同一端口");
+            new Uri(multimodal).Port.Should().Be(8083);
+            new Uri(reranker).Port.Should().Be(8082);
         }
 
         [Fact]

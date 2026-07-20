@@ -292,4 +292,21 @@ namespace Agent1.Models
         /// <summary>是否已有资产台账</summary>
         public bool HasInventory => TotalAssets > 0;
     }
+
+    /// <summary>
+    /// DeterministicRuleEngine 的 LLM 降级查询结果。
+    /// 当 LLM 不可用时（熔断器打开 / 全部重试耗尽），
+    /// 规则引擎使用 ChemicalSubstanceDatabase 直接回答合规查询。
+    /// </summary>
+    public class ComplianceFallbackResult
+    {
+        /// <summary>确定性回答文本</summary>
+        public string Answer { get; set; } = string.Empty;
+
+        /// <summary>涉及法规编号列表（已通过数据库验证）</summary>
+        public List<string> RegulationRefs { get; set; } = new();
+
+        /// <summary>数据质量标记：DATABASE_HIT=结构化数据库命中, DICTIONARY_HIT=硬编码字典命中</summary>
+        public string Quality { get; set; } = "DATABASE_HIT";
+    }
 }

@@ -7,13 +7,15 @@ namespace Agent1.Models
     /// <summary>
     /// [QF-2026-001] 工具返回值质量等级 — 编译期强制下游处理质量字段。
     /// 替代裸 string 返回值，确保缓存层能区分"有效法规数据"和"兜底诚实声明"。
+    /// P1-3: 数值按置信度排序，DATABASE_HIT(4) > RAG_HIT(3)，
+    /// 确保按数值比较取源时数据库优先级高于RAG。
     /// </summary>
     public enum QualityLevel
     {
+        /// <summary>结构化数据库命中（最高置信度）</summary>
+        DATABASE_HIT = 4,
         /// <summary>RAG 检索命中，有原文支撑</summary>
-        RAG_HIT = 4,
-        /// <summary>结构化数据库命中</summary>
-        DATABASE_HIT = 3,
+        RAG_HIT = 3,
         /// <summary>硬编码字典命中</summary>
         DICTIONARY_HIT = 2,
         /// <summary>兜底诚实声明（不可作为领域事实缓存）</summary>

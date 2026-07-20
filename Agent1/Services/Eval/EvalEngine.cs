@@ -167,8 +167,10 @@ public class EvalEngine
                 // [T13 无状态架构] Step 1: 按意图裁剪工具定义
                 // info_query: 仅查询工具（3个, ~500 tokens） vs 全量（7个, ~1200 tokens）
                 // compliance_judgment: 合规判断工具（5个, ~800 tokens）
+                // [P0 FIX] info_query 白名单从3个扩展到6个，覆盖 G(化学品属性)/H(重大危险源)/I(法规版本) 三类用例
                 var toolNames = isInfoQuery
-                    ? new[] { "CheckHazardCategory", "GetSafetyDistance", "GetCurrentTime" }
+                    ? new[] { "CheckHazardCategory", "GetSafetyDistance", "GetCurrentTime",
+                               "LookupChemicalProperties", "GetMajorHazardThreshold", "CheckRegulationVersion" }
                     : new[] { "CheckStorageCompatibility", "CheckHazardCategory",
                                "GetSafetyDistance", "CheckRegulation", "GetCurrentTime" };
 
@@ -230,7 +232,55 @@ public class EvalEngine
                             var toolResult = matchedCall?.Result;
                             result.conclusion_match = CheckConclusion(response, tc.ExpectedConclusion, result.tool_match, tc.Category, tc.Intent, toolResult);
                             var isInfoQ = (tc.Intent ?? "") == "info_query";
-                            Console.WriteLine($"      {(result.conclusion_match ? "✅" : "⚠️")} 结论: {(isInfoQ ? $"reg={tc.ExpectedConclusion.ExpectedRegulationNumber ?? "?"}" : $"is_compliant={tc.ExpectedConclusion.IsCompliant}")}");
+                            var regDisplay = tc.ExpectedConclusion.ExpectedRegulationNumbers.Count > 1
+                                ? $"reg=[{string.Join(", ", tc.ExpectedConclusion.ExpectedRegulationNumbers)}]"
+                                : $"reg={tc.ExpectedConclusion.ExpectedRegulationNumber ?? "?"}";
+                            Console.WriteLine($"      {(result.conclusion_match ? "✅" : "⚠️")} 结论: {(isInfoQ ? regDisplay : $"is_compliant={tc.ExpectedConclusion.IsCompliant}")}");
+
+                            // [P1 FIX] Level 4 补充: KB-based extra reg hallucination 计数
+                            if (result.conclusion_match && isInfoQ && tc.ExpectedConclusion!.ExpectedRegulationNumbers.Count > 0)
+                            {
+                                try
+                                {
+                                    var allRegs = ConclusionVerifier.ExtractRegulations(response);
+                                    var expectedRegs = tc.ExpectedConclusion.ExpectedRegulationNumbers;
+                                    var extraRegs = allRegs.Where(r => !expectedRegs.Any(e => CheckRegulationMatch(r, e))).ToList();
+
+                                    var expectedDisplay = expectedRegs.Count > 1 ? $"[{string.Join(", ", expectedRegs)}]" : expectedRegs[0];
+                                    result.ConclusionReasons = new List<ConclusionReason>
+                                    {
+                                        new ConclusionReason { Level = "Level4_HallucinationCheck", RuleApplied = $"提取{allRegs.Count}个GB编号, 预期={expectedDisplay}", Passed = true }
+                                    };
+
+                                    foreach (var reg in extraRegs)
+                                    {
+                                        try
+                                        {
+                                            // [P0 FIX] Bug B: 数据库源GB编号不应被误判为幻觉
+                                            // CheckRegulationVersion 返回的 GB 编号来自 ChemicalSubstanceDatabase 硬编码字典，
+                                            // 非 RAG 文档。若知识库检索不到但数据库中存在，视为合法引用，不计入幻觉。
+                                            var dbRegVersion = ChemicalSubstanceDatabase.GetRegulationVersion(reg);
+                                            if (dbRegVersion != null)
+                                            {
+                                                Console.WriteLine($"      🔍 Level4 KB验证: ⚡ {reg} → 数据库源（非RAG），跳过幻觉检查 (版本:{dbRegVersion.CurrentVersion})");
+                                                continue;
+                                            }
+
+                                            var chunks = await _knowledgeBaseService.RetrieveChemicalRegulationAsync(reg, regulationType: "国标", topK: 1);
+                                            if (chunks.Count == 0)
+                                            {
+                                                result.HallucinatedClaims++;
+                                                result.TotalClaims++;
+                                                Console.WriteLine($"      🔍 Level4 KB验证: ✗ {reg} → 知识库未找到 (疑似幻觉)");
+                                            }
+                                        }
+                                        catch { /* 单条验证异常不中断 */ }
+                                    }
+                                    if (extraRegs.Count > 0 && result.TotalClaims > 0)
+                                        result.FaithfulnessScore = (double)result.VerifiedClaims / result.TotalClaims;
+                                }
+                                catch { /* KB 验证异常不中断评测 */ }
+                            }
                         }
                     }
                     else
@@ -733,9 +783,32 @@ public class EvalEngine
                 }
             }
 
+            // [P2 FIX] 填充可追溯的 ClaimDetails
+            result.ClaimDetails = bizReport.Claims.Select(c => new ClaimDetail
+            {
+                ClaimedText = c.ClaimedText,
+                ClaimType = c.ClaimType,
+                SearchQuery = c.SearchQuery,
+                ChunksReturned = c.ChunksReturned,
+                TopChunkSnippet = c.EvidenceSnippet?.Truncate(200),
+                FoundInSource = c.FoundInSource,
+                Verdict = c.FoundInSource ? "verified" : "hallucinated",
+                VerdictReason = c.FoundInSource ? null :
+                    (c.ChunksReturned == 0 ? $"知识库返回0条结果" : $"检索{c.ChunksReturned}条但未匹配")
+            }).ToList();
+
             if (bizReport.Claims.Count > 0)
             {
                 Console.WriteLine($"      📋 忠实度: {result.VerifiedClaims}/{result.TotalClaims} 声明可验证 (精度={result.FaithfulnessScore:P1})");
+                // [P2 FIX] 逐条声明日志输出
+                foreach (var claim in bizReport.Claims)
+                {
+                    var mark = claim.FoundInSource ? "✓" : "✗";
+                    var detail = claim.FoundInSource
+                        ? $"命中: \"{claim.EvidenceSnippet?.Truncate(50) ?? "-"}\""
+                        : (claim.ChunksReturned == 0 ? $"0 chunks, 未命中→[疑似幻觉]" : $"{claim.ChunksReturned} chunks, 不匹配");
+                    Console.WriteLine($"         {mark} {claim.ClaimedText} → query'{claim.SearchQuery}'→{claim.ChunksReturned} chunks, {detail}");
+                }
                 if (result.HallucinatedClaims > 0)
                     Console.WriteLine($"      ⚠️ {result.HallucinatedClaims} 条疑似幻觉: {string.Join(", ", bizReport.HallucinatedClaims)}");
             }
@@ -910,17 +983,53 @@ public class EvalEngine
                 return;
             }
 
+            // [P2 FIX] 逐条引用验证，填充 CitationTraces
+            result.CitationTraces = new List<CitationTrace>();
             int foundCount = 0;
             foreach (var reg in citedRegs)
             {
                 var normalized = System.Text.RegularExpressions.Regex.Replace(reg, @"\s+", "");
-                var normalizedSource = System.Text.RegularExpressions.Regex.Replace(sourceText, @"\s+", "");
-                if (normalizedSource.Contains(normalized, StringComparison.OrdinalIgnoreCase))
-                    foundCount++;
+
+                // 在检索结果中查找匹配的 chunk
+                string? matchedChunkId = null;
+                string? matchedSnippet = null;
+                if (result.RetrievedChunks != null)
+                {
+                    foreach (var chunk in result.RetrievedChunks)
+                    {
+                        var normalizedChunk = System.Text.RegularExpressions.Regex.Replace(chunk.ContentPreview ?? "", @"\s+", "");
+                        if (normalizedChunk.Contains(normalized, StringComparison.OrdinalIgnoreCase))
+                        {
+                            matchedChunkId = chunk.ChunkId;
+                            matchedSnippet = chunk.ContentPreview?.Truncate(100);
+                            break;
+                        }
+                    }
+                }
+
+                var found = matchedChunkId != null;
+                if (found) foundCount++;
+
+                result.CitationTraces.Add(new CitationTrace
+                {
+                    CitedRegulation = reg,
+                    FoundInContext = found,
+                    SourceChunkId = matchedChunkId,
+                    SourceSnippet = matchedSnippet
+                });
             }
 
             result.CitationAccuracy = (double)foundCount / citedRegs.Count;
             Console.WriteLine($"      🔗 Citation Accuracy: {foundCount}/{citedRegs.Count} = {result.CitationAccuracy:P1}");
+            // [P2 FIX] 逐条引用日志输出
+            foreach (var trace in result.CitationTraces)
+            {
+                var mark = trace.FoundInContext ? "✓" : "✗";
+                var detail = trace.FoundInContext
+                    ? $"在检索结果中找到 (chunk_id: {trace.SourceChunkId})"
+                    : "未在检索结果中找到";
+                Console.WriteLine($"         {mark} {trace.CitedRegulation} → {detail}");
+            }
         }
         catch (Exception ex)
         {
@@ -1001,8 +1110,29 @@ public class EvalEngine
                 return false;
             }
 
-            if (!string.IsNullOrEmpty(expected.ExpectedRegulationNumber))
-                return CheckRegulationMatch(response, expected.ExpectedRegulationNumber);
+            if (expected.ExpectedRegulationNumbers.Count > 0)
+            {
+                // [P1 FIX] Level 4: 反向幻觉扣除（支持数组格式预期值）
+                // 提取回答中所有 GB 编号，验证预期编号列表中至少一个在回答中
+                var allRegs = ConclusionVerifier.ExtractRegulations(response);
+                var expectedRegs = expected.ExpectedRegulationNumbers;
+                if (allRegs.Count > 0)
+                {
+                    // 回答中有 GB 编号 → 检查是否有任一预期编号匹配
+                    var hasExpected = expectedRegs.Any(e => allRegs.Any(r => CheckRegulationMatch(r, e)));
+                    if (!hasExpected)
+                    {
+                        var expectedDisplay = expectedRegs.Count > 1 ? $"[{string.Join(", ", expectedRegs)}]" : expectedRegs[0];
+                        Console.WriteLine($"      🔍 Level4 幻觉扣除: 回答含 {allRegs.Count} 个GB编号但预期 {expectedDisplay} 均不匹配");
+                        return false;
+                    }
+                    var matchedDisplay = expectedRegs.Count > 1 ? $"[{string.Join(", ", expectedRegs)}]" : expectedRegs[0];
+                    Console.WriteLine($"      ✅ Level4: 预期编号 {matchedDisplay} 至少一个在回答的 {allRegs.Count} 个GB编号中");
+                    return true;
+                }
+                // 回答中没有 GB 编号 → 降级到子串匹配
+                return expectedRegs.Any(e => CheckRegulationMatch(response, e));
+            }
 
             var hasDistance = Regex.IsMatch(response, @"(\d+(?:\.\d+)?)\s*(米|m)");
             var hasRegulation = Regex.IsMatch(response, @"GB\s*/?T?\s*\d{4,5}[.\-]\d+");

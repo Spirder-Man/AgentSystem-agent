@@ -10,6 +10,8 @@ namespace Agent1.Services
         Task<string> ExportAuditReportAsync(DateTime startTime, DateTime endTime);
         // [P1] 哈希链完整性校验：逐条验证 SHA256 链式哈希，返回 (是否完整, 第一条断裂的ID, 详情)
         Task<(bool intact, long? brokenAtId, string detail)> VerifyIntegrityAsync();
+        // [P3 哈希链修复] 逐条重算并回写所有 chain_hash，修复历史断链
+        Task<(int repaired, string detail)> RepairChainAsync();
     }
 
     // 审计日志模型

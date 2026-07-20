@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Agent1 — 化工园区危化品合规审查 AI Agent 架构蓝图</title>
+<style>
+:root {
+  --c-bg: #f8fafc;
+  --c-canvas: #ffffff;
+  --c-border: #cbd5e1;
+  --c-text-main: #0f172a;
+  --c-text-sub: #64748b;
+  --c-accent: #0f172a;
+  --c-ok: #16a34a;
+  --c-warn: #d97706;
+  --c-err: #dc2626;
+  --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'SF Mono', Monaco, Consolas, monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--c-bg);
+  font-family: var(--font-ui);
+  color: var(--c-text-main);
+  padding: 24px;
+  line-height: 1.5;
+}
+
+.diagram-canvas {
+  background: var(--c-canvas);
+  border: 2px solid var(--c-border);
+  padding: 0;
+  max-width: 1480px;
+  margin: 0 auto;
+}
+
+/* ── Header ── */
+.dgm-header {
+  border-bottom: 2px solid var(--c-border);
+  padding: 24px 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+.dgm-title { font-size: 22px; font-weight: 700; }
+.dgm-meta { text-align: right; }
+.dgm-meta span { display: block; font-size: 11px; color: var(--c-text-sub); font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.3px; }
+
+/* ── Section ── */
+.dgm-section { padding: 20px 32px; border-bottom: 1px solid var(--c-border); }
+.dgm-section:last-child { border-bottom: none; }
+.dgm-section-title {
+  font-size: 13px; font-weight: 600; color: var(--c-text-sub);
+  text-transform: uppercase; letter-spacing: 0.8px;
+  margin-bottom: 16px;
+}
+
+/* ── Architecture Stack ── */
+.stack { display: flex; flex-direction: column; gap: 0; }
+.stack-layer {
+  border: 1px solid var(--c-border);
+  padding: 14px 20px;
+  display: flex; align-items: center; gap: 16px;
+  position: relative;
+}
+.stack-layer + .stack-layer { border-top: none; }
+.stack-layer--fe { background: #f0fdf4; border-left: 3px solid #16a34a; }
+.stack-layer--api { background: #eff6ff; border-left: 3px solid #2563eb; }
+.stack-layer--core { background: #fefce8; border-left: 3px solid #ca8a04; }
+.stack-layer--infra { background: #fef2f2; border-left: 3px solid #dc2626; }
+.stack-label { font-size: 13px; font-weight: 700; min-width: 100px; font-family: var(--font-mono); }
+.stack-info { font-size: 12px; color: var(--c-text-sub); flex: 1; }
+.stack-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.stack-arrow {
+  height: 16px; display: flex; align-items: center; justify-content: center;
+  color: var(--c-text-sub); font-size: 12px;
+}
+
+/* ── Grid ── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
+.grid-6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+
+/* ── Card ── */
+.card {
+  border: 1px solid var(--c-border); padding: 12px 14px;
+  font-size: 12px;
+}
+.card-title { font-weight: 600; font-size: 12px; margin-bottom: 6px; }
+.card-sub { font-size: 11px; color: var(--c-text-sub); font-family: var(--font-mono); }
+.card-row { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+
+/* ── Module Chip ── */
+.chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: 1px solid var(--c-border); padding: 5px 9px;
+  font-size: 11px; font-family: var(--font-mono);
+}
+.chip--core { border-color: #ca8a04; background: #fefce8; font-weight: 600; }
+
+/* ── Badge ── */
+.badge {
+  display: inline-block; font-size: 9px; font-family: var(--font-mono);
+  padding: 2px 6px; border: 1px solid var(--c-border);
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+.badge--fill { background: var(--c-accent); color: #fff; border-color: var(--c-accent); }
+.badge--ok { border-color: #16a34a; color: #16a34a; }
+.badge--warn { border-color: #d97706; color: #d97706; }
+.badge--err { border-color: #dc2626; color: #dc2626; }
+.badge--blue { border-color: #2563eb; color: #2563eb; }
+
+/* ── Table ── */
+.dgm-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.dgm-table th {
+  text-align: left; font-weight: 600; font-size: 10px; color: var(--c-text-sub);
+  text-transform: uppercase; letter-spacing: 0.4px; padding: 6px 10px;
+  border-bottom: 1px solid var(--c-border); background: #f8fafc;
+}
+.dgm-table td { padding: 6px 10px; border-bottom: 1px solid var(--c-border); font-size: 12px; }
+.dgm-table tr:last-child td { border-bottom: none; }
+.dgm-table .mono { font-family: var(--font-mono); font-size: 11px; }
+
+/* ── Metric ── */
+.metric { text-align: center; padding: 8px 4px; }
+.metric-val { font-size: 28px; font-weight: 700; font-family: var(--font-mono); }
+.metric-label { font-size: 10px; color: var(--c-text-sub); text-transform: uppercase; letter-spacing: 0.3px; margin-top: 2px; }
+
+/* ── Dual Channel ── */
+.dual { display: grid; grid-template-columns: 1fr 40px 1fr; gap: 0; align-items: start; }
+.dual-left, .dual-right { border: 1px solid var(--c-border); padding: 14px 16px; }
+.dual-left { border-left: 3px solid var(--c-accent); }
+.dual-right { border-right: 3px solid var(--c-text-sub); }
+.dual-divider {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; color: var(--c-text-sub); writing-mode: vertical-rl;
+  font-family: var(--font-mono);
+}
+.dual-title { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+.dual-item { font-size: 11px; padding: 3px 0; }
+.dual-item::before { content: '▸ '; color: var(--c-text-sub); }
+
+/* ── Priority ── */
+.prio-bar { display: flex; gap: 12px; flex-wrap: wrap; }
+.prio-card { flex: 1; min-width: 200px; border: 1px solid var(--c-border); padding: 12px; }
+.prio-card h4 { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+.prio-card ul { list-style: none; font-size: 12px; }
+.prio-card li { padding: 3px 0; border-bottom: 1px dotted var(--c-border); }
+.prio-card li:last-child { border-bottom: none; }
+.prio-card--p0 { border-left: 3px solid var(--c-err); }
+.prio-card--p1 { border-left: 3px solid var(--c-warn); }
+.prio-card--p2 { border-left: 3px solid #2563eb; }
+.prio-card--p3 { border-left: 3px solid var(--c-text-sub); }
+
+/* ── Connector ── */
+.conn { border-top: 1px dashed var(--c-border); margin: 0 32px; }
+
+/* ── Fixes ── */
+.fix-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.fix-item {
+  border: 1px solid var(--c-border); padding: 8px 10px;
+  font-size: 11px; display: flex; align-items: center; gap: 8px;
+}
+.fix-id { font-family: var(--font-mono); font-size: 10px; font-weight: 700; min-width: 38px; }
+.fix-desc { flex: 1; }
+</style>
+</head>
+<body>
+
+<div class="diagram-canvas">
+
+<!-- ═══════════ HEADER ═══════════ -->
+<div class="dgm-header">
+  <div>
+    <h1 class="dgm-title">Agent1 · 化工园区危化品合规审查 AI Agent</h1>
+  </div>
+  <div class="dgm-meta">
+    <span>BUILD: 0 ERRORS</span>
+    <span>.NET 8 · Semantic Kernel 1.74 · Qwen3-8B</span>
+    <span>COMPLETION: ~96% · 2026-07-09</span>
+  </div>
+</div>
+
+<!-- ═══════════ 1. ARCHITECTURE STACK ═══════════ -->
+<div class="dgm-section">
+  <div class="dgm-section-title">01 · 四层架构栈</div>
+  <div class="stack">
+    <div class="stack-layer stack-layer--fe">
+      <div class="stack-label">agent1-web</div>
+      <div class="stack-info">Vue 3.5 · Vite 5 · Element Plus · Pinia · ECharts · Tailwind CSS · MSW · Vitest</div>
+      <div class="stack-badges">
+        <span class="badge">38 .vue</span>
+        <span class="badge">49 .ts</span>
+        <span class="badge">27 测试</span>
+        <span class="badge badge--ok">29 路由页面</span>
+      </div>
+    </div>
+    <div class="stack-arrow">│ HTTP REST + JWT Bearer │</div>
+    <div class="stack-layer stack-layer--api">
+      <div class="stack-label">Agent1.Api</div>
+      <div class="stack-info">ASP.NET Core 8 · Swagger · OpenTelemetry · JWT(BCrypt) · 限流 · 全局异常 · 请求ID透传</div>
+      <div class="stack-badges">
+        <span class="badge">15 控制器</span>
+        <span class="badge">5 中间件</span>
+        <span class="badge badge--ok">29 .cs</span>
+      </div>
+    </div>
+    <div class="stack-arrow">│ Project Reference │</div>
+    <div class="stack-layer stack-layer--core">
+      <div class="stack-label">Agent1</div>
+      <div class="stack-info">12 推理模块 · 6 服务子系统 · 双通道解耦架构 · 20 控制台菜单 · llama.cpp 集成</div>
+      <div class="stack-badges">
+        <span class="badge">124 .cs</span>
+        <span class="badge">12 Module</span>
+        <span class="badge badge--ok">8 SK 工具</span>
+      </div>
+    </div>
+    <div class="stack-arrow">│ TCP/HTTP │</div>
+    <div class="stack-layer stack-layer--infra">
+      <div class="stack-label">Infrastructure</div>
+      <div class="stack-info">Linux · RTX 3090 24GB · llama-server :8080 (Qwen3-8B) · :8081 (nomic-embed) · :8082 (bge-reranker) · PostgreSQL :5432 + pgvector</div>
+      <div class="stack-badges">
+        <span class="badge badge--err">GPU</span>
+        <span class="badge">CUDA</span>
+        <span class="badge">Docker</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ 2. CORE SERVICE MATRIX ═══════════ -->
+<div class="dgm-section">
+  <div class="dgm-section-title">02 · 核心服务矩阵 (Agent1/Services/)</div>
+  <div class="grid-6">
+    <div class="card">
+      <div class="card-title">AI 服务</div>
+      <div class="card-sub">Services/AI/ · 7 文件</div>
+      <div class="card-row"><span>LlmService</span><span class="badge">SK 集成</span></div>
+      <div class="card-row"><span>TokenBudget</span><span class="badge">预算管理</span></div>
+      <div class="card-row"><span>ReflectionVerifier</span><span class="badge">反思验证</span></div>
+      <div class="card-row"><span>MultimodalService</span><span class="badge badge--blue">多模态</span></div>
+    </div>
+    <div class="card">
+      <div class="card-title">合规服务</div>
+      <div class="card-sub">Services/Compliance/ · 14 文件</div>
+      <div class="card-row"><span>ChemicalComplianceTools</span><span class="badge">8 SK 工具</span></div>
+      <div class="card-row"><span>双通道 (5 文件)</span><span class="badge badge--ok">核心</span></div>
+      <div class="card-row"><span>OutputValidator</span><span class="badge">安全围栏</span></div>
+      <div class="card-row"><span>GbCodeHelper</span><span class="badge">GB 正则</span></div>
+    </div>
+    <div class="card">
+      <div class="card-title">知识库</div>
+      <div class="card-sub">Services/Knowledge/ · 12 文件</div>
+      <div class="card-row"><span>HybridKBService</span><span class="badge">BM25+向量</span></div>
+      <div class="card-row"><span>RerankerService</span><span class="badge">Cross-Encoder</span></div>
+      <div class="card-row"><span>PdfExtractor</span><span class="badge">PdfPig</span></div>
+      <div class="card-row"><span>SemanticChunker</span><span class="badge">智能分块</span></div>
+    </div>
+    <div class="card">
+      <div class="card-title">对话管理</div>
+      <div class="card-sub">Services/Dialog/ · 8 文件</div>
+      <div class="card-row"><span>AgentDialog</span><span class="badge">编排核心</span></div>
+      <div class="card-row"><span>IntentRouter</span><span class="badge">6 意图</span></div>
+      <div class="card-row"><span>SessionManager</span><span class="badge">会话管理</span></div>
+      <div class="card-row"><span>IntegrationService</span><span class="badge badge--warn">待接入</span></div>
+    </div>
+    <div class="card">
+      <div class="card-title">基础设施</div>
+      <div class="card-sub">Services/Infrastructure/ · 14 文件</div>
+      <div class="card-row"><span>DatabaseService</span><span class="badge">PG+pgvector</span></div>
+      <div class="card-row"><span>PipelineModuleBase</span><span class="badge">6步流水线</span></div>
+      <div class="card-row"><span>AuditService</span><span class="badge">SHA256 链</span></div>
+      <div class="card-row"><span>MetricsCollector</span><span class="badge">Prometheus</span></div>
+    </div>
+    <div class="card">
+      <div class="card-title">业务编排</div>
+      <div class="card-sub">Services/Orchestration/ · 7 文件</div>
+      <div class="card-row"><span>ComplianceRuleEngine</span><span class="badge">规则引擎</span></div>
+      <div class="card-row"><span>InspectionOrchestrator</span><span class="badge">巡检编排</span></div>
+      <div class="card-row"><span>ScheduledScanService</span><span class="badge">定时扫描</span></div>
+      <div class="card-row"><span>JsonFileRepository</span><span class="badge">文件仓库</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ 3. MODULES + CONTROLLERS ═══════════ -->
+<div class="dgm-section">
+  <div class="dgm-section-title">03 · 推理模块 (12) & API 控制器 (15)</div>
+  <div class="grid-2">
+    <!-- Modules -->
+    <div>
+      <table class="dgm-table">
+        <thead><tr><th>模块</th><th>类型</th><th>状态</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">CoTSolidModule</td><td>思维链同步</td><td><span class="badge badge--ok">✅</span></td></tr>
+          <tr><td class="mono">CoTStreamModule</td><td>思维链流式</td><td><span class="badge badge--ok">✅</span></td></tr>
+          <tr><td class="mono">ReActSolidModule</td><td>ReAct 同步</td><td><span class="badge badge--ok">✅</span></td></tr>
+          <tr><td class="mono">ReActStreamModule</td><td>ReAct 流式</td><td><span class="badge badge--ok">✅</span></td></tr>
+          <tr><td class="mono">ReflectionModule</td><td>反思纠错</td><td><span class="badge badge--ok">✅</span></td></tr>
+          <tr><td class="mono">RAGModule</td><td>检索增强</td><td><span class="badge badge--ok">✅</span></td></tr>
+          <tr><td class="mono">UnifiedDialogModule</td><td>智能对话</td><td><span class="badge badge--ok">✅</span></td></tr>
+          <tr style="background:#fefce8;"><td class="mono"><strong>ComplianceCheckModule</strong></td><td>★ 合规自查核心</td><td><span class="badge badge--fill">✅</span></td></tr>
+          <tr><td class="mono">TicketFollowupModule</td><td>工单跟进</td><td><span class="badge badge--ok">✅</span></td></tr>
+          <tr><td class="mono">RegulatoryAuditModule</td><td>监管核查</td><td><span class="badge badge--ok">✅</span></td></tr>
+          <tr><td class="mono">EmergencyResponseModule</td><td>应急响应</td><td><span class="badge badge--ok">✅</span></td></tr>
+          <tr><td class="mono">KnowledgeGraphModule</td><td>知识图谱</td><td><span class="badge badge--ok">✅</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- Controllers -->
+    <div>
+      <table class="dgm-table">
+        <thead><tr><th>控制器</th><th>端点</th><th>角色</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">AuthController</td><td>login / refresh</td><td><span class="badge">公开</span></td></tr>
+          <tr><td class="mono">ComplianceController</td><td>check · hazard · storage · summary</td><td><span class="badge badge--ok">Viewer+</span></td></tr>
+          <tr><td class="mono">DashboardController</td><td>overview · assets · scan · findings · history · report</td><td><span class="badge badge--ok">Viewer+</span></td></tr>
+          <tr><td class="mono">InspectionController</td><td>plans · rounds · reports</td><td><span class="badge badge--ok">Viewer+</span></td></tr>
+          <tr><td class="mono">TicketsController</td><td>list · detail · status</td><td><span class="badge badge--ok">Viewer+</span></td></tr>
+          <tr><td class="mono">EmergencyController</td><td>response</td><td><span class="badge badge--ok">Viewer+</span></td></tr>
+          <tr><td class="mono">KnowledgeGraphController</td><td>query</td><td><span class="badge badge--ok">Viewer+</span></td></tr>
+          <tr><td class="mono">RegulatoryController</td><td>audit</td><td><span class="badge badge--ok">Viewer+</span></td></tr>
+          <tr><td class="mono">KnowledgeBaseController</td><td>search · rag-test · incremental</td><td><span class="badge badge--ok">Viewer+</span></td></tr>
+          <tr><td class="mono">DiagnosticsController</td><td>run</td><td><span class="badge badge--ok">Viewer+</span></td></tr>
+          <tr><td class="mono">EvalController</td><td>run · status</td><td><span class="badge badge--ok">Viewer+</span></td></tr>
+          <tr><td class="mono">MultimodalController</td><td>analyze</td><td><span class="badge badge--ok">Viewer+</span></td></tr>
+          <tr><td class="mono">AuditController</td><td>logs · integrity · stats</td><td><span class="badge badge--err">Admin</span></td></tr>
+          <tr><td class="mono">AdminController</td><td>db-info · validate</td><td><span class="badge badge--err">Admin</span></td></tr>
+          <tr><td class="mono">AlertsController</td><td>test</td><td><span class="badge badge--err">Admin</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ 4. DUAL CHANNEL ═══════════ -->
+<div class="dgm-section">
+  <div class="dgm-section-title">04 · 双通道解耦架构 (v4.0 核心) — 零幻觉法规引用</div>
+  <div class="dual">
+    <div class="dual-left">
+      <div class="dual-title">事实通道 · C# 确定性代码 · 100% 准确</div>
+      <div class="dual-item">FactExtractor — 从工具结果提取法规编号</div>
+      <div class="dual-item">FactAssembler — C# 模板确定性渲染法规引用</div>
+      <div class="dual-item">OutputSanitizer — 白名单比对硬拦截兜底</div>
+      <div class="dual-item">PromptSanitizer — 传给 LLM 前剥离所有法规编号</div>
+      <div style="margin-top:8px;font-size:11px;color:var(--c-text-sub);">设计哲学：法规引用归代码，推理分析归 LLM</div>
+    </div>
+    <div class="dual-divider">MERGE</div>
+    <div class="dual-right">
+      <div class="dual-title">解释通道 · LLM 推理</div>
+      <div class="dual-item">LLM 只做推理 + 建议</div>
+      <div class="dual-item">无法规编号可编造 → 源头掐断幻觉</div>
+      <div class="dual-item">专业合规解读 + 操作建议</div>
+      <div class="dual-item">ResponseMerger 合并双通道输出</div>
+      <div style="margin-top:8px;font-size:11px;color:var(--c-text-sub);">四道防线：Sanitizer → LLM → Sanitizer → Assembler</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ 5. METRICS ═══════════ -->
+<div class="dgm-section">
+  <div class="dgm-section-title">05 · 关键指标</div>
+  <div class="grid-4">
+    <div class="card" style="text-align:center;">
+      <div class="metric-val">215</div>
+      <div class="metric-label">C# 文件总数</div>
+      <div class="card-sub" style="margin-top:4px;">核心 124 · API 29 · 测试 62</div>
+    </div>
+    <div class="card" style="text-align:center;">
+      <div class="metric-val">152</div>
+      <div class="metric-label">xUnit 测试通过</div>
+      <div class="card-sub" style="margin-top:4px;">Moq + FluentAssertions</div>
+    </div>
+    <div class="card" style="text-align:center;">
+      <div class="metric-val">96<span style="font-size:16px;">%</span></div>
+      <div class="metric-label">整体完成度</div>
+      <div class="card-sub" style="margin-top:4px;">0 编译错误 · 60% 覆盖率门禁</div>
+    </div>
+    <div class="card" style="text-align:center;">
+      <div class="metric-val" style="color:#16a34a;">20</div>
+      <div class="metric-label">CLI 菜单 · 全部实现</div>
+      <div class="card-sub" style="margin-top:4px;">12 ModuleType · 15 Controller</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ 6. COMPLETED FIXES ═══════════ -->
+<div class="dgm-section">
+  <div class="dgm-section-title">06 · 本次会话修复 (9 项) — 三阶段执行</div>
+  <div class="fix-grid">
+    <div class="fix-item"><span class="fix-id">P0-1</span><span class="fix-desc">激活 OutputValidator 死代码</span><span class="badge badge--err">阶段1</span></div>
+    <div class="fix-item"><span class="fix-id">P0-2</span><span class="fix-desc">激活 ComplianceAuditLogger</span><span class="badge badge--err">阶段1</span></div>
+    <div class="fix-item"><span class="fix-id">P0-3</span><span class="fix-desc">IntegrationService 显式降级</span><span class="badge badge--err">阶段1</span></div>
+    <div class="fix-item"><span class="fix-id">P1-1</span><span class="fix-desc">运算符优先级修复</span><span class="badge badge--warn">阶段2</span></div>
+    <div class="fix-item"><span class="fix-id">P1-2</span><span class="fix-desc">GB 法规编号正则统一 (GbCodeHelper)</span><span class="badge badge--warn">阶段2</span></div>
+    <div class="fix-item"><span class="fix-id">P1-3</span><span class="fix-desc">QualityLevel 枚举数值重排</span><span class="badge badge--warn">阶段2</span></div>
+    <div class="fix-item"><span class="fix-id">P2-1</span><span class="fix-desc">IntentRouter 意图细分 (+3 类型)</span><span class="badge badge--blue">阶段3</span></div>
+    <div class="fix-item"><span class="fix-id">P2-2</span><span class="fix-desc">移除 as LlmService 向下转型</span><span class="badge badge--blue">阶段3</span></div>
+    <div class="fix-item"><span class="fix-id">FE-1</span><span class="fix-desc">前端统一 API 封装层 (5 模块 + 5 测试)</span><span class="badge badge--blue">阶段3</span></div>
+  </div>
+</div>
+
+<!-- ═══════════ 7. PROBLEMS & NEXT STEPS ═══════════ -->
+<div class="dgm-section">
+  <div class="dgm-section-title">07 · 问题矩阵 & 下一步工作建议</div>
+  <div class="prio-bar">
+    <div class="prio-card prio-card--p0">
+      <h4>P0 · 补齐测试防线</h4>
+      <ul>
+        <li>← 8 个计划测试文件未创建</li>
+        <li>← OutputValidator 验证缺失</li>
+        <li>← ComplianceAuditLogger 验证缺失</li>
+        <li>← GbCodeHelper 参数化测试缺失</li>
+        <li>← QualityLevel 枚举语义验证缺失</li>
+        <li>Dotnet test 全量回归</li>
+      </ul>
+    </div>
+    <div class="prio-card prio-card--p1">
+      <h4>P1 · 健壮性加固</h4>
+      <ul>
+        <li>← IntegrationService 异常未处理</li>
+        <li>← DashboardController 等调用方缺 try-catch</li>
+        <li>← 前端 API 模块补全 (Auth/Inspection/Tickets…)</li>
+        <li>← MSW handlers 逐端点对齐</li>
+        <li>Verify: dotnet run --project Agent1.Api</li>
+      </ul>
+    </div>
+    <div class="prio-card prio-card--p2">
+      <h4>P2 · 质量提升</h4>
+      <ul>
+        <li>← Controller 返回匿名类型 → record</li>
+        <li>← 前端 types/api.ts 接口补全</li>
+        <li>← 覆盖率门禁 60% → 75%</li>
+        <li>← 远程 GPU 端到端测试</li>
+        <li>← Dockfile 健康检查 + .env 验证</li>
+      </ul>
+    </div>
+    <div class="prio-card prio-card--p3">
+      <h4>P3 · 架构演进</h4>
+      <ul>
+        <li>← API 版本化 (/api/v1/)</li>
+        <li>← 前端公共组件抽取</li>
+        <li>← Grafana 面板完善</li>
+        <li>← Benchmark 自动报告</li>
+        <li>← Router 注释清理</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ FOOTER ═══════════ -->
+<div class="dgm-section" style="padding:12px 32px; background:#f8fafc; font-size:11px; color:var(--c-text-sub); display:flex; justify-content:space-between;">
+  <span>Agent1 Architecture Blueprint · v4.2 · 2026-07-09</span>
+  <span>Dual-Channel Decoupled Architecture · 4-Layer Stack · 12 Modules · 15 Controllers · 152 Tests</span>
+</div>
+
+</div>
+
+</body>
+</html>

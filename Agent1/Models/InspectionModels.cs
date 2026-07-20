@@ -383,9 +383,8 @@ namespace Agent1.Models
         /// <summary>从 LLM 输出中提取 GB 编号</summary>
         private static string ExtractGbNumber(string output)
         {
-            // 简单正则匹配 GB 编号
-            var match = System.Text.RegularExpressions.Regex.Match(
-                output, @"GB\s*/?T?\s*\d{4,5}[.\-]\d+");
+            // P1-2: 统一使用 GbCodeHelper.GbCodePattern
+            var match = Services.GbCodeHelper.GbCodePattern.Match(output);
             return match.Success ? match.Value.Trim() : "";
         }
     }
