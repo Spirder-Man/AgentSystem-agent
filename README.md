@@ -1,6 +1,6 @@
 # Agent1 — 化工园区危化品合规审查 AI Agent
 
-> **版本**：v4.3 | **编译**：0 错误 | **测试**：152 通过 | **分支**：`linux原生编译模型llama.cpp`
+> **版本**：v4.4 | **编译**：0 错误 | **测试**：152 通过 | **分支**：`linux原生编译模型llama.cpp`
 
 基于 .NET 8 + Semantic Kernel + **llama.cpp 原生编译**构建的企业级化工园区危化品合规审查 AI Agent。支持 REST API、JWT 认证、PostgreSQL+pgvector 混合检索、OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对 NVIDIA GPU (RTX 3090/3080 Ti) Linux 环境 RAG 全链路 GPU 加速**。
 
@@ -145,10 +145,19 @@ docs/
 
 ## 📋 近期更新
 
+### v4.4 — Bug-032 v2 回马枪：防御代码位置正确性（2026-07-20）
+
+- **Bug-032 v2**：FC=Required 违约检测从 `HasAnyToolResult` 之后提升为独立最高优先级闸门
+  - v1 (7/18, `5dcf4f2`)：`toolCalls==0` 检查放在 `else` 分支内，被 `HasAnyToolResult==true` 时提前 return 绕过
+  - v2 (7/20, `94e4818`)：`toolCalls==0` 提升为 `HasAnyToolResult` 之前的独立闸门，无条件拦截 FC 违约
+  - 远程 3 轮扫描验证：v1 拦截 0 次，v2 拦截 10 次（Prometheus: `agent1_fc_contract_violation_total=10`）
+- **编译缓存陷阱**：`dotnet run` 增量编译可能不反映源码变更 → 远程部署关键修复需 `rm -rf bin/obj && dotnet build --force`
+- **Bug 知识库**：新增 N8 思维节点，记录防御代码"位置正确性"与"逻辑正确性"双维度分析方法论
+
 ### v4.3 — P0 Bug 修复批次（2026-07-18）
 
 - **Bug-031**：审计哈希链彻底修复 — 移除 createTime 依赖 + 启动自愈
-- **Bug-032**：FC=Required 违约兜底 — toolCalls==0 时丢弃 LLM 废话，走确定性拒绝模板
+- **Bug-032**：FC=Required 违约兜底 — toolCalls==0 时丢弃 LLM 废话，走确定性拒绝模板（v2 回马枪见 v4.4）
 - **IsDirty 阈值**：短文本拦截 `< 20` → `< 5`，H166 模板不再误拦截
 - **IntentRouter**：新增 25 个关键词，覆盖化学品名/仓库/消防/安全术语
 - **LLM 扫描预检**：`CheckLlmHealthAsync()` 3 秒快速预检，不可用时 503
@@ -158,4 +167,4 @@ docs/
 
 ---
 
-**文档版本**：v4.16 | **最后更新**：2026-07-18 | **许可证**：MIT
+**文档版本**：v4.17 | **最后更新**：2026-07-20 | **许可证**：MIT
