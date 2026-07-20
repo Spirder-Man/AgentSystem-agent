@@ -2,7 +2,7 @@
 
 > **目的**：结构化记录每个 Bug 的根因/修复/影响模块，实现跨批次知识累积，避免同类问题反复出现。
 > **使用方式**：每次修复 Bug 后按模板录入；每次分析日志前浏览「系统弱点了然表」确定重点监控项。
-> **文档版本**：v2.0 | **创建日期**：2026-06-30 | **最后更新**：2026-07-03（新增 Bug-026/027/028：评测集GB数据错误 + Citation Accuracy误判 + 版本幻觉三层约束）
+> **文档版本**：v2.3 | **创建日期**：2026-06-30 | **最后更新**：2026-07-18（新增 Bug-032：FC=Required 违约时 LLM 通用废话透传 — 全业务链路输出质量门系统性缺失，基于 toolCalls 确定性信号兜底）
 
 ---
 
@@ -30,6 +30,9 @@
 | W16 | **评测集 expected_regulation_number 与数据库不同步** | 评测人手动填写GB编号可能与ChemicalSubstanceDatabase实际映射不一致 | `Level4 幻觉扣除` / 危险类别结论准确率异常低（<50%） | [Bug-026](#bug-026) |
 | W17 | **Citation Accuracy 未区分数据源** | RAG文档检索不到的值被误判为幻觉，实际来源是C#硬编码字典 | `Citation Accuracy` = 0% / 大量 `🔍 Level4 KB验证: ✗` | [Bug-027](#bug-027) |
 | W18 | **LLM 自推断法规版本年份** | Qwen3:8b 在无工具调用时自行编造年代版本号（如 GB 15603-2023） | 回答含 `GB XXXX-YYYY` 但YYYY与数据库不一致 / `🔧 版本校正` | [Bug-028](#bug-028) |
+| W19 | **外部依赖缺少降级路径** | 数据库唯一约束 / embedding 服务不可用 → 应用崩溃或核心功能静默失效 | `致命错误` / `ECONNREFUSED` / chunks 表行数 0 | [Bug-029](#bug-029) [Bug-030](#bug-030) |
+| W20 | **哈希输入含微秒时间戳致往返漂移** | 每次时间归一化逻辑变更后历史记录哈希验证全败，修复后不重写旧记录致循环复发 | `哈希链断裂于 ID=1` / `RepairChainAsync` 修复数>0 反复出现 | [Bug-031](#bug-031) |
+| W21 | **FC=Required 违约时 LLM 废话透传（系统性）** | Qwen3-8B 忽略 FC 指令输出通用助手废话，ApplyDecoupledPipeline 兜底分支合并废话到用户可见输出；Emergency/RegulatoryAudit/KnowledgeGraph 路径零质量门 | `[SK诊断] ⚠️ 本轮未调用任何工具` + 输出含 emoji/时间戳注释 | [Bug-032](#bug-032) |
 
 ---
 
@@ -41,6 +44,10 @@
 | [Bug-026](#bug-026) | 07-03 | P0 | 评测数据 | 评测集7条危险类别expected_regulation_number与数据库不对齐（结论准确率仅40%） |
 | [Bug-027](#bug-027) | 07-03 | P0 | 评测引擎 | Citation Accuracy 误判数据库源GB编号为幻觉（42条中仅8-12条为真实幻觉） |
 | [Bug-028](#bug-028) | 07-03 | P1 | LLM幻觉 | Qwen3:8b 自行编造法规年代版本号（GB 15603-2023实际为2022）+ 三层约束修复 |
+| [Bug-032](#bug-032) | 07-18 | P0 | 输出质量门 | FC=Required 违约时 LLM 通用废话透传 — 全业务链路输出质量门系统性缺失 + toolCalls 确定性信号兜底 |
+| [Bug-031](#bug-031) | 07-18 | P0 | 审计 | 哈希链含微秒 createTime — 三次修复仍断裂，彻底移除时间参数 + 启动自愈 |
+| [Bug-029](#bug-029) | 07-18 | P0 | 数据库 | INSERT 无 ON CONFLICT — 重复文档导致 API 启动崩溃 |
+| [Bug-030](#bug-030) | 07-18 | P0 | 降级逻辑 | 向量嵌入失败跳过 chunk DB 写入 — knowledge_chunks 永远为空，启动永远全量管道 |
 | [Bug-018](#bug-018) | 07-02 | P0 | LLM配置 | FunctionChoiceBehavior.Required() 导致评测死循环 |
 | [Bug-024](#bug-024) | 07-03 | P1 | 评测 | 结论提取器数据源误匹配 — A 类15条中9条结论虚报⚠️，LLM实际输出正确 |
 | [Bug-025](#bug-025) | 07-03 | P1 | 评测 | Answer Relevance 评估器 FC Required() 导致重复输出+流式截断（I001 66+条重复） |
@@ -784,8 +791,11 @@
 | 工具函数 | 1 | 正则表达式失效 |
 | 评测系统 | 7 | 格式匹配 / 评分归零 / 白名单不足 / 结论判定过松 / 无审计追踪 / 双通道不完整 / 结论提取数据源错误 |
 | 异常处理 | 1 | 检索异常错误标记 |
+| 降级逻辑 | 1 | embedding 失败跳过核心 DB 写入 |
 | C# 语法 | 1 | 字符串插值格式说明符歧义 |
-| **合计** | **25** | |
+| 数据库幂等 | 1 | INSERT 无 ON CONFLICT 启动崩溃 |
+| 输出质量门 | 1 | FC=Required 违约时 LLM 废话透传 — 全业务链路系统性缺陷 |
+| **合计** | **29** | |
 
 ---
 
@@ -902,6 +912,126 @@
 | N1 | 现象确认 | I001 回答 `GB 15603-2023` 但数据库记录为 2022 | 不是 T13 系统级问题，是 LLM 输出级幻觉 | 定位为 LLM 幻觉而非评测框架错误 | — |
 | N2 | L1→L2 追问 | 为什么 LLM 会知道 2023？模型训练数据中有这个年份吗？ | Qwen3-8B 训练数据截止 2024 年中，可能包含网络讨论中错误引用的"GB 15603-2023" | 确认根因是训练数据污染，非系统 Bug | 怀疑数据库版本记录过时 → 查证国标官网确认 2022 为最新版 |
 | N3 | 方案分支 | Prompt 约束（"禁止输出年份"）vs 代码硬校验（正则+DB替换） vs 两者都要 | 只做 Prompt 约束无法保证 100% 生效（LLM 可能忽略指令）；只做代码校验对用户不友好（悄悄替换但不告知） | 三层防御：Prompt 约束 → 正则提取 → DB 校验替换 | 单层方案：化工安全系统要求 0 失误，必须冗余防御 |
+
+---
+
+### Bug-029：INSERT 无 ON CONFLICT — 重复文档导致 API 启动崩溃 {#bug-029}
+
+| 字段 | 内容 |
+|------|------|
+| **发现日期** | 2026-07-18 |
+| **严重等级** | 🔴 P0 — API 进程直接退出，前端 ECONNREFUSED |
+| **发现场景** | 本地 Windows 环境启动 `Agent1.Api` — 知识库加载管道中所有 40+ 文档报 `23505: 重复键违反唯一约束"knowledge_documents_source_path_key"`，最后一条 H166 文档触发 `致命错误` → `return 1` → 进程退出 |
+| **影响模块** | `Agent1/Services/Infrastructure/DatabaseService.cs` L603-616（InsertDocumentAsync SQL）、`Agent1/Services/Dialog/ChemicalRAG.cs` L480-540（LoadH166DirectoryAsync 无 try-catch） |
+| **根因** | **L1 现象**：API 打印 40+ 条 `❌ 文档入库失败` 后打印 `致命错误` 退出，端口未监听；**L2 调用链**：`InsertDocumentAsync` L603 使用裸 `INSERT`（无 `ON CONFLICT`）→ 重复 `source_path` 触发 PG 23505 异常 → L641-644 catch 打印日志后 `throw;` 重新抛出 → `InsertDocumentForFileAsync` 无 try-catch → `LoadH166DirectoryAsync` L480-540 整体无 try-catch → 异常穿透到 `Program.cs` L607 最外层 catch → `return 1` 进程退出；**L3 设计冲突**：远程服务器上数据库一次性灌满后不再触发此路径，本地反复启停暴露出「插入逻辑未考虑幂等性」的设计假设 |
+| **修复** | `DatabaseService.cs` L603-616：裸 `INSERT` → `INSERT ... ON CONFLICT (source_path) DO UPDATE SET source_path = EXCLUDED.source_path RETURNING id` — 重复插入时返回已有记录的 ID，不再抛异常 |
+| **修复提交** | 本次 |
+| **关联 Bug** | [Bug-030](#bug-030)（同属 happy-path-only 降级缺失族）；[Bug-009](#bug-009)（同属数据库写操作异常处理缺陷族） |
+| **验证方法** | 停掉 API 后重新启动，不再出现 `致命错误` 或 `23505` 异常，所有文档显示 `✅ 文档入库成功` |
+| **教训** | ① 任何数据库 `INSERT` 只要可能重复执行，必须加 `ON CONFLICT` 或先 `SELECT` 检查 —— 幂等性是服务可重启的基础前提；② catch 块中 `throw;` 之前必须确认所有调用方都有 try-catch 兜底，否则异常会穿透到进程入口导致崩溃 |
+| **追问深度** | 3 层（L1 API 崩溃 → L2 异常穿透链：InsertDocumentAsync throw → LoadH166DirectoryAsync 无 catch → Program.cs return 1 → L3 远程 vs 本地环境差异暴露的设计假设） |
+
+## 思维链路（对话复盘）
+
+> 记录本次 Bug 分析的关键思考节点，使后续复盘时不依赖记忆即可还原推理过程。
+
+| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
+|:---:|------|------|------|------|------|
+| N1 | 现象确认 | 前端 Vite proxy error `ECONNREFUSED`，后端日志末尾 `致命错误: 23505: 重复键违反唯一约束` | API 进程根本没走到 `app.Run()` — 在启动阶段就崩溃退出了 | 确认是启动崩溃而非运行时错误 | — |
+| N2 | L1→L2 追问 | 为什么重复键异常会导致进程退出？谁在 rethrow？ | `InsertDocumentAsync` L641-644：catch 打印 → `throw;` → `InsertDocumentForFileAsync` 无 catch → `LoadH166DirectoryAsync` 整体无 try-catch → 穿透到 Program.cs 最外层 | 定位到两处缺陷：① INSERT 无幂等保护 ② H166 加载路径无异常兜底 | 怀疑是 PostgreSQL 配置问题 → 被同一 DB 连接下 API 的 DB 测试通过排除 |
+| N3 | L2→L3 追问 | 为什么远程从来没触发过这个 bug？ | 远程服务器数据库一次性灌满后 chunk 表有数据，每次走快速模式跳过文件解析 — 从不执行插入逻辑。本地 chunks 表永远是空的，每次启动都重走全量管道 | 暴露设计假设：代码假定「数据库要么全空要么全满，不存在部分填充状态」 | — |
+| N4 | 方案分支 | 修 INSERT 加 ON CONFLICT vs 在 LoadH166DirectoryAsync 加 try-catch？ | 前者从根源解决（幂等插入），后者只是兜底（异常不崩溃但功能缺失） | 选前者：`ON CONFLICT DO UPDATE SET ... RETURNING id` | 只加 try-catch：治标不治本，重复文档静默跳过但后续逻辑缺 documentId |
+
+---
+
+### Bug-030：向量嵌入失败跳过 chunk DB 写入 — knowledge_chunks 永远为空，启动永远全量管道 {#bug-030}
+
+| 字段 | 内容 |
+|------|------|
+| **发现日期** | 2026-07-18 |
+| **严重等级** | 🔴 P0 — 每次启动重做 40+ 文档的全量解析（3-5 分钟），且 chunks 表始终为空 |
+| **发现场景** | 修复 Bug-029 后重跑 API，发现启动仍然走全量管道（"========== 加载化工知识库（多格式管道） =========="）而非快速模式。pgAdmin 查询 `SELECT COUNT(*) FROM knowledge_chunks` 返回 0。向量嵌入日志显示大量 `⚠️ 向量嵌入失败: 由于目标计算机积极拒绝，无法连接。 (localhost:8081)` |
+| **影响模块** | `Agent1/Services/Knowledge/HybridKnowledgeBaseService.cs` L81-86（AddDocumentAsync 提前 return）、`Agent1/Services/Dialog/ChemicalRAG.cs` L134-143（快速模式条件判断） |
+| **根因** | **L1 现象**：knowledge_chunks 表始终为 0 行，快速模式永不触发；**L2 调用链**：`AddDocumentAsync` L81 `_llmService.GetEmbeddingAsync(content)` 连接 localhost:8081 失败（本地无 embedding 服务）→ 返回 null → L83-86 `if (embedding == null) { Console.WriteLine("⏭️ 向量生成失败，跳过向量库写入（BM25 已写入）"); return; }` — **直接 return 跳过了 L106-114 的 `InsertChunkAsync` / `AddChemicalDocumentAsync` 数据库写入**；"BM25 已写入"指的是内存 BM25 索引，不是 PostgreSQL；**L3 设计冲突**：代码假设 embedding 服务永远在线 — embedding 失败时 chunk 既不写向量库也不写数据库，等于静默丢弃。快速模式的条件 `existingChunkCount > 0` 永远为 false → 每次启动重走全量管道，形成恶性循环 |
+| **修复** | `HybridKnowledgeBaseService.cs` L81-86：`var embedding = await _llmService.GetEmbeddingAsync(content)` + `if null return` → `try-catch` 包裹 embedding 调用 + 失败不 return，继续执行 L106-114 的数据库写入（embedding 字段为 null）。chunk 始终落库，embedding 变为可选增强 |
+| **修复提交** | 本次 |
+| **关联 Bug** | [Bug-029](#bug-029)（同属 happy-path-only 降级缺失族 — 两个 bug 叠加：Bug-029 导致启动崩溃，Bug-030 导致修复后仍然慢）；[Bug-004](#bug-004)（同属异常路径 fail-safe 缺失族 — 异常时默认行为错误） |
+| **验证方法** | 停掉 API 后重启：① 第一次全量管道跑完后 `SELECT COUNT(*) FROM knowledge_chunks` > 0；② 再次重启显示 `📦 数据库已有 N 条分块，使用快速模式...`，不再显示"加载化工知识库（多格式管道）" |
+| **教训** | ① **降级路径设计原则**：任何外部服务调用（embedding/LLM/DB）失败时，系统应降级而非丢弃数据。chunk 写入数据库是核心路径，embedding 是增值路径 — 核心路径不能因增值路径失败而跳过；② **"BM25 已写入"的语义陷阱**：日志消息只说对了一半 — 内存 BM25 写入 ≠ 数据库持久化。两者必须同步或至少在日志中区分；③ **快速模式的条件不应依赖增值路径的成功** — `knowledge_chunks` 的行数不应以 embedding 成功为前提 |
+| **追问深度** | 3 层（L1 chunks 表为 0 → L2 AddDocumentAsync 提前 return 跳过 InsertChunkAsync → L3 "BM25 已写入"的语义歧义 + 核心路径被增值路径阻断的设计反模式） |
+
+## 思维链路（对话复盘）
+
+> 记录本次 Bug 分析的关键思考节点，使后续复盘时不依赖记忆即可还原推理过程。
+
+| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
+|:---:|------|------|------|------|------|
+| N1 | 现象确认 | Bug-029 修复后重启，仍然全量管道；pgAdmin 查 knowledge_chunks 为 0 行 | 确认 fast path 条件 `existingChunkCount > 0` 从未满足 — 表始终为空 | 进入根因分析，不满足于"第一次慢是正常的" | — |
+| N2 | L1→L2 追问 | 为什么 chunks 表永远是空的？谁负责写入？ | `HybridKnowledgeBaseService.AddDocumentAsync` L81-86：embedding 失败 → return → 跳过了 L109 的 `InsertChunkAsync`。日志"BM25 已写入"有歧义 — 实际是内存 BM25，不是 PostgreSQL | 定位到关键缺陷：核心路径（DB 写入）被增值路径（embedding）阻断 | 怀疑是 PostgreSQL 写入权限问题 → 但 knowledge_documents 表正常写入，排除 |
+| N3 | L2→L3 追问 | 为什么设计成 embedding 失败就跳过 DB 写入？ | 代码假设 embedding 服务永远在线（远程环境确实如此）。本地无 GPU → embedding 服务不可用 → 所有 chunk 被静默丢弃 | 暴露设计假设：增值服务被当作核心服务的必要条件 | — |
+| N4 | 方案分支 | 方案 A：把 DB 写入移到 embedding 之前 vs 方案 B：try-catch 包裹 embedding 不 return？ | A 更彻底（DB 先写，embedding 后补），但需要调整 ChemicalDocumentRecord 的 Embedding 字段赋值顺序；B 改动最小（仅改 embedding 调用的异常处理） | 选 B：try-catch + 移除 return，embedding 为 null 照写 DB | A：改动范围更大但结构更优，可作为后续重构方向 |
+
+---
+
+### Bug-031：审计哈希链含微秒 createTime — 三次修复仍断裂，彻底移除时间参数 + 启动自愈 {#bug-031}
+
+| 字段 | 内容 |
+|------|------|
+| **发现日期** | 2026-07-18 |
+| **严重等级** | 🔴 P0 — 审计日志哈希链完整性验证持续失败，三次修复后复发 |
+| **发现场景** | 审计日志页面点击「验证哈希链」按钮，每次返回「哈希链断裂于 ID=1: 期望 0caaf54cef970566..., 实际 ...」。此 Bug 在此前已被标记修复三次，但每次代码逻辑变更后复发 |
+| **影响模块** | `Agent1/Services/Infrastructure/AuditService.cs`（ComputeChainHash / VerifyIntegrityAsync / RepairChainAsync / NormalizeToMicroseconds）、`Agent1/Services/Infrastructure/DatabaseService.cs`（AddAuditLogAsync / GetAuditLogsAsync）、`init_database.sql`（缺 chain_hash 列）、`Agent1.Api/Program.cs`（缺启动自愈） |
+| **根因** | **L1 现象**：`VerifyIntegrityAsync` 重算哈希与 DB 存储的 `chain_hash` 不匹配；**L2 调用链**：`ComputeChainHash` 使用 SHA256(`prevHash\|userId\|operation\|details\|createTimeString`)，其中 `createTimeString` 包含微秒精度时间戳。时间戳在三次修复中经历了不同的归一化逻辑：原始版 `:O` 格式（100ns）→ P3 版 `yyyy-MM-ddTHH:mm:ss.ffffffZ`（微秒）+ `NormalizeToMicroseconds` 截断。每次变更后，用**旧逻辑写入的历史记录**无法通过**新逻辑**的验证；**L3 设计缺陷**：① `createTime` 本身已独立存储于 `created_at` 列，在哈希中重复参与毫无安全增益（篡改者改了内容必改 `created_at`，改了 `created_at` 也会被发现——但微秒精度让正常往返也误判为篡改）；② `RepairChainAsync` 存在但从不在启动时自动调用，需手动触发；③ `init_database.sql` 不包含 `chain_hash` 列，任何人执行该 SQL 重建表都会丢失所有哈希 |
+| **修复** | **三重修复**：① `ComputeChainHash` 移除 `createTime` 参数，哈希仅由 `prevHash|userId|operation|details` 计算（时间戳已独立存储，不参与哈希）；② 删除 `NormalizeToMicroseconds` 死代码；③ `init_database.sql` 增加 `chain_hash TEXT` 列；④ `Program.cs` 启动时自动调用 `RepairChainAsync` 修复历史断链 |
+| **修复提交** | 本次 |
+| **关联 Bug** | 无直接关联，但与前三次修复（同 Bug 的历史版本）构成「修复-复发」循环 |
+| **验证方法** | ① API 重启后在启动日志中看到 `🔗 哈希链自动修复: 哈希链修复完成`；② 浏览器访问审计日志页点击「验证哈希链」返回 `intact: true`；③ 新增一条日志后再次验证，链仍完整；④ `init_database.sql` 执行后 `SELECT chain_hash FROM audit_logs LIMIT 1` 有数据 |
+| **教训** | ① **哈希输入不应包含可变精度字段**：任何跨系统往返可能产生精度差异的字段（时间戳、浮点数）都不应参与哈希计算。时间的「防篡改」价值已由独立的 `created_at` 列覆盖，重复参与只会引入脆弱性；② **「修复-复发」的根因是每次只修 C# 侧逻辑不重写历史数据**：哈希算法变更时必须在启动时自动重算并回写所有旧记录，否则历史记录永远卡在旧版本验证失败；③ **SQL 初始化脚本必须与代码 schema 同步**：`init_database.sql` 遗漏 `chain_hash` 列意味着任何重建表操作都会丢失所有哈希链数据，`CreateAuditLogTableAsync` 中的 `ALTER TABLE ADD COLUMN IF NOT EXISTS` 只能补救但不应是唯一保障 |
+| **追问深度** | 4 层（L1 验证失败 → L2 时间格式多次变更导致旧 hash 不可验证 → L3 微秒精度在 C#↔PG 往返中的漂移机制 → L4 设计层面：时间不应参与哈希 + 修复必须自愈） |
+
+## 思维链路（对话复盘）
+
+> 记录本次 Bug 分析的关键思考节点，使后续复盘时不依赖记忆即可还原推理过程。
+
+| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
+|:---:|------|------|------|------|------|
+| N1 | 现象确认 | 审计日志页哈希链断裂于 ID=1，三次修复仍复发 | 不是偶然问题，是系统性缺陷 — 每次代码变更导致新一轮断裂 | 进入根因分析，不把它当作「再修一次就好」 | — |
+| N2 | L1→L2 追问 | 为什么三次修复后还复发？每次修复改了什么？ | 原始版用 `:O` 格式（含 100ns 精度），P3 版改用 `yyyy-MM-ddTHH:mm:ss.ffffffZ` + `NormalizeToMicroseconds`。每次算法变更 → 旧 hash 不匹配 → 修完不重写旧数据 → 下次变更又复发 | 确认根因模式：算法演进 + 缺自愈 = 循环复发 | — |
+| N3 | L2→L3 追问 | 时间戳在哈希中到底起什么作用？去掉会怎样？ | 时间戳已在 `created_at` 列独立存储。参与哈希的设计意图是防止「篡改时间掩人耳目」— 但实际上篡改者改了内容也必然改时间，且微秒精度让**正常往返**也误判。收益为零，成本是持续复发 | 决策：彻底移除 createTime | 保留时间但加更多归一化逻辑：治标不治本 |
+| N4 | 方案分支 | 仅修 C# 侧 vs 修 C# + 启动自愈 + SQL 同步？ | 仅修 C# 仍然需要手动调用 RepairChainAsync 才能让旧数据通过验证。启动自愈 + SQL 同步是闭环方案 | 选全方案：① 移除 createTime ② 启动自动 RepairChainAsync ③ init_database.sql 补列 | 仅修 C# 逻辑：下次还有人重建表就丢哈希 |
+
+---
+
+### Bug-032：FC=Required 违约时 LLM 通用废话透传 — 全业务链路输出质量门系统性缺失 {#bug-032}
+
+| 字段 | 内容 |
+|------|------|
+| **发现日期** | 2026-07-18 |
+| **严重等级** | 🔴 P0 — 自动合规扫描结果中大量输出 Qwen3-8B 通用助手废话（emoji、时间戳注释），用户可见；Emergency/RegulatoryAudit/KnowledgeGraph 路径完全无质量门 |
+| **发现场景** | 仪表盘自动合规扫描完成后，多个物质的检查结果包含 `（注：当前时间为2023-10-05）⏰ 如需计算或有其他问题，随时告诉我！🧮✨` 等通用聊天模版文本。日志显示 `[SK诊断] ⚠️ 本轮未调用任何工具 — LLM 可能绕过 Function Calling 直接回答` |
+| **影响模块** | `Agent1/Services/Dialog/AgentDialog.cs` L831-L837（ApplyDecoupledPipeline else 分支）、L284-L345（ExecuteBusinessWithResultAsync — Emergency/RegulatoryAudit/KnowledgeGraph 走 ExecuteGeneralChatAsync 零质量门）、L146-L181（OutputSanitizer 仅对 ChemicalCompliance + toolCalls>0 生效）、`Agent1/Services/Infrastructure/MetricsCollector.cs`（新增 FC 违约计数器） |
+| **根因** | **L1 现象**：合规扫描结果含通用助手废话；**L2 调用链**：`ExecuteChemicalComplianceAsync` 使用 FC=Required 调用 LLM → Qwen3-8B 忽略 FC 指令退化为通用聊天模式 → `_llmService.LastFunctionCalls.Count == 0` → `ApplyDecoupledPipeline(answer, emptyToolCalls)` 走 else 分支（L831-837）→ `OutputSanitizer.Sanitize(answer, emptyWhitelist)` **只过滤 GB 编号不过滤废话** → `FactAssembler.Build(emptyFacts)` 输出 `BuildNoResult()` 拒绝文本 → `ResponseMerger.Merge(拒绝文本, LLM垃圾)` → **两者合并后一起给用户**；**L3 设计缺陷**：① OutputSanitizer 设计职责是"法规编号幻觉过滤器"而非"响应质量过滤器"，对非 GB 内容的废话无检测能力；② `ApplyDecoupledPipeline` 的 else 分支设计假设"有工具调用 → LLM 可信 / 无工具调用 → LLM 可能不可信但应合并而非丢弃"，该假设在 FC=Required 被违约时不成立；③ Emergency/RegulatoryAudit/KnowledgeGraph 三个意图走 `ExecuteGeneralChatAsync`，不使用 FC=Required 且无任何输出质量门；④ 唯一的质量门（L147-148）同时要求 `intent==ChemicalCompliance && toolCalls.Count>0`，toolCalls==0 时完全跳过 |
+| **修复** | **核心策略：基于 toolCalls.Count 的确定性信号而非 LLM 输出内容模式匹配。** FC=Required 下 toolCalls==0 是二进制违约信号（语义框架层结构化数据，非 LLM 文本），不存在误判。① `ApplyDecoupledPipeline` else 分支：`toolCalls.Count==0` → 直接丢弃 LLM 全部输出 → 返回 `FactAssembler.BuildNoResult()` 纯拒绝模板，不合并任何 LLM 文本；② `toolCalls.Count>0` 但事实为空（工具被调用但未返回有效数据）时保留原合并逻辑（此时 LLM 有工具调用上下文支撑，相对可信）；③ 新增 `MetricsCollector.RecordToolCallContractViolation()` 计数器 + Prometheus 指标 `agent1_fc_contract_violation_total` 用于监控 Qwen3-8B FC 退化趋势；④ Serilog Warning 记录每次违约的原始输出长度和预览 |
+| **修复提交** | 本次 |
+| **关联 Bug** | [Bug-001](#bug-001)（FC 工具调用跳过同族 — 当时关注的是 LLM 能力，未考虑输出端兜底）；[Bug-018](#bug-018)（FC Required 策略误用）；[Bug-023](#bug-023)（双通道保护多路径不一致 — 本次发现 Emergency 等路径完全无保护，是 Bug-023 的同族延伸）；[Bug-028](#bug-028)（LLM 自推断版本年份 — 同属 LLM 输出质量问题的不同表现） |
+| **验证方法** | ① 触发自动合规扫描，确认 `[SK诊断] ⚠️ 本轮未调用任何工具` 出现时用户端只看到 `基于现有资料无法给出确定结论，建议联系安环部门人工确认`，无任何 emoji/时间戳注释；② `GET /metrics` 端点输出含 `agent1_fc_contract_violation_total` 指标；③ 正常 toolCalls>0 的合规查询结果不受影响 |
+| **教训** | ① **输出质量门不应依赖 LLM 行为正常为前提**：原设计假设 FC=Required → 一定有工具调用 → 输出可信。当模型违约时，质量门本身被绕过。正确设计应为：质量门独立运行，以框架层结构化信号（toolCalls.Count）而非 LLM 输出内容为判断依据；② **"合并"语义在异常路径下是危险的**：`ResponseMerger.Merge(拒绝, LLM垃圾)` 的设计初衷是"给用户尽可能多的信息"，但当 LLM 输出完全不可信时，「尽可能多」就变成了「尽可能多的垃圾」。异常路径应走"安全侧"——宁可信息不足，不可信息错误；③ **影响面分析不是可选的**：一个看似简单的 else 分支修改（丢弃 vs 合并）触发了对 FC 契约依赖、降级链路正交性、Emergency 路径遗漏、Metrics 可观测性缺失的连锁分析。Bug-032 的修复决策过程中，用户明确要求先完成全链路影响面矩阵后才执行修改，这个流程本身应固化为方法论；④ **松耦合点的防御性注释是跨版本保险**：在 else 分支中增加了 68 行注释标注 FC=Required 契约依赖，防止未来某人将 FC 策略改为 Auto 后此分支误杀合法输出 |
+| **追问深度** | 5 层（L1 现象：废话透传 → L2 调用链：ApplyDecoupledPipeline else 分支的合并逻辑 → L3 设计冲突：OutputSanitizer 职责范围 vs 实际需求 → L4 系统性缺陷：Emergency/RegulatoryAudit/KnowledgeGraph 零质量门 → L5 架构哲学：模型问题 vs 工程问题的权重判定 + 兜底方案从"模式匹配"到"确定性信号"的方法论跃迁） |
+
+## 思维链路（对话复盘）
+
+> 记录本次 Bug 分析的关键思考节点，使后续复盘时不依赖记忆即可还原推理过程。
+> **特别标注**：N4 节点是用户主动发起的架构哲学追问，从"怎么修"上升到"修了会怎样"，是本次 Bug 分析中最有价值的思考跃迁。
+
+| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
+|:---:|------|------|------|------|------|
+| N1 | 现象确认 | "为什么仪表盘自动合规扫描出现大量（注：当前时间为2023-10-05）⏰ 这种内容？" | 日志显示 `[SK诊断] ⚠️ 本轮未调用任何工具` — LLM 绕过 FC 直接输出文本 | 定位为 FC 违约导致的输出质量问题，而非 Prompt 或工具问题 | — |
+| N2 | L1→L2 追问 | FC=Required 下 toolCalls==0，输出经过了哪些处理？ | 追踪到 `ApplyDecoupledPipeline` L831-837 else 分支：`OutputSanitizer.Sanitize(answer, emptyWhitelist)` 对非 GB 内容无效 → `ResponseMerger.Merge(BuildNoResult(), LLM垃圾)` 把拒绝文本和废话合并输出。根因不是 OutputSanitizer 失效，而是它**设计职责就不涵盖废话检测** | 定位到两层缺陷：① Sanitizer 职责窄 ② ResponseMerger 在异常路径下不应合并 | 怀疑是 Prompt 模板问题 → 被双通道解耦架构的 PromptSanitizer 排除 |
+| N3 | 横向对比 | "除了 ChemicalCompliance，Emergency / RegulatoryAudit / KnowledgeGraph 有同样问题吗？" | 全量审计 6 条业务路径：这 3 条路径走 `ExecuteGeneralChatAsync`，零 FC 约束、零输出质量门。唯一的质量门（L147）限定 `intent==ChemicalCompliance && toolCalls>0` | 确认是**系统性设计缺陷**，不是单一 Bug | — |
+| N4 | 架构哲学追问（用户主动） | "当时的架构设计是怎么设计的，为什么没有考虑到这一点的呢？？到底是模型问题大于工程问题还是工程问题大于模型问题？？" | ① 架构设计意图正确：双通道解耦 + FC=Required 确保 LLM 调工具。② 设计假设存在盲区：FC=Required 在 Qwen3-8B 上非 100% 遵循。③ OutputSanitizer 设计哲学有缺口：只管法规幻觉，不管废话模版。**判定：50/50 — 模型 FC 遵循率不足暴露了工程防御面的狭窄** | 不以单一维度定性，建立「模型问题 vs 工程问题」双轴分析框架 | 直接定性为"模型太差"并放弃修复：放弃工程确定性兜底是错误方向 |
+| N5 | 方案分支 | "用正则匹配 LLM 输出中的废话模式（emoji、时间戳注释）？" → 用户追问："该工程修复的兜底，只是硬编码的兜底，在当前场景可靠吗？" | 硬编码正则无法覆盖所有 LLM 废话变体（今天是 `（注：当前时间`，明天可能是 `As an AI assistant`）。真正的确定性信号是 `toolCalls.Count` — 框架层结构化数据，二进制：0=违约/>0=正常 | 放弃模式匹配方案，转向基于 toolCalls.Count 的确定性信号兜底 | 模式匹配 LLM 输出：猫捉老鼠，不可靠 |
+| N6 | 影响面分析（用户主动） | "该修复会引出其他bug吗？？如果不需要调用工具的时候但是出现了问题，该怎么办？？是否会影响其他业务链路，是否会影响降级策略？？？" | 逐项排查 7 个维度：① toolCalls==0 在 FC=Required 下永远是异常（协议违约），不存在"合法不需要调用工具"的场景 ② Emergency/RegulatoryAudit/KnowledgeGraph 不受影响（走 GeneralChatAsync） ③ 降级链路（熔断器/规则引擎）正交独立 ④ OutputValidator 在 toolCalls==0 时本就不执行 ⑤ 会话/记忆系统会正确存储拒绝文本作为下次上下文 ⑥ 需新增 Metrics 计数器 ⑦ 需加防御性注释标注 FC 契约依赖 | 执行修复 + 防御性注释 + Metrics 可观测性 | 不做影响面分析直接修：可能导致未来 FC 策略变更为 Auto 时误杀合法输出 |
+| N7 | 实现决策 | 修复粒度：仅 ApplyDecoupledPipeline else 分支，还是也修 Emergency 等路径？ | Emergency 等路径不使用 FC=Required，toolCalls 检查无意义。它们的修复需要先引入 FC 约束（结构性变更），不应与 Bug-032 混在一起 | 先修 ChemicalCompliance 路径（P0），Emergency 等路径留待后续架构迭代 | 一并修复所有路径：Emergency 路径需要 FC 策略调整，改动面过大且风险未知 |
 
 ---
 

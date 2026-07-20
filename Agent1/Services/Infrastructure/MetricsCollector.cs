@@ -36,6 +36,12 @@ public static class MetricsCollector
     private static long _apiStatus5xxCount;            // API 5xx 响应数 (counter)
     private static long _llmFallbackToRuleEngineCount; // LLM 降级到规则引擎次数 (counter)
 
+    // ── [Bug-032] FC 违约指标 ──
+    /// <summary>FC=Required 下 toolCalls==0 的违约次数 (counter)。
+    /// 每触发一次意味着 LLM 绕过 Function Calling 直接输出文本，
+    /// 该输出已被 ApplyDecoupledPipeline 兜底拒绝。</summary>
+    private static long _fcContractViolationCount;
+
     // 慢请求阈值 (毫秒)
     private const long SlowRequestThresholdMs = 60_000;
 
@@ -124,6 +130,16 @@ public static class MetricsCollector
         Interlocked.Increment(ref _llmFallbackToRuleEngineCount);
     }
 
+    /// <summary>
+    /// [Bug-032] FC=Required 违约计数。
+    /// LLM 在强制工具调用模式下未调用任何工具，输出已被 ApplyDecoupledPipeline 丢弃并替换为确定性拒绝模板。
+    /// 此指标用于监控 Qwen3-8B 的 FC 遵循率：数值越高说明模型 FC 退化越严重。
+    /// </summary>
+    public static void RecordToolCallContractViolation()
+    {
+        Interlocked.Increment(ref _fcContractViolationCount);
+    }
+
     // ── 指标快照 ──
 
     // [P2-14 FIX] 单次原子读取所有计数器, 避免多次 Interlocked.Read 之间状态变化导致快照不一致
@@ -145,6 +161,7 @@ public static class MetricsCollector
         var cbOpen = Interlocked.Read(ref _circuitBreakerOpen);
         var api5xx = Interlocked.Read(ref _apiStatus5xxCount);
         var fallbackCount = Interlocked.Read(ref _llmFallbackToRuleEngineCount);
+        var fcViolationCount = Interlocked.Read(ref _fcContractViolationCount);
 
         return new MetricsSnapshot
         {
@@ -164,6 +181,7 @@ public static class MetricsCollector
             CircuitBreakerOpen = cbOpen,
             ApiStatus5xxCount = api5xx,
             LlmFallbackToRuleEngineCount = fallbackCount,
+            FcContractViolationCount = fcViolationCount,
             Timestamp = DateTime.UtcNow
         };
     }
@@ -234,6 +252,10 @@ public static class MetricsCollector
             "# HELP agent1_llm_fallback_rule_engine_total Total LLM-to-rule-engine fallback invocations",
             "# TYPE agent1_llm_fallback_rule_engine_total counter",
             $"agent1_llm_fallback_rule_engine_total {snap.LlmFallbackToRuleEngineCount}",
+            "",
+            "# HELP agent1_fc_contract_violation_total Total FC=Required contract violations (toolCalls==0, output discarded)",
+            "# TYPE agent1_fc_contract_violation_total counter",
+            $"agent1_fc_contract_violation_total {snap.FcContractViolationCount}",
             ""
         );
     }
@@ -260,5 +282,7 @@ public class MetricsSnapshot
     public long CircuitBreakerOpen { get; init; }
     public long ApiStatus5xxCount { get; init; }
     public long LlmFallbackToRuleEngineCount { get; init; }
+    /// <summary>[Bug-032] FC=Required 违约次数 — LLM 绕过 Function Calling 直接输出文本的次数</summary>
+    public long FcContractViolationCount { get; init; }
     public DateTime Timestamp { get; init; }
 }

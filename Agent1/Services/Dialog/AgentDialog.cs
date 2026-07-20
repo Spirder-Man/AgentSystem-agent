@@ -60,6 +60,24 @@ namespace Agent1.Services
         {
             _memoryService.ClearMemory();
         }
+
+        /// <summary>
+        /// P1: LLM 服务预检 — 快速探测推理服务是否可用（3 秒超时）。
+        /// 供扫描等关键路径在进入重循环前做一次快速判定。
+        /// </summary>
+        public async Task<bool> CheckLlmHealthAsync()
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                var result = await _llmService.GenerateSimpleResponseAsync("ping", maxTokens: 1);
+                return !string.IsNullOrEmpty(result);
+            }
+            catch
+            {
+                return false;
+            }
+        }
         /// <summary>
         /// 执行对话
         /// </summary>
@@ -812,10 +830,50 @@ namespace Agent1.Services
             }
             else
             {
-                // 兜底：工具未触发时，消毒 LLM 输出剔除幻觉引用，渲染"无确定结论"声明
-                var sanitized = OutputSanitizer.Sanitize(answer, facts.RegulationRefs);
-                var factOutput = FactAssembler.Build(facts);
-                return ResponseMerger.Merge(factOutput, sanitized);
+                // ────────────────────────────────────────────────────
+            // [Bug-032 系统性修复 2026-07-18] toolCalls==0 → LLM 输出不可信
+            //
+            // 背景：
+            //   ExecuteChemicalComplianceAsync 使用 FC=Required（见 LlmService L127），
+            //   这意味着 Semantic Kernel 强制要求 LLM 必须调用至少一个工具。
+            //   当 FC=Required 但 toolCalls.Count==0 时，只有两种可能：
+            //     a) Qwen3-8B 忽略 FC 指令，退化为通用聊天模式（已知模型缺陷）
+            //     b) llama.cpp 的 FC JSON 解析失败，LLM 输出裸文本
+            //   无论哪种情况，LLM 输出都绕过了工具验证，内容不可信。
+            //
+            // 设计决策（2026-07-18 评审通过）：
+            //   - 不尝试模式匹配 LLM 输出内容（硬编码正则无法覆盖所有废话变体）
+            //   - 使用 toolCalls.Count 作为唯一确定性信号（框架层结构化数据，非 LLM 文本）
+            //   - 检测到 FC 违约时直接丢弃 LLM 全部输出，走纯确定性拒绝模板
+            //
+            // ⚠️ 耦合声明：
+            //   此分支的正确性依赖 FC=Required 契约。如果未来将
+            //   ExecuteChemicalComplianceAsync 的 FC 策略改为 Auto/None，
+            //   必须同步修改此分支逻辑 — toolCalls==0 在 Auto 模式下是正常行为，
+            //   不应触发拒绝。建议在此分支上方增加 FC 策略检查。
+            //
+            // 影响范围：
+            //   仅影响 ChemicalCompliance 意图（Emergency/RegulatoryAudit/KnowledgeGraph
+            //   走 ExecuteGeneralChatAsync，不使用 FC=Required，不受此修改影响）
+            // ────────────────────────────────────────────────────
+            if (toolCalls.Count == 0)
+            {
+                // FC=Required 违约：LLM 输出不可信，丢弃全部内容
+                Serilog.Log.Warning(
+                    "[DecoupledPipeline] FC=Required 违约: toolCalls=0, LLM输出已丢弃 | " +
+                    "原输出长度={OriginalLen} | 原输出前80字符={OriginalPreview}",
+                    answer.Length, answer.Truncate(80));
+                MetricsCollector.RecordToolCallContractViolation();
+
+                // 返回纯确定性拒绝模板，不包含任何 LLM 输出
+                return FactAssembler.BuildNoResult();
+            }
+
+            // toolCalls>0 但事实提取为空（工具被调用了但未返回有效业务数据）
+            // 此时 LLM 输出有工具调用作为上下文支撑，相对可靠
+            var sanitized = OutputSanitizer.Sanitize(answer, facts.RegulationRefs);
+            var factOutput = FactAssembler.Build(facts);
+            return ResponseMerger.Merge(factOutput, sanitized);
             }
         }
 
