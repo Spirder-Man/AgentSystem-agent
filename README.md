@@ -1,6 +1,6 @@
 # Agent1 — 化工园区危化品合规审查 AI Agent
 
-> **项目版本**：v4.2（P0 Bug 修复批次：评测集数据对齐 + Citation Accuracy 误判修复 + 版本幻觉三层约束 — 2026-07-03）
+> **项目版本**：v4.3（P0 Bug 修复批次：哈希链彻底修复 + IsDirty阈值/IntentRouter/LLM预检/缓存预热 + API端口对齐 — 2026-07-18）
 > **核心修复文档**：[P0-P1修复详细技术文档](docs/troubleshooting/P0-P1修复详细技术文档.md) | [RAG工程Bug修复笔记](docs/troubleshooting/RAG工程Bug修复笔记_2026-05-26.md) | [故障排查文档](docs/troubleshooting/故障排查文档.md) | [Bug知识库](docs/project/Bug知识库.md) | [代码自检清单](docs/工程skill/代码自检清单%20Skill.md)
 > **前端开发**：[前端开发快速上手指南](docs/architecture/Agent1前端开发快速上手指南.md) | [Mock 机制说明](agent1-web/src/mocks/README.md)
 
@@ -795,12 +795,23 @@ MIT License
 
 ---
 
-**文档版本**：v4.15  
-**最后更新**：2026年7月3日  
+**文档版本**：v4.16  
+**最后更新**：2026年7月18日  
 **分支**：`linux原生编译模型llama.cpp`  
-**状态**：P0 Bug 修复批次（Bug-026/027/028）| 评测集 GB 数据与数据库对齐 | Citation Accuracy 区分数据源 | 版本幻觉三层约束 | 编译 0 errors
+**状态**：P0 Bug 修复批次（Bug-031 哈希链彻底修复 + IsDirty 阈值/IntentRouter/LLM 预检/缓存预热）| 编译 0 errors
 
 ## 📋 近期更新
+
+### P0 Bug 修复批次：哈希链彻底修复 + 知识库阀门 + 意图路由 + LLM 预检（2026-07-18）★ v4.3
+- **Bug-031 (P0)**：审计哈希链含微秒 createTime — 三次修复仍断裂。**彻底修复**：`ComputeChainHash` 移除 createTime 参数（哈希仅由 `prevHash|userId|operation|details` 计算） + `init_database.sql` 补 `chain_hash TEXT` 列 + `Program.cs` 启动时自动 `RepairChainAsync`
+- **IsDirty 阈值 (P2)**：`ChemicalDocumentRecord.IsDirty` 短文本拦截阈值 `< 20` → `< 5`，H166 企业制度模板不再被误拦截
+- **IntentRouter 关键词扩展 (P2)**：`ComplianceKeywords` 新增 25 个关键词（化学品名 `苯/甲苯/甲醇/丙酮/硫酸` + 仓库/消防 + 安全术语 `MSDS/SDS/登记/许可/备案`），解决 GHS/消防查询路由到 SimpleChat 的问题
+- **LLM 扫描预检 (P1)**：`ScanAssetsAsync` 新增 `CheckLlmHealthAsync()` 3 秒快速预检，LLM 不可用时 503 返回而非 245 秒空转
+- **缓存预热修复 (P3)**：`WarmupFromEvalSet` JSON 反序列化兼容 `EvalSet` + `List<EvalCase>` 双格式
+- **API 端口对齐**：前端 `.env` `VITE_PROXY_TARGET` 修正为 `localhost:52320`（与 `launchSettings.json` 一致）
+- **.gitignore 清理**：去重去乱码，补 `_archive/` `knowledgebase/` `/memory/` 等本地数据忽略规则
+- **Bug 知识库**：Bug-029/030/031 三条记录（含完整思维链路表格）
+- **文件**：12 files, +163/-131 | 编译 0 errors | 已推送 Gitee
 
 ### P0 Bug 修复批次：评测集数据对齐 + Citation Accuracy 误判修复 + 版本幻觉三层约束（2026-07-03）★ v4.2
 - **Bug A (P0)**：`ComplianceEvalSet.json` 7 条危险类别 `expected_regulation_number` 与 `ChemicalSubstanceDatabase` 实际 GB 映射不一致 — C003 液氯 GB 30000.24→30000.6、C004 硝酸铵 GB 30000.14→30000.15 等
