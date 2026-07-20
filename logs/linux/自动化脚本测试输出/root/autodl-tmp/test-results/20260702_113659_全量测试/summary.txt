@@ -1,0 +1,37 @@
+Agent1 自动化测试报告 (v2 新菜单)
+══════════════════════
+时间: 2026-07-02 13:47:40
+通过: 24
+失败: 1
+跳过: 0
+总计: 25
+总耗时: 7841s
+LLM: 200
+Embed: 200
+
+各测试日志:
+  T1.1_安全注入_忽略指令: PASS
+  T1.2_安全注入_SQL: PASS
+  T1.3_安全注入_空输入: FAIL
+  T10_数据库连接验证: PASS
+  T11_切换检索模式_BM25: PASS
+  T11b_切换检索模式_Vector: PASS
+  T11c_切换检索模式_Hybrid: PASS
+  T12_工具调用诊断: PASS
+  T13_合规评测集: FAIL
+  T14_整改工单跟进: PASS
+  T16_知识库增量更新: PASS
+  T17_监管核查辅助: PASS
+  T18_应急响应方案: PASS
+  T19_知识图谱查询: PASS
+  T1_CoT标准推理: PASS
+  T20_告警邮件测试: PASS
+  T2_CoT流式推理: PASS
+  T3_ReAct标准推理: PASS
+  T4_ReAct流式推理: PASS
+  T5_Reflection反思: PASS
+  T6_RAG检索增强: PASS
+  T7_智能对话系统: PASS
+  T8_化工合规自查_共存: PASS
+  T8b_化工合规自查_间距: PASS
+  T9_化工RAG检索测试: PASS

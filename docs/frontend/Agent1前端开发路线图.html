@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent1 前端开发路线图</title>
+  <style>
+    :root {
+      --c-bg: #f8fafc;
+      --c-canvas: #ffffff;
+      --c-border: #cbd5e1;
+      --c-text-main: #0f172a;
+      --c-text-sub: #64748b;
+      --c-done: #16a34a;
+      --c-active: #2563eb;
+      --c-pending: #94a3b8;
+      --c-warn: #dc2626;
+      --c-tag-bg: #f1f5f9;
+      --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      --font-mono: 'SF Mono', Monaco, Consolas, monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--c-bg);
+      font-family: var(--font-ui);
+      color: var(--c-text-main);
+      padding: 40px;
+    }
+
+    .canvas {
+      background: var(--c-canvas);
+      border: 2px solid var(--c-border);
+      max-width: 1160px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    .header {
+      padding: 28px 32px 20px;
+      border-bottom: 1px solid var(--c-border);
+    }
+    .header h1 {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+    }
+    .header .sub {
+      font-size: 11px;
+      color: var(--c-text-sub);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-top: 4px;
+    }
+    .header .badge-row {
+      margin-top: 12px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    /* Badges */
+    .badge {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      padding: 2px 8px;
+      border: 1px solid var(--c-text-main);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .badge--done  { background: #dcfce7; border-color: var(--c-done); color: var(--c-done); }
+    .badge--active{ background: #dbeafe; border-color: var(--c-active); color: var(--c-active); }
+    .badge--pending{ border-color: var(--c-pending); color: var(--c-pending); }
+    .badge--warn  { background: #fef2f2; border-color: var(--c-warn); color: var(--c-warn); }
+
+    /* Phase grid */
+    .phases {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+    }
+    .phase {
+      padding: 22px 28px;
+      border-bottom: 1px solid var(--c-border);
+      position: relative;
+    }
+    .phase:nth-child(odd) { border-right: 1px solid var(--c-border); }
+    .phase:last-child:nth-child(odd) { border-bottom: 0; }
+
+    .phase-marker {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .phase-dot {
+      width: 12px; height: 12px;
+      border-radius: 2px;
+      border: 2px solid;
+      flex-shrink: 0;
+    }
+    .dot-done   { background: var(--c-done); border-color: var(--c-done); }
+    .dot-active { background: var(--c-active); border-color: var(--c-active); }
+    .dot-pending{ background: transparent; border-color: var(--c-pending); }
+
+    .phase-tag {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 1px 6px;
+      border: 1px solid;
+    }
+    .phase-tag--done   { border-color: var(--c-done); color: var(--c-done); }
+    .phase-tag--active { border-color: var(--c-active); color: var(--c-active); }
+    .phase-tag--pending{ border-color: var(--c-pending); color: var(--c-pending); }
+
+    .phase-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .phase-date {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--c-text-sub);
+    }
+    .phase-items {
+      margin-top: 10px;
+      list-style: none;
+    }
+    .phase-items li {
+      font-size: 13px;
+      color: var(--c-text-sub);
+      padding: 2px 0;
+      padding-left: 16px;
+      position: relative;
+    }
+    .phase-items li::before {
+      content: '—';
+      position: absolute;
+      left: 0;
+      color: var(--c-border);
+    }
+    .phase-items li.done { color: var(--c-text-main); }
+    .phase-items li.done::before { content: '✓'; color: var(--c-done); }
+
+    /* Footer */
+    .footer {
+      padding: 16px 32px;
+      border-top: 1px solid var(--c-border);
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--c-text-sub);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Next step callout */
+    .next-callout {
+      margin: 0 32px 28px;
+      padding: 16px 20px;
+      background: #eff6ff;
+      border: 1px solid var(--c-active);
+    }
+    .next-callout-label {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--c-active);
+      margin-bottom: 4px;
+    }
+    .next-callout-text {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--c-text-main);
+    }
+  </style>
+</head>
+<body>
+
+<div class="canvas">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>Agent1 前端开发路线图</h1>
+    <p class="sub">FRONTEND DEVELOPMENT ROADMAP · PROMPTS-V1.0.1</p>
+    <div class="badge-row">
+      <span class="badge badge--done">Phase 0 已完成</span>
+      <span class="badge badge--active">Sprint 0 启动中</span>
+      <span class="badge badge--pending">Sprint 1–6 待执行</span>
+      <span class="badge badge--warn">2 高风险已修复</span>
+    </div>
+  </div>
+
+  <!-- Phase 0: Architecture Design & Review (DONE) -->
+  <div class="phases">
+    <div class="phase" style="grid-column: 1 / -1;">
+      <div class="phase-marker">
+        <span class="phase-dot dot-done"></span>
+        <span class="phase-tag phase-tag--done">Phase 0 · 已完成</span>
+      </div>
+      <div class="phase-title">架构设计 & 后端对齐审查</div>
+      <div class="phase-date">2026-07-10</div>
+      <ul class="phase-items">
+        <li class="done">后端逻辑架构提取（12 ModuleTypes / 9 KernelFunctions / 6 步 Pipeline）</li>
+        <li class="done">前端架构设计方案（1768 行，15 路由 / 30+ 组件 / 8 Stores）</li>
+        <li class="done">生产加固 7 维度补充（错误处理 / 测试 / 性能 / 安全 / DX / 持久化 / UI 细节）</li>
+        <li class="done">前后端 4 点高风险对齐审查（合规响应 / 工单状态 / LLM 协议 / 权限策略）</li>
+        <li class="done">工单状态枚举修正（FindingStatus → TicketStatus）</li>
+        <li class="done">viewer 权限收缩（仅 /login + /403）</li>
+        <li class="done">浏览器验证通过 + commit + tag prompts-v1.0.1</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Sprint Grid -->
+  <div class="phases">
+
+    <!-- Sprint 0: Infrastructure -->
+    <div class="phase">
+      <div class="phase-marker">
+        <span class="phase-dot dot-active"></span>
+        <span class="phase-tag phase-tag--active">Sprint 0</span>
+      </div>
+      <div class="phase-title">基础设施搭建</div>
+      <div class="phase-date">预计 3–5 天</div>
+      <ul class="phase-items">
+        <li>ErrorBoundary 全局错误边界</li>
+        <li>EmptyState / Skeleton 占位组件</li>
+        <li>Axios 拦截器增强（401/403/503 全覆盖）</li>
+        <li>GlobalLoadingBar 全局进度条</li>
+        <li>Git Hooks（husky + lint-staged + commitlint）</li>
+        <li>环境变量规范化（.env / .env.mock / .env.local）</li>
+      </ul>
+    </div>
+
+    <!-- Sprint 1: Core Pages -->
+    <div class="phase">
+      <div class="phase-marker">
+        <span class="phase-dot dot-pending"></span>
+        <span class="phase-tag phase-tag--pending">Sprint 1</span>
+      </div>
+      <div class="phase-title">核心页面开发</div>
+      <div class="phase-date">预计 7–10 天</div>
+      <ul class="phase-items">
+        <li>LoginPage（接入 authStore + MSW Mock）</li>
+        <li>DashboardPage（4 StatCards + 2 Charts）</li>
+        <li>ComplianceCheckPage（双通道结果展示）</li>
+        <li>ComplianceHistoryPage</li>
+        <li>TicketListPage + TicketDetailPage</li>
+        <li>全局指令 v-permission</li>
+      </ul>
+    </div>
+
+    <!-- Sprint 2: Test + Resilience -->
+    <div class="phase">
+      <div class="phase-marker">
+        <span class="phase-dot dot-pending"></span>
+        <span class="phase-tag phase-tag--pending">Sprint 2</span>
+      </div>
+      <div class="phase-title">测试覆盖 & 错误韧性</div>
+      <div class="phase-date">预计 5–7 天</div>
+      <ul class="phase-items">
+        <li>Store 单元测试（Auth / Ticket / Compliance / Inspection）</li>
+        <li>核心组件测试（6 个组件，Vitest + VTU）</li>
+        <li>useRetry composable（指数退避）</li>
+        <li>乐观更新（工单状态流转）</li>
+        <li>utils/constants 状态机完整性测试</li>
+      </ul>
+    </div>
+
+    <!-- Sprint 3: Inspection + Assets -->
+    <div class="phase">
+      <div class="phase-marker">
+        <span class="phase-dot dot-pending"></span>
+        <span class="phase-tag phase-tag--pending">Sprint 3</span>
+      </div>
+      <div class="phase-title">巡检管理 & 资产台账</div>
+      <div class="phase-date">预计 5–7 天</div>
+      <ul class="phase-items">
+        <li>InspectionPlanListPage + CreatePage</li>
+        <li>InspectionExecutePage（实时进度条）</li>
+        <li>InspectionRoundDetailPage + ReportPage</li>
+        <li>AssetListPage + AssetDetailPage</li>
+        <li>AutoScan 触发 + ScanResult 展示</li>
+      </ul>
+    </div>
+
+    <!-- Sprint 4: E2E + DX -->
+    <div class="phase">
+      <div class="phase-marker">
+        <span class="phase-dot dot-pending"></span>
+        <span class="phase-tag phase-tag--pending">Sprint 4</span>
+      </div>
+      <div class="phase-title">E2E 测试 & 开发体验</div>
+      <div class="phase-date">预计 5–7 天</div>
+      <ul class="phase-items">
+        <li>Playwright E2E（5 条关键路径）</li>
+        <li>Storybook（6 个核心组件文档）</li>
+        <li>API 类型自动生成脚本（openapi-typescript）</li>
+        <li>Vite 分包策略 & 性能基线</li>
+      </ul>
+    </div>
+
+    <!-- Sprint 5: Hardening -->
+    <div class="phase">
+      <div class="phase-marker">
+        <span class="phase-dot dot-pending"></span>
+        <span class="phase-tag phase-tag--pending">Sprint 5</span>
+      </div>
+      <div class="phase-title">生产加固</div>
+      <div class="phase-date">预计 5–7 天</div>
+      <ul class="phase-items">
+        <li>vue-i18n 国际化全覆盖</li>
+        <li>A11y 可访问性审查</li>
+        <li>虚拟滚动（el-table-v2，>100 条触发）</li>
+        <li>markdown-it 安全配置（防 XSS）</li>
+        <li>CSP Header 部署要求</li>
+      </ul>
+    </div>
+
+    <!-- Sprint 6: Audit + Polish -->
+    <div class="phase">
+      <div class="phase-marker">
+        <span class="phase-dot dot-pending"></span>
+        <span class="phase-tag phase-tag--pending">Sprint 6</span>
+      </div>
+      <div class="phase-title">审计日志 & 体验打磨</div>
+      <div class="phase-date">预计 5–7 天</div>
+      <ul class="phase-items">
+        <li>AuditLogPage（admin only）</li>
+        <li>SystemStatusPage</li>
+        <li>Breadcrumb 面包屑导航</li>
+        <li>NotificationCenter 通知中心</li>
+        <li>侧边栏响应式折叠（< 1024px）</li>
+      </ul>
+    </div>
+
+    <!-- Future -->
+    <div class="phase">
+      <div class="phase-marker">
+        <span class="phase-dot dot-pending"></span>
+        <span class="phase-tag phase-tag--pending">待定</span>
+      </div>
+      <div class="phase-title">后端对齐 & 恢复 viewer</div>
+      <div class="phase-date">依赖后端改造</div>
+      <ul class="phase-items">
+        <li>后端为 GET 端点增加 Viewer 策略</li>
+        <li>前端恢复 viewer 只读权限</li>
+        <li>真实 API 联调（关闭 MSW Mock）</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- Next Step Callout -->
+  <div class="next-callout">
+    <div class="next-callout-label">▶ 下一步行动</div>
+    <div class="next-callout-text">
+      Sprint 0：创建 ErrorBoundary、EmptyState、Skeleton 组件 + Axios 拦截器增强 + Git Hooks
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <span>agent1-web · prompts-v1.0.1</span>
+    <span>2026-07-10 · Phase 0 ✓</span>
+  </div>
+
+</div>
+
+</body>
+</html>

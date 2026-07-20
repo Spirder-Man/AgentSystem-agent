@@ -9,9 +9,19 @@ global:
   external_labels:
     service: agent1
 
-# 预录规则 (SLO 指标预计算)
+# ═══════════════════════════════════════════════
+# Alertmanager 告警通道
+# ═══════════════════════════════════════════════
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - 'alertmanager:9093'
+
+# 预录规则 (SLO 指标预计算) + 告警规则
 rule_files:
   - "/etc/prometheus/recording-rules.yml"
+  - "/etc/prometheus/alert-rules.yml"
 
 scrape_configs:
   # ── Agent1 API 指标 ──

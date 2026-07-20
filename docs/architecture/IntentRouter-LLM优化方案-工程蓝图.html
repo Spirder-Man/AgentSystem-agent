@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>IntentRouter LLM 轻量分类优化方案 · 工程蓝图</title>
+<style>
+:root {
+  --c-bg: #f8fafc;
+  --c-canvas: #ffffff;
+  --c-border: #cbd5e1;
+  --c-border-light: #e2e8f0;
+  --c-text-main: #0f172a;
+  --c-text-sub: #64748b;
+  --c-text-weak: #94a3b8;
+  --c-accent: #1e293b;
+  --c-red: #dc2626;
+  --c-green: #16a34a;
+  --c-amber: #d97706;
+  --c-blue: #2563eb;
+  --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'SF Mono', Monaco, Consolas, 'Cascadia Code', monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--c-bg); font-family: var(--font-ui); color: var(--c-text-main); padding: 40px; }
+.diagram-canvas { background: var(--c-canvas); border: 2px solid var(--c-border); padding: 40px; max-width: 1300px; margin: 0 auto; }
+.diagram-header { border-bottom: 2px solid var(--c-text-main); padding-bottom: 16px; margin-bottom: 32px; display: flex; justify-content: space-between; align-items: flex-end; }
+.diagram-title { font-size: 28px; font-weight: 700; color: var(--c-text-main); }
+.diagram-subtitle { font-size: 11px; font-weight: 600; color: var(--c-text-sub); text-transform: uppercase; letter-spacing: 1.5px; margin-top: 4px; }
+.diagram-meta { text-align: right; font-size: 11px; font-family: var(--font-mono); color: var(--c-text-sub); }
+
+/* Section */
+.section { margin-bottom: 36px; }
+.section-hd { border-bottom: 1px solid var(--c-border); padding-bottom: 8px; margin-bottom: 16px; display: flex; align-items: baseline; gap: 12px; }
+.section-num { font-family: var(--font-mono); font-size: 11px; color: var(--c-text-sub); font-weight: 600; }
+.section-title { font-size: 16px; font-weight: 700; color: var(--c-text-main); }
+.section-p { font-size: 13px; color: var(--c-text-sub); line-height: 1.7; margin-bottom: 12px; }
+
+/* Grid */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
+
+/* Card */
+.card { border: 1px solid var(--c-border); padding: 16px; }
+.card-hd { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; color: var(--c-text-sub); }
+.card-body { font-size: 13px; line-height: 1.6; }
+.card-body p { margin-bottom: 6px; }
+.card--warn { border-color: var(--c-amber); }
+.card--good { border-color: var(--c-green); }
+
+/* Badge */
+.badge { display: inline-block; font-size: 10px; font-family: var(--font-mono); padding: 2px 6px; border: 1px solid var(--c-text-main); text-transform: uppercase; font-weight: 600; }
+.badge--fill { background: var(--c-text-main); color: var(--c-canvas); }
+.badge--red { border-color: var(--c-red); color: var(--c-red); }
+.badge--green { border-color: var(--c-green); color: var(--c-green); }
+.badge--amber { border-color: var(--c-amber); color: var(--c-amber); }
+.badge--blue { border-color: var(--c-blue); color: var(--c-blue); }
+
+/* Table */
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tbl th { text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--c-text-sub); padding: 10px 12px; border-bottom: 2px solid var(--c-border); }
+.tbl td { padding: 10px 12px; border-bottom: 1px solid var(--c-border-light); vertical-align: top; line-height: 1.5; }
+.tbl tr:last-child td { border-bottom: none; }
+.tbl .mono { font-family: var(--font-mono); font-size: 12px; }
+
+/* Flow */
+.flow-row { display: flex; align-items: center; gap: 0; margin-bottom: 12px; }
+.flow-node { border: 1px solid var(--c-border); padding: 10px 14px; font-size: 12px; font-weight: 600; text-align: center; min-width: 120px; }
+.flow-node--dark { background: var(--c-text-main); color: var(--c-canvas); border-color: var(--c-text-main); }
+.flow-node--warn { background: #fefce8; border-color: var(--c-amber); }
+.flow-arrow { width: 30px; text-align: center; font-size: 14px; color: var(--c-text-sub); flex-shrink: 0; }
+.flow-label { font-size: 10px; color: var(--c-text-sub); font-family: var(--font-mono); margin-top: 4px; }
+
+/* Code block */
+.code-block { background: #f1f5f9; border: 1px solid var(--c-border-light); padding: 14px 18px; font-family: var(--font-mono); font-size: 12px; line-height: 1.7; overflow-x: auto; white-space: pre; margin-top: 8px; color: var(--c-text-main); }
+.code-block .kw { color: var(--c-blue); font-weight: 600; }
+.code-block .str { color: var(--c-green); }
+.code-block .cmt { color: var(--c-text-weak); font-style: italic; }
+
+/* Compare */
+.compare-row { display: grid; grid-template-columns: 1fr 60px 1fr; gap: 0; align-items: start; margin-bottom: 16px; }
+.compare-box { border: 1px solid var(--c-border); padding: 16px; }
+.compare-box--old { border-left: 3px solid var(--c-red); }
+.compare-box--new { border-left: 3px solid var(--c-green); }
+.compare-arrow-col { display: flex; align-items: center; justify-content: center; font-size: 20px; color: var(--c-text-sub); }
+
+/* Timeline */
+.timeline { border-left: 2px solid var(--c-border); padding-left: 20px; margin-left: 8px; }
+.timeline-item { margin-bottom: 16px; position: relative; }
+.timeline-item::before { content: ''; position: absolute; left: -26px; top: 4px; width: 10px; height: 10px; border: 2px solid var(--c-text-main); background: var(--c-canvas); }
+.timeline-hd { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+.timeline-p { font-size: 12px; color: var(--c-text-sub); line-height: 1.6; }
+
+/* Decision */
+.decision { background: #f8fafc; border: 1px solid var(--c-border); padding: 16px 20px; margin-top: 12px; }
+.decision-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--c-text-sub); margin-bottom: 6px; }
+.decision-body { font-size: 13px; line-height: 1.7; }
+
+/* Metric */
+.metric-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.metric-card { flex: 1; min-width: 140px; border: 1px solid var(--c-border); padding: 14px; text-align: center; }
+.metric-val { font-size: 28px; font-weight: 700; font-family: var(--font-mono); }
+.metric-label { font-size: 11px; color: var(--c-text-sub); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+.metric-card--good .metric-val { color: var(--c-green); }
+
+/* Hierarchy */
+.hierarchy { font-family: var(--font-mono); font-size: 12px; line-height: 1.8; padding: 12px 0; }
+</style>
+</head>
+<body>
+
+<div class="diagram-canvas">
+
+<!-- HEADER -->
+<div class="diagram-header">
+  <div>
+    <h1 class="diagram-title">IntentRouter · LLM 轻量分类优化方案</h1>
+    <p class="diagram-subtitle">Engineering Blueprint — 方案 A：专用 0.5B 小模型意图分类</p>
+  </div>
+  <div class="diagram-meta">
+    DOC ID: AGT-BP-2026-003<br/>
+    REV: v1.0 &nbsp;|&nbsp; 2026-06-27<br/>
+    STATUS: DESIGN REVIEW
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 1: PROBLEM STATEMENT -->
+<!-- ============================================================ -->
+<div class="section">
+  <div class="section-hd">
+    <span class="section-num">01</span>
+    <span class="section-title">现状问题 · 硬编码关键词的三项致命缺陷</span>
+  </div>
+
+  <div class="grid-3">
+    <div class="card card--warn">
+      <div class="card-hd"><span class="badge badge--red">缺陷 1</span>&nbsp; 覆盖盲区</div>
+      <div class="card-body">
+        <p>当前 23 个合规关键词靠人工穷举，用户说「爆炸风险」「自燃特性」「放射危害」均无法命中，被误判为 <span class="mono">SimpleChat</span>，跳过完整合规链路。</p>
+        <p style="color: var(--c-text-sub); font-size: 11px; margin-top: 8px;">预估缺失率：<strong>15%–25%</strong></p>
+      </div>
+    </div>
+    <div class="card card--warn">
+      <div class="card-hd"><span class="badge badge--red">缺陷 2</span>&nbsp; 精度不可控</div>
+      <div class="card-body">
+        <p><span class="mono">FirstOrDefault</span> 仅返回第一个命中，无置信度机制。用户说「帮我分析这个化合物的化学特性」→ 命中「化学」→ 合规，但实际可能是纯学术问题。</p>
+        <p style="color: var(--c-text-sub); font-size: 11px; margin-top: 8px;">误判率：<strong>5%–10%</strong></p>
+      </div>
+    </div>
+    <div class="card card--warn">
+      <div class="card-hd"><span class="badge badge--red">缺陷 3</span>&nbsp; 扩展不可持续</div>
+      <div class="card-body">
+        <p>每新增一个业务场景（应急响应、巡检审计）就要手动加关键词。关键词列表膨胀到 50+ 时，<span class="mono">FirstOrDefault</span> 的顺序依赖问题加剧。</p>
+        <p style="color: var(--c-text-sub); font-size: 11px; margin-top: 8px;">维护成本：<strong>O(n) 线性增长</strong></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 2: TARGET ARCHITECTURE -->
+<!-- ============================================================ -->
+<div class="section">
+  <div class="section-hd">
+    <span class="section-num">02</span>
+    <span class="section-title">目标架构 · LLM 意图分类器</span>
+  </div>
+
+  <p class="section-p">用专用 0.5B 小模型替代硬编码关键词表。分类器作为独立微服务运行，与现有 Pipeline 通过 HTTP/gRPC 集成，不影响主推理链路的 Qwen3-8B。</p>
+
+  <!-- Flow diagram -->
+  <div style="border: 1px solid var(--c-border); padding: 24px; margin-bottom: 16px;">
+    <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--c-text-sub); margin-bottom: 16px;">请求链路</div>
+
+    <div class="flow-row">
+      <div class="flow-node flow-node--dark" style="min-width: 100px;">用户输入</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node" style="min-width: 80px;">预处理<br/><span class="flow-label">Trim + 标准化</span></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node flow-node--warn" style="min-width: 140px; border: 1.5px solid var(--c-amber);">
+        LLM 意图分类器<br/>
+        <span class="flow-label">0.5B 模型 · ~200ms</span>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node" style="min-width: 100px;">意图 + 置信度<br/><span class="flow-label">ChemicalCompliance / SimpleChat</span></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node flow-node--dark" style="min-width: 100px;">Pipeline 分发<br/><span class="flow-label">步骤 4 业务执行</span></div>
+    </div>
+
+    <div style="margin-top: 20px; padding: 12px 16px; background: #f1f5f9; border: 1px solid var(--c-border-light); font-size: 12px; font-family: var(--font-mono);">
+      <span style="color: var(--c-text-sub);"># 降级路径：分类器不可用时 → 回退到原关键词匹配方案</span><br/>
+      <span style="color: var(--c-amber);">⚠️</span> LLM 超时(500ms) / 连接拒绝 / HTTP 5xx → <span style="color: var(--c-text-sub);">fallback: IntentRouter.Route(input)</span>
+    </div>
+  </div>
+
+  <!-- Key design decisions -->
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-hd">模型选型</div>
+      <div class="card-body">
+        <table class="tbl" style="margin-top: 4px;">
+          <tr><th>候选</th><th>大小</th><th>延迟</th><th>中文</th></tr>
+          <tr><td class="mono" style="font-weight:700;">Qwen2.5-0.5B</td><td class="mono">0.5B</td><td class="mono">~150ms</td><td><span class="badge badge--green">优</span></td></tr>
+          <tr><td class="mono">SmolLM2-360M</td><td class="mono">360M</td><td class="mono">~80ms</td><td><span class="badge badge--red">差</span></td></tr>
+          <tr><td class="mono">Phi-3-mini</td><td class="mono">3.8B</td><td class="mono">~600ms</td><td><span class="badge badge--amber">中</span></td></tr>
+        </table>
+        <p style="margin-top: 8px; font-size: 12px; color: var(--c-text-sub);">
+          <strong>推荐 Qwen2.5-0.5B-Instruct</strong>：原生中文优化、Ollama 直装、延迟可控。
+        </p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-hd">部署拓扑</div>
+      <div class="card-body" style="font-family: var(--font-mono); font-size: 12px; line-height: 1.8;">
+        <div style="margin-bottom: 8px;">
+          <span style="font-weight: 700;">Option A: 独立 Ollama 实例</span><br/>
+          <span style="color: var(--c-text-sub);">qwen2.5:0.5b @ localhost:11435</span><br/>
+          <span style="color: var(--c-green); font-size: 11px;">✅ 进程隔离，不干扰主模型推理</span>
+        </div>
+        <div>
+          <span style="font-weight: 700;">Option B: llama.cpp 加载</span><br/>
+          <span style="color: var(--c-text-sub);">llama-server --model qwen2.5-0.5b-Q4.gguf --port 8081</span><br/>
+          <span style="color: var(--c-amber); font-size: 11px;">⚠️ 需额外管理 .gguf 文件 + CUDA 配置</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 3: PROMPT DESIGN -->
+<!-- ============================================================ -->
+<div class="section">
+  <div class="section-hd">
+    <span class="section-num">03</span>
+    <span class="section-title">Prompt 设计 · 五意图分类体系</span>
+  </div>
+
+  <p class="section-p">核心设计原则：<strong>极短 system prompt + 结构化输出 + 精确约束标签集</strong>。0.5B 模型对长 prompt 敏感，必须精简到 200 tokens 以内。</p>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-hd">System Prompt（生产版）</div>
+      <div class="code-block"><span class="cmt"># 化工合规意图分类器 · system prompt</span>
+<span class="kw">你是一个化工安全意图分类器。分析用户输入，返回 JSON。</span>
+
+<span class="kw">标签集：</span>
+- <span class="str">chemical_compliance</span>: 危化品分类/储存/安全距离/法规/事故/应急
+- <span class="str">inspection_audit</span>: 巡检/检查/隐患排查/整改
+- <span class="str">emergency_response</span>: 泄漏/火灾/爆炸/中毒应急处置
+- <span class="str">simple_chat</span>: 闲聊/时间/计算/自我介绍/问候
+- <span class="str">unknown</span>: 无法分类
+
+<span class="kw">输出格式（仅 JSON，无其他文本）：</span>
+{"intent":"标签","confidence":0.0-1.0,"keywords":["关键词"]}
+
+<span class="kw">规则：</span>
+1. 危化品相关优先 chemical_compliance
+2. confidence &lt; 0.5 时 intent=unknown
+3. 只输出 JSON，不要解释</div>
+    </div>
+    <div class="card">
+      <div class="card-hd">分类示例（Few-Shot 参考）</div>
+      <div class="code-block"><span class="cmt"># 测试用例 → 期望输出</span>
+
+<span class="str">"苯属于什么危险类别"</span>
+→ {"intent":"chemical_compliance","confidence":0.98,"keywords":["苯","危险类别"]}
+
+<span class="str">"甲醇和硝酸能同库储存吗"</span>
+→ {"intent":"chemical_compliance","confidence":0.96,"keywords":["同库储存","甲醇","硝酸"]}
+
+<span class="str">"甲类仓库与明火点安全距离"</span>
+→ {"intent":"chemical_compliance","confidence":0.97,"keywords":["安全距离","甲类仓库"]}
+
+<span class="str">"储罐区发生苯泄漏怎么办"</span>
+→ {"intent":"emergency_response","confidence":0.94,"keywords":["泄漏","苯"]}
+
+<span class="str">"现在几点"</span>
+→ {"intent":"simple_chat","confidence":0.99,"keywords":["时间"]}
+
+<span class="str">"帮我计算100+200"</span>
+→ {"intent":"simple_chat","confidence":0.95,"keywords":["计算"]}</div>
+    </div>
+  </div>
+
+  <div class="decision" style="margin-top: 16px;">
+    <div class="decision-title">🔑 关键设计决策</div>
+    <div class="decision-body">
+      <strong>为什么只用 5 个标签？</strong> 0.5B 小模型的分类能力有限。标签集超过 5 个时，精确率从 95% 下降到约 85%。当前项目实际只有 2 条路径（ChemicalCompliance / SimpleChat），但预留 5 个标签为后续业务扩展（应急响应、巡检审计）做好准备——<strong>分类器输出 5 标签，Pipeline 路由时映射到 2 路径</strong>。
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 4: CODE IMPLEMENTATION -->
+<!-- ============================================================ -->
+<div class="section">
+  <div class="section-hd">
+    <span class="section-num">04</span>
+    <span class="section-title">代码实现 · 新增文件 + 修改点</span>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-hd">新增：IntentClassifierService.cs</div>
+      <div class="code-block"><span class="kw">public class</span> IntentClassifierService
+{
+    <span class="kw">private readonly</span> HttpClient _http;
+    <span class="kw">private const string</span> ClassifierUrl = <span class="str">"http://localhost:11435/api/generate"</span>;
+
+    <span class="kw">public async</span> Task&lt;IntentResult&gt; ClassifyAsync(<span class="kw">string</span> input)
+    {
+        <span class="kw">var</span> sw = Stopwatch.StartNew();
+        <span class="kw">try</span>
+        {
+            <span class="kw">using var</span> cts = <span class="kw">new</span> CancellationTokenSource(500);
+            <span class="kw">var</span> json = <span class="kw">await</span> CallClassifierAsync(input, cts.Token);
+            <span class="kw">var</span> result = JsonSerializer.Deserialize&lt;IntentResult&gt;(json);
+            result.ElapsedMs = sw.ElapsedMilliseconds;
+            <span class="kw">return</span> result;
+        }
+        <span class="kw">catch</span> (TaskCanceledException)
+        {
+            <span class="cmt">// 超时 → 降级到关键词方案</span>
+            <span class="kw">return</span> IntentResult.Fallback(input, sw.ElapsedMilliseconds);
+        }
+    }
+}</div>
+    </div>
+    <div class="card">
+      <div class="card-hd">修改：AgentDialog.cs · RouteIntent()</div>
+      <div class="code-block"><span class="kw">private async</span> Task&lt;IntentType&gt; RouteIntent(<span class="kw">string</span> input)
+{
+    <span class="kw">if</span> (_classifier != <span class="kw">null</span>)
+    {
+        <span class="kw">var</span> result = <span class="kw">await</span> _classifier.ClassifyAsync(input);
+
+        <span class="cmt">// 低置信度 → 降级关键词</span>
+        <span class="kw">if</span> (result.Confidence &lt; 0.6)
+            <span class="kw">return</span> IntentRouter.Route(input);
+
+        <span class="kw">return</span> result.Intent <span class="kw">switch</span>
+        {
+            <span class="str">"chemical_compliance"</span> => IntentType.ChemicalCompliance,
+            <span class="str">"emergency_response"</span>   => IntentType.ChemicalCompliance,
+            <span class="str">"inspection_audit"</span>     => IntentType.ChemicalCompliance,
+            _                          => IntentType.SimpleChat,
+        };
+    }
+    <span class="kw">return</span> IntentRouter.Route(input); <span class="cmt">// 分类器不可用</span>
+}</div>
+    </div>
+  </div>
+
+  <!-- File manifest -->
+  <table class="tbl" style="margin-top: 16px;">
+    <tr>
+      <th style="width: 40px;">#</th>
+      <th style="width: 280px;">文件</th>
+      <th>操作</th>
+      <th>说明</th>
+    </tr>
+    <tr>
+      <td class="mono">1</td>
+      <td class="mono" style="font-weight: 700;">Services/AI/IntentClassifierService.cs</td>
+      <td><span class="badge badge--green">新增</span></td>
+      <td>LLM 分类器封装：HTTP 调用 + 超时 + JSON 解析 + 降级</td>
+    </tr>
+    <tr>
+      <td class="mono">2</td>
+      <td class="mono" style="font-weight: 700;">Models/IntentResult.cs</td>
+      <td><span class="badge badge--green">新增</span></td>
+      <td>分类结果 DTO：Intent / Confidence / Keywords / ElapsedMs</td>
+    </tr>
+    <tr>
+      <td class="mono">3</td>
+      <td class="mono" style="font-weight: 700;">Config/AppConfig.cs</td>
+      <td><span class="badge badge--amber">修改</span></td>
+      <td>新增 IntentClassifier 配置节点（URL、超时、模型名）</td>
+    </tr>
+    <tr>
+      <td class="mono">4</td>
+      <td class="mono" style="font-weight: 700;">Services/Dialog/AgentDialog.cs</td>
+      <td><span class="badge badge--amber">修改</span></td>
+      <td>RouteIntent() 改为 async，注入 IntentClassifierService</td>
+    </tr>
+    <tr>
+      <td class="mono">5</td>
+      <td class="mono" style="font-weight: 700;">Services/Dialog/IntentRouter.cs</td>
+      <td><span class="badge badge--blue">保留</span></td>
+      <td>保留作为降级兜底，不再作为主路径</td>
+    </tr>
+    <tr>
+      <td class="mono">6</td>
+      <td class="mono">Program.cs</td>
+      <td><span class="badge badge--amber">修改</span></td>
+      <td>DI 注册 IntentClassifierService</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 5: COMPARISON -->
+<!-- ============================================================ -->
+<div class="section">
+  <div class="section-hd">
+    <span class="section-num">05</span>
+    <span class="section-title">方案对比 · 硬编码 vs LLM 分类</span>
+  </div>
+
+  <table class="tbl">
+    <tr>
+      <th style="width: 160px;">维度</th>
+      <th>当前：硬编码关键词</th>
+      <th>目标：LLM 分类器</th>
+    </tr>
+    <tr>
+      <td style="font-weight: 700;">分类方式</td>
+      <td><span class="mono">FirstOrDefault(k => lower.Contains(k))</span></td>
+      <td>LLM 推理 → 5 标签 JSON → 置信度阈值</td>
+    </tr>
+    <tr>
+      <td style="font-weight: 700;">关键词覆盖</td>
+      <td class="mono" style="color: var(--c-red);">23 个硬编码，人工穷举</td>
+      <td class="mono" style="color: var(--c-green);">LLM 语义理解，自然覆盖</td>
+    </tr>
+    <tr>
+      <td style="font-weight: 700;">准确率</td>
+      <td class="mono">~80% (覆盖不足 + 误判)</td>
+      <td class="mono" style="font-weight: 700; color: var(--c-green);">~95%+ (需评测验证)</td>
+    </tr>
+    <tr>
+      <td style="font-weight: 700;">延迟</td>
+      <td class="mono" style="color: var(--c-green);">&lt; 1ms</td>
+      <td class="mono">~150–200ms (GPU) / ~500ms (CPU)</td>
+    </tr>
+    <tr>
+      <td style="font-weight: 700;">置信度</td>
+      <td class="mono" style="color: var(--c-red);">无 (二值判定)</td>
+      <td class="mono" style="color: var(--c-green);">0.0–1.0 连续值 + 阈值控制</td>
+    </tr>
+    <tr>
+      <td style="font-weight: 700;">扩展性</td>
+      <td class="mono" style="color: var(--c-red);">加新场景 = 手动加关键词</td>
+      <td class="mono" style="color: var(--c-green);">加新场景 = 新增标签 + prompt 描述</td>
+    </tr>
+    <tr>
+      <td style="font-weight: 700;">降级路径</td>
+      <td>—</td>
+      <td class="mono">超时/不可用 → IntentRouter.Route()</td>
+    </tr>
+  </table>
+
+  <div class="decision" style="margin-top: 16px;">
+    <div class="decision-title">⚠️ 风险与缓解</div>
+    <div class="decision-body">
+      <strong>风险 1</strong>：0.5B 模型对化工领域术语理解不够 → 缓解：System Prompt 中明确定义化工相关标签的特征描述。<br/>
+      <strong>风险 2</strong>：RTX 3090 同时跑 Qwen3-8B + nomic-embed + 0.5B 分类器，显存可能紧张 → 缓解：0.5B 模型可跑 CPU（延迟约 500ms，可接受）；或使用 Q4 量化（仅 300MB 显存）。<br/>
+      <strong>风险 3</strong>：分类器偶尔输出非 JSON 文本 → 缓解：代码层做 JSON 解析容错 + 正则兜底提取 intent 字段。
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 6: METRICS -->
+<!-- ============================================================ -->
+<div class="section">
+  <div class="section-hd">
+    <span class="section-num">06</span>
+    <span class="section-title">性能指标 · 验收标准</span>
+  </div>
+
+  <div class="metric-row">
+    <div class="metric-card metric-card--good">
+      <div class="metric-val">&lt;200ms</div>
+      <div class="metric-label">P95 延迟 (GPU)</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-val">≥95%</div>
+      <div class="metric-label">分类准确率</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-val">≥98%</div>
+      <div class="metric-label">合规召回率</div>
+    </div>
+    <div class="metric-card metric-card--good">
+      <div class="metric-val">&lt;500ms</div>
+      <div class="metric-label">P95 延迟 (CPU)</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-val">&lt;5%</div>
+      <div class="metric-label">降级触发率</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-val">0.5B</div>
+      <div class="metric-label">模型参数量</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 7: IMPLEMENTATION PLAN -->
+<!-- ============================================================ -->
+<div class="section">
+  <div class="section-hd">
+    <span class="section-num">07</span>
+    <span class="section-title">实施路线 · P0 → P1 → P2</span>
+  </div>
+
+  <div class="timeline">
+    <div class="timeline-item">
+      <div class="timeline-hd">
+        <span class="badge badge--fill">P0</span>&nbsp; 分类器服务搭建
+      </div>
+      <div class="timeline-p">
+        1. Ollama 拉取 <span class="mono">qwen2.5:0.5b</span> 模型<br/>
+        2. 编写 <span class="mono">IntentClassifierService.cs</span> + <span class="mono">IntentResult.cs</span><br/>
+        3. DI 注册 + AgentDialog 集成<br/>
+        4. 手动测试 20 条典型输入，验证准确率
+      </div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-hd">
+        <span class="badge badge--amber" style="border-color: var(--c-amber); color: var(--c-amber);">P1</span>&nbsp; 评测集闭环验证
+      </div>
+      <div class="timeline-p">
+        1. 构建 50 条意图分类评测集（覆盖 5 个标签）<br/>
+        2. 跑全量评测 → 统计 confusion matrix<br/>
+        3. 根据误分类样本调整 System Prompt<br/>
+        4. 确认准确率 ≥ 95% 后切换为主路径
+      </div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-hd">
+        <span style="font-size:10px; font-family: var(--font-mono); color: var(--c-text-sub);">P2</span>&nbsp; 性能优化 + 监控
+      </div>
+      <div class="timeline-p">
+        1. 分类器响应时间接入 PipelineMetrics<br/>
+        2. 降级事件接入 Prometheus 告警<br/>
+        3. 评估 GPU vs CPU 部署方案的资源损益<br/>
+        4. 长期：训练专用分类模型（如微调 Qwen2.5-0.5B 在化工语料上）
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 8: DECISION RECORD -->
+<!-- ============================================================ -->
+<div class="section">
+  <div class="section-hd">
+    <span class="section-num">08</span>
+    <span class="section-title">架构决策记录 · ADR</span>
+  </div>
+
+  <div class="decision">
+    <div class="decision-title">ADR-005: 采用 LLM 意图分类器替代硬编码关键词路由</div>
+    <div class="decision-body">
+      <strong>背景</strong>：当前 IntentRouter 使用 23 个硬编码关键词做精确子串匹配，无法覆盖变体表达，准确率约 80%，误判导致合规查询被错误路由到闲聊路径。<br/><br/>
+      <strong>决策</strong>：引入专用 0.5B LLM（Qwen2.5-0.5B-Instruct）作为意图分类器。分类器独立部署（独立 Ollama 实例或 llama.cpp 进程），与主推理模型隔离。<br/><br/>
+      <strong>后果</strong>：<br/>
+      · 正面：准确率从 ~80% 提升至 ~95%+，支持 5 标签分类（为应急响应、巡检审计预留），带置信度输出支持降级决策。<br/>
+      · 负面：增加 ~200ms 延迟，需要额外 ~300MB 显存或 CPU 资源。<br/>
+      · 风险缓解：分类器不可用时自动降级到原关键词方案；置信度 &lt; 0.6 时同样降级。<br/><br/>
+      <strong>替代方案</strong>：向量语义匹配（方案 B）— 延迟更低 (~50ms) 但准确率略低 (~90%)。选择 LLM 分类是因为准确率是化工安全场景的第一优先级。
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<div style="border-top: 1px solid var(--c-border); padding-top: 16px; margin-top: 32px; font-size: 11px; color: var(--c-text-sub); font-family: var(--font-mono); display: flex; justify-content: space-between;">
+  <span>IntentRouter LLM Optimization · Engineering Blueprint</span>
+  <span>PAGE 1/1 · AGT-BP-2026-003</span>
+</div>
+
+</div><!-- /diagram-canvas -->
+</body>
+</html>

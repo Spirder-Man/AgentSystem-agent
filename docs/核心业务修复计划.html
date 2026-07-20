@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent1 核心业务修复计划</title>
+    <style>
+      :root {
+        --c-bg: #f8fafc;
+        --c-canvas: #ffffff;
+        --c-border: #cbd5e1;
+        --c-border-strong: #94a3b8;
+        --c-text-main: #0f172a;
+        --c-text-sub: #64748b;
+        --c-p0: #dc2626;
+        --c-p1: #b45309;
+        --c-p2: #475569;
+        --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+        --font-mono: 'SF Mono', Monaco, Consolas, monospace;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--c-bg);
+        font-family: var(--font-ui);
+        color: var(--c-text-main);
+        padding: 40px;
+        line-height: 1.5;
+      }
+
+      .diagram-canvas {
+        background: var(--c-canvas);
+        border: 2px solid var(--c-border);
+        padding: 32px;
+        max-width: 1180px;
+        margin: 0 auto;
+      }
+
+      .diagram-header {
+        border-bottom: 1px solid var(--c-border);
+        padding-bottom: 16px;
+        margin-bottom: 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+      }
+
+      .diagram-title {
+        font-size: 24px;
+        font-weight: 600;
+      }
+
+      .diagram-subtitle {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--c-text-sub);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 4px;
+      }
+
+      .meta {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--c-text-sub);
+        text-align: right;
+      }
+
+      /* ── Stat row ── */
+      .stat-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+        margin-bottom: 32px;
+      }
+
+      .stat {
+        border: 1px solid var(--c-border);
+        padding: 12px 16px;
+      }
+
+      .stat-num {
+        font-family: var(--font-mono);
+        font-size: 28px;
+        font-weight: 600;
+      }
+
+      .stat-label {
+        font-size: 11px;
+        color: var(--c-text-sub);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .stat--p0 .stat-num { color: var(--c-p0); }
+      .stat--p1 .stat-num { color: var(--c-p1); }
+      .stat--p2 .stat-num { color: var(--c-p2); }
+
+      /* ── Section ── */
+      .section {
+        margin-bottom: 32px;
+      }
+
+      .section-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border-bottom: 2px solid var(--c-text-main);
+        padding-bottom: 8px;
+        margin-bottom: 16px;
+      }
+
+      .section-tag {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--c-canvas);
+        background: var(--c-text-main);
+        padding: 3px 8px;
+      }
+
+      .section-tag--p0 { background: var(--c-p0); }
+      .section-tag--p1 { background: var(--c-p1); }
+      .section-tag--p2 { background: var(--c-p2); }
+
+      .section-title {
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      .section-note {
+        font-size: 12px;
+        color: var(--c-text-sub);
+        margin-left: auto;
+      }
+
+      /* ── Fix card ── */
+      .card {
+        border: 1px solid var(--c-border);
+        border-left: 3px solid var(--c-border-strong);
+        margin-bottom: 12px;
+      }
+
+      .card--p0 { border-left-color: var(--c-p0); }
+      .card--p1 { border-left-color: var(--c-p1); }
+      .card--p2 { border-left-color: var(--c-p2); }
+
+      .card-head {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        padding: 10px 14px;
+        background: #f1f5f9;
+        border-bottom: 1px solid var(--c-border);
+      }
+
+      .card-id {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--c-text-sub);
+      }
+
+      .card-name {
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .card-body {
+        display: grid;
+        grid-template-columns: 90px 1fr;
+      }
+
+      .row {
+        display: contents;
+      }
+
+      .row-key,
+      .row-val {
+        padding: 8px 14px;
+        border-bottom: 1px solid #eef2f6;
+        font-size: 13px;
+      }
+
+      .row-key {
+        color: var(--c-text-sub);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        background: #fafbfc;
+      }
+
+      .row:last-child .row-key,
+      .row:last-child .row-val {
+        border-bottom: none;
+      }
+
+      .mono {
+        font-family: var(--font-mono);
+        font-size: 12px;
+      }
+
+      .path {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--c-text-main);
+        background: #f1f5f9;
+        padding: 1px 5px;
+        border: 1px solid var(--c-border);
+      }
+
+      .badge {
+        display: inline-block;
+        font-size: 10px;
+        font-family: var(--font-mono);
+        padding: 1px 6px;
+        border: 1px solid var(--c-text-main);
+        text-transform: uppercase;
+        margin-left: 4px;
+      }
+
+      /* ── Roadmap ── */
+      .roadmap {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0;
+        border: 1px solid var(--c-border);
+      }
+
+      .phase {
+        padding: 16px;
+        border-right: 1px solid var(--c-border);
+        position: relative;
+      }
+
+      .phase:last-child { border-right: none; }
+
+      .phase-num {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--c-canvas);
+        background: var(--c-text-main);
+        padding: 2px 7px;
+        display: inline-block;
+      }
+
+      .phase-title {
+        font-size: 14px;
+        font-weight: 600;
+        margin: 8px 0 4px;
+      }
+
+      .phase-scope {
+        font-size: 11px;
+        color: var(--c-text-sub);
+        font-family: var(--font-mono);
+        margin-bottom: 10px;
+      }
+
+      .phase ul {
+        list-style: none;
+        font-size: 12px;
+      }
+
+      .phase li {
+        padding: 3px 0 3px 14px;
+        position: relative;
+      }
+
+      .phase li::before {
+        content: '›';
+        position: absolute;
+        left: 0;
+        color: var(--c-text-sub);
+      }
+
+      .footnote {
+        margin-top: 24px;
+        padding-top: 16px;
+        border-top: 1px solid var(--c-border);
+        font-size: 11px;
+        color: var(--c-text-sub);
+        font-family: var(--font-mono);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="diagram-canvas">
+      <div class="diagram-header">
+        <div>
+          <h1 class="diagram-title">核心业务修复计划</h1>
+          <p class="diagram-subtitle">Agent1 · Chemical Compliance · Remediation Plan</p>
+        </div>
+        <div class="meta">
+          REV 2026-07-10<br />
+          SCOPE: BACKEND + FRONTEND
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stat-row">
+        <div class="stat stat--p0">
+          <div class="stat-num">3</div>
+          <div class="stat-label">P0 · 安全兜底缺失</div>
+        </div>
+        <div class="stat stat--p1">
+          <div class="stat-num">3</div>
+          <div class="stat-label">P1 · 逻辑一致性</div>
+        </div>
+        <div class="stat stat--p2">
+          <div class="stat-num">2</div>
+          <div class="stat-label">P2 · 可维护性</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">1</div>
+          <div class="stat-label">FE · 端侧结构</div>
+        </div>
+      </div>
+
+      <!-- ══ P0 ══ -->
+      <div class="section">
+        <div class="section-head">
+          <span class="section-tag section-tag--p0">P0</span>
+          <span class="section-title">安全兜底缺失 · 化工场景必须先处理</span>
+          <span class="section-note">根因：接口/类已实现，但未接入生产管线</span>
+        </div>
+
+        <!-- P0-1 -->
+        <div class="card card--p0">
+          <div class="card-head">
+            <span class="card-id">P0-1</span>
+            <span class="card-name">OutputValidator 死代码 · 校验+置信度未生效</span>
+          </div>
+          <div class="card-body">
+            <div class="row"><div class="row-key">位置</div><div class="row-val"><span class="path">Agent1/Services/Compliance/OutputValidator.cs</span> 全项目零调用</div></div>
+            <div class="row"><div class="row-key">修复</div><div class="row-val">在 <span class="mono">AgentDialog.ApplyDecoupledPipeline</span> 合并后、返回前插入一次 <span class="mono">OutputValidator.Validate()</span>；校验失败降级为"需人工复核"并附置信度标签</div></div>
+            <div class="row"><div class="row-key">验证</div><div class="row-val">新增 xUnit：喂入无引用/幻觉法规号的输出 → 断言被标记 LOW 或拦截 <span class="badge">Agent1.Tests</span></div></div>
+          </div>
+        </div>
+
+        <!-- P0-2 -->
+        <div class="card card--p0">
+          <div class="card-head">
+            <span class="card-id">P0-2</span>
+            <span class="card-name">ComplianceAuditLogger 死代码 · 审计留痕未生效</span>
+          </div>
+          <div class="card-body">
+            <div class="row"><div class="row-key">位置</div><div class="row-val"><span class="path">Agent1/Services/Compliance/ComplianceAuditLogger.cs</span> 全项目零调用</div></div>
+            <div class="row"><div class="row-key">修复</div><div class="row-val">在合规结论产出点调用一次 <span class="mono">LogAsync()</span>，记录 输入/命中来源/置信度/结论/时间戳；与 P0-1 同一注入点</div></div>
+            <div class="row"><div class="row-key">验证</div><div class="row-val">xUnit：跑一次合规问答后断言审计条目已落库/落文件，字段完整 <span class="badge">Agent1.Tests</span></div></div>
+          </div>
+        </div>
+
+        <!-- P0-3 -->
+        <div class="card card--p0">
+          <div class="card-head">
+            <span class="card-id">P0-3</span>
+            <span class="card-name">IntegrationService 全空实现 · 返回"假数据"而非报错</span>
+          </div>
+          <div class="card-body">
+            <div class="row"><div class="row-key">位置</div><div class="row-val"><span class="path">Agent1/Services/Dialog/IntegrationService.cs</span> 所有方法返回空 List / CompletedTask</div></div>
+            <div class="row"><div class="row-key">修复</div><div class="row-val">短期：无数据源时**显式抛出/降级提示**"外部系统未接入"，禁止静默返回空；长期：对接真实 ERP/WMS/EHS</div></div>
+            <div class="row"><div class="row-key">验证</div><div class="row-val">xUnit：调用库存/工单查询 → 断言抛出明确异常或返回可辨识的降级标记，而非空集合 <span class="badge">Agent1.Tests</span></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ P1 ══ -->
+      <div class="section">
+        <div class="section-head">
+          <span class="section-tag section-tag--p1">P1</span>
+          <span class="section-title">逻辑正确性 / 一致性</span>
+          <span class="section-note">安全结论判定与来源可信度</span>
+        </div>
+
+        <!-- P1-1 -->
+        <div class="card card--p1">
+          <div class="card-head">
+            <span class="card-id">P1-1</span>
+            <span class="card-name">RegulatoryAuditModule 绕过双通道 + 运算符优先级隐患</span>
+          </div>
+          <div class="card-body">
+            <div class="row"><div class="row-key">位置</div><div class="row-val"><span class="path">Agent1/Modules/RegulatoryAuditModule.cs#L160-L193</span> · ParseAuditResult 脆弱字符串匹配</div></div>
+            <div class="row"><div class="row-key">修复</div><div class="row-val">改走 <span class="mono">FactExtractor → OutputSanitizer → FactAssembler</span> 双通道；L173 的 <span class="mono">A || B && C && D</span> 显式加括号明确语义</div></div>
+            <div class="row"><div class="row-key">验证</div><div class="row-val">xUnit：喂入"✅ 不合规"等矛盾行 → 断言判定不被误标为合规 <span class="badge">Agent1.Tests</span></div></div>
+          </div>
+        </div>
+
+        <!-- P1-2 -->
+        <div class="card card--p1">
+          <div class="card-head">
+            <span class="card-id">P1-2</span>
+            <span class="card-name">法规编号正则 3~4 种变体不统一</span>
+          </div>
+          <div class="card-body">
+            <div class="row"><div class="row-key">位置</div><div class="row-val"><span class="mono">ConclusionVerifier</span> / <span class="mono">FactExtractor</span> / <span class="mono">ChemicalComplianceTools</span> / <span class="mono">OutputSanitizer</span> 各写各的 GB 正则</div></div>
+            <div class="row"><div class="row-key">修复</div><div class="row-val">抽取单一 <span class="mono">GbCodeRegex</span> 常量/工具类，全链路复用；统一"子编号可选"策略</div></div>
+            <div class="row"><div class="row-key">验证</div><div class="row-val">xUnit 参数化：GB/T、GB 12345、GB 12345.6-2020 等样本，四处调用结果一致 <span class="badge">Agent1.Tests</span></div></div>
+          </div>
+        </div>
+
+        <!-- P1-3 -->
+        <div class="card card--p1">
+          <div class="card-head">
+            <span class="card-id">P1-3</span>
+            <span class="card-name">QualityLevel 枚举数值与语义相反</span>
+          </div>
+          <div class="card-body">
+            <div class="row"><div class="row-key">位置</div><div class="row-val"><span class="path">Agent1/Models/ToolResult.cs</span> · RAG_HIT=4 &gt; DATABASE_HIT=3，但置信度 DB &gt; RAG</div></div>
+            <div class="row"><div class="row-key">修复</div><div class="row-val">重排数值使 <span class="mono">DATABASE_HIT &gt; RAG_HIT</span>，与置信度映射一致；排查所有按数值比大小的取源逻辑</div></div>
+            <div class="row"><div class="row-key">验证</div><div class="row-val">xUnit：DB命中与RAG命中并存时，断言选中 DB 来源 <span class="badge">Agent1.Tests</span></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ P2 ══ -->
+      <div class="section">
+        <div class="section-head">
+          <span class="section-tag section-tag--p2">P2</span>
+          <span class="section-title">可维护性 · 非阻塞</span>
+          <span class="section-note">可与业务迭代并行推进</span>
+        </div>
+
+        <div class="card card--p2">
+          <div class="card-head">
+            <span class="card-id">P2-1</span>
+            <span class="card-name">IntentRouter 意图过粗（仅 3 类）</span>
+          </div>
+          <div class="card-body">
+            <div class="row"><div class="row-key">位置</div><div class="row-val"><span class="path">Agent1/Services/Dialog/IntentRouter.cs</span></div></div>
+            <div class="row"><div class="row-key">修复</div><div class="row-val">拆分应急/知识图谱/法规审计为独立意图，路由层直达对应 Module</div></div>
+          </div>
+        </div>
+
+        <div class="card card--p2">
+          <div class="card-head">
+            <span class="card-id">P2-2</span>
+            <span class="card-name">as LlmService 向下转型脆弱</span>
+          </div>
+          <div class="card-body">
+            <div class="row"><div class="row-key">位置</div><div class="row-val"><span class="path">Agent1/Services/Dialog/AgentDialog.cs#L396</span></div></div>
+            <div class="row"><div class="row-key">修复</div><div class="row-val">把工具调用结果提升到 <span class="mono">ILlmService</span> 接口，移除运行时向下转型</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ FE ══ -->
+      <div class="section">
+        <div class="section-head">
+          <span class="section-tag">FE</span>
+          <span class="section-title">端侧结构补强</span>
+          <span class="section-note">E2E 维持暂缓</span>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <span class="card-id">FE-1</span>
+            <span class="card-name">新增 src/api/ 统一请求封装层</span>
+          </div>
+          <div class="card-body">
+            <div class="row"><div class="row-key">现状</div><div class="row-val">请求散落各页面；已切真实后端 <span class="mono">VITE_ENABLE_MOCK=false → localhost:15001</span></div></div>
+            <div class="row"><div class="row-key">修复</div><div class="row-val">建 <span class="path">agent1-web/src/api/</span>：按域拆分（compliance/emergency/graph），统一 baseURL、拦截器、错误处理；复用 <span class="mono">types/api.ts</span> 契约</div></div>
+            <div class="row"><div class="row-key">验证</div><div class="row-val">Vitest：mock fetch 断言各 api 方法命中正确端点与方法 <span class="badge">frontend-test</span></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ Roadmap ══ -->
+      <div class="section">
+        <div class="section-head">
+          <span class="section-tag">SEQ</span>
+          <span class="section-title">执行顺序</span>
+        </div>
+        <div class="roadmap">
+          <div class="phase">
+            <span class="phase-num">阶段 1</span>
+            <div class="phase-title">安全兜底接线</div>
+            <div class="phase-scope">P0-1 · P0-2 · P0-3</div>
+            <ul>
+              <li>激活 OutputValidator 校验点</li>
+              <li>激活 AuditLogger 留痕点</li>
+              <li>IntegrationService 空数据改显式降级</li>
+              <li>三项配套 xUnit</li>
+            </ul>
+          </div>
+          <div class="phase">
+            <span class="phase-num">阶段 2</span>
+            <div class="phase-title">判定逻辑收敛</div>
+            <div class="phase-scope">P1-1 · P1-2 · P1-3</div>
+            <ul>
+              <li>审计模块接双通道</li>
+              <li>GB 正则统一为单一常量</li>
+              <li>QualityLevel 枚举重排</li>
+              <li>参数化回归测试</li>
+            </ul>
+          </div>
+          <div class="phase">
+            <span class="phase-num">阶段 3</span>
+            <div class="phase-title">结构优化（并行）</div>
+            <div class="phase-scope">P2-1 · P2-2 · FE-1</div>
+            <ul>
+              <li>IntentRouter 意图细分</li>
+              <li>移除 as 向下转型</li>
+              <li>前端 src/api 封装层</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="footnote">
+        约束：所有测试写入 Agent1.Tests/（xUnit）· 前端测试进 frontend-test（Vitest）· 不新增 scripts/ 测试脚本 · 验证以 dotnet test / npx vitest run 为准
+      </div>
+    </div>
+  </body>
+</html>

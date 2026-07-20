@@ -18,10 +18,8 @@ namespace Agent1.Services
     /// </summary>
     public static class ConclusionVerifier
     {
-        // ── 法规编号格式正则：GB[ /T]? 数字-数字 ──
-        private static readonly Regex RegulationPattern = new(
-            @"GB\s*/?T?\s*(\d{4,5})[.\-](\d+(?:\.\d+)?)",
-            RegexOptions.Compiled);
+        // P1-2: 统一使用 GbCodeHelper.GbCodePattern，替代私有 RegulationPattern
+        private static Regex RegulationPattern => GbCodeHelper.GbCodePattern;
 
         /// <summary>
         /// [P1-2 升级] 验证结论的完整校验结果（含 KB 反向检索）。
@@ -72,7 +70,15 @@ namespace Agent1.Services
             // 2. [P1-2] KB 反向检索验证: 替代静态白名单
             if (kbService != null && result.RegulationsFound.Count > 0)
             {
-                await VerifyRegulationsAgainstKBAsync(result.RegulationsFound, kbService, result);
+                // [P1 健壮性] 知识库为空时跳过反向验证，避免把真实法规误判为幻觉
+                if (kbService.GetDocumentCount() == 0)
+                {
+                    result.Warnings.Add("知识库未加载，跳过法规反向验证（提取到的法规不判定为幻觉）");
+                }
+                else
+                {
+                    await VerifyRegulationsAgainstKBAsync(result.RegulationsFound, kbService, result);
+                }
             }
 
             // 3. [P2-12 FIX] 合规判断标签校验：同时匹配 【合规判断】 和 [判定:is_compliant=...] 两种格式
@@ -150,10 +156,10 @@ namespace Agent1.Services
                         result.Warnings.Add($"法规编号 {reg} 在知识库中未找到，可能是幻觉");
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // KB 检索异常不阻塞验证流程
-                    result.Warnings.Add($"法规编号 {reg} 反向验证失败（KB 检索异常）");
+                    // KB 检索异常不阻塞验证流程；标记为「未验证」而非幻觉，避免误判
+                    result.Warnings.Add($"法规编号 {reg} 反向验证失败（KB 检索异常: {ex.Message}），未验证");
                 }
             }
         }

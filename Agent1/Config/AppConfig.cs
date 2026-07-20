@@ -89,6 +89,14 @@ namespace Agent1.Config
             if (!string.IsNullOrEmpty(llmEndpoint))
                 config.Llm.Endpoint = llmEndpoint;
 
+            var mmEndpoint = Environment.GetEnvironmentVariable("MULTIMODAL_ENDPOINT");
+            if (!string.IsNullOrEmpty(mmEndpoint))
+                config.Llm.MultimodalEndpoint = mmEndpoint;
+
+            var mmModel = Environment.GetEnvironmentVariable("MULTIMODAL_MODEL_ID");
+            if (!string.IsNullOrEmpty(mmModel))
+                config.Llm.MultimodalModelId = mmModel;
+
             // [P0-1] 知识库路径 — 支持环境变量覆盖（Linux 绝对路径 / Windows 相对路径）
             var kbPath = Environment.GetEnvironmentVariable("KNOWLEDGE_BASE_PATH");
             if (!string.IsNullOrEmpty(kbPath))
@@ -148,6 +156,32 @@ namespace Agent1.Config
 
             return errors;
         }
+
+        /// <summary>
+        /// [运行时热切换] 动态切换双通道解耦架构开关。
+        /// 无需重启应用，所有后续请求立即生效。
+        /// 通过 admin API 端点调用：POST /admin/config/decoupled-architecture
+        /// </summary>
+        public static bool SetUseDecoupledArchitecture(bool enabled)
+        {
+            if (_instance == null)
+                throw new InvalidOperationException("AppConfig 尚未加载");
+            var previous = _instance.PromptTemplates.UseDecoupledArchitecture;
+            _instance.PromptTemplates.UseDecoupledArchitecture = enabled;
+            Serilog.Log.Information(
+                "[配置热切换] UseDecoupledArchitecture: {Previous} → {Current}",
+                previous, enabled);
+            return previous;
+        }
+
+        /// <summary>
+        /// [运行时查询] 获取当前双通道解耦架构开关状态。
+        /// </summary>
+        public static bool GetUseDecoupledArchitecture()
+        {
+            if (_instance == null) return true; // 默认启用
+            return _instance.PromptTemplates.UseDecoupledArchitecture;
+        }
     }
 
     // 化工场景专用LLM配置
@@ -155,7 +189,9 @@ namespace Agent1.Config
     {
         public string ModelId { get; set; } = "deepseek-r1:local7b";
         public string Endpoint { get; set; } = "http://localhost:8080/v1";
-        public string MultimodalModelId { get; set; } = "qwen-vl:latest";
+        public string MultimodalModelId { get; set; } = "llava-v1.6-mistral-7b";
+        // [端口分离] 多模态(视觉)服务独占 8083，与 Reranker(8082) 分开，避免端口冲突
+        public string MultimodalEndpoint { get; set; } = "http://localhost:8083/v1";
 
         // Phase 2a 预留: 工具调用规划专用模型（可与 ModelId 相同）
         // 未来可分离为小模型做工具规划 + 大模型做合规结论生成
@@ -405,6 +441,16 @@ namespace Agent1.Config
             "输出格式：\n" +
             "【查询结果】直接给出具体信息内容（一句话概括）\n" +
             "【法规依据】引用具体标准编号+条款（如有）";
+
+        // 双通道解耦架构开关：true=事实通道+解释通道分离，false=传统单通道
+        public bool UseDecoupledArchitecture { get; set; } = true;
+
+        // 双通道解耦架构下的 LLM 输出模板（不含法规引用要求）
+        // LLM 只负责专业解读和建议，法规引用由 FactAssembler 确定性渲染
+        public string OutputTemplateDecoupled { get; set; } =
+            "【专业解读】基于已知事实给出专业分析\n" +
+            "【操作建议】具体的行动建议（如有）\n" +
+            "【注意事项】需要人工关注的风险点";
     }
 
     // [P1] 告警配置

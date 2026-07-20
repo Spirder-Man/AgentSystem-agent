@@ -10,25 +10,64 @@ namespace Agent1.Services
         private readonly IDatabaseService? _db;
         // [P1] 哈希链：记录上一条日志的 SHA256 哈希，用于构建不可篡改的日志链
         private string? _lastChainHash;
+        // [P3 哈希链] 重启后从 DB 尾条恢复链头，避免新记录错误链接到 GENESIS 导致断链
+        private bool _chainInitialized;
+        private readonly SemaphoreSlim _initLock = new(1, 1);
 
         public AuditService(IDatabaseService? db = null)
         {
             _db = db;
         }
 
+        // [P3 哈希链] 统一归一为 UTC 微秒精度，确保写入时与读回重算时的时间戳一致
+        // - PostgreSQL timestamptz 为微秒精度，C# tick 为 100ns，故截断到 10 tick(=1微秒)的倍数
+        // - Unspecified 视为 UTC，避免 DB 读回时区不确定导致漂移
+        private static DateTime NormalizeToMicroseconds(DateTime dt)
+        {
+            var utc = dt.Kind switch
+            {
+                DateTimeKind.Utc => dt,
+                DateTimeKind.Local => dt.ToUniversalTime(),
+                _ => DateTime.SpecifyKind(dt, DateTimeKind.Utc)
+            };
+            return new DateTime(utc.Ticks - (utc.Ticks % 10), DateTimeKind.Utc);
+        }
+
         // [P1] 计算哈希链值：SHA256(前一条ChainHash + "|" + 本条内容)
         private static string ComputeChainHash(string? prevHash, string userId, string operation, string details, DateTime createTime)
         {
-            var input = $"{prevHash ?? "GENESIS"}|{userId}|{operation}|{details}|{createTime:O}";
+            // [P3 哈希链] 固定 UTC/微秒格式，避免 :O(100ns) 与 DB 微秒精度不匹配
+            var ts = NormalizeToMicroseconds(createTime).ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ", System.Globalization.CultureInfo.InvariantCulture);
+            var input = $"{prevHash ?? "GENESIS"}|{userId}|{operation}|{details}|{ts}";
             var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
             return Convert.ToHexString(hashBytes).ToLowerInvariant();
         }
 
+        // [P3 哈希链] 首次写入前从 DB 尾条恢复链头，确保跨重启链连续
+        private async Task EnsureChainInitializedAsync()
+        {
+            if (_chainInitialized || _db == null) return;
+            await _initLock.WaitAsync();
+            try
+            {
+                if (_chainInitialized) return;
+                var last = await _db.GetLastAuditChainHashAsync();
+                if (!string.IsNullOrEmpty(last))
+                    _lastChainHash = last;
+                _chainInitialized = true;
+            }
+            finally { _initLock.Release(); }
+        }
+
         public async Task LogOperationAsync(string userId, string operation, string details, bool isSensitive = false)
         {
+            // [P3 哈希链] 确保链头已从 DB 恢复
+            await EnsureChainInitializedAsync();
+
             // Task 3: 敏感信息脱敏 — 审计日志写入前对 details 进行脱敏
             var maskedDetails = isSensitive ? SensitiveDataMasker.Mask(details) : details;
-            var createTime = DateTime.Now;
+            // [P3 哈希链] 使用 UTC/微秒归一时间，同一值既算哈希又写入 DB
+            var createTime = NormalizeToMicroseconds(DateTime.UtcNow);
 
             // [P1] 计算哈希链
             var chainHash = ComputeChainHash(_lastChainHash, userId, operation, maskedDetails, createTime);
@@ -41,7 +80,7 @@ namespace Agent1.Services
             {
                 try
                 {
-                    await _db.AddAuditLogAsync(userId, operation, maskedDetails, ipAddress, chainHash);
+                    await _db.AddAuditLogAsync(userId, operation, maskedDetails, ipAddress, chainHash, createTime);
                     _lastChainHash = chainHash; // 仅 DB 成功才更新链
                     return; // DB 写入成功，跳过内存
                 }
@@ -158,6 +197,41 @@ namespace Agent1.Services
             }
 
             return (true, null, $"哈希链完整，共 {logs.Count} 条记录");
+        }
+
+        // [P3 哈希链修复] 逐条重算所有 chain_hash 并回写 DB，修复因时间精度不一致导致的历史断链
+        public async Task<(int repaired, string detail)> RepairChainAsync()
+        {
+            if (_db == null)
+                return (0, "数据库不可用，无法执行修复");
+
+            var logs = await _db.GetAuditLogsAsync(null, null);
+            logs = logs.OrderBy(l => l.Id).ToList();
+
+            if (logs.Count == 0)
+                return (0, "无审计日志，无需修复");
+
+            int repaired = 0;
+            string? prevHash = null;
+
+            foreach (var log in logs)
+            {
+                var computed = ComputeChainHash(prevHash, log.UserId, log.Operation, log.Details, log.CreateTime);
+
+                // 仅当哈希不匹配时才回写（避免无意义 UPDATE）
+                if (log.ChainHash == null || !string.Equals(computed, log.ChainHash, StringComparison.OrdinalIgnoreCase))
+                {
+                    await _db.UpdateAuditChainHashAsync(log.Id, computed);
+                    repaired++;
+                }
+
+                prevHash = computed;
+            }
+
+            // 同步内存链头到最新
+            _lastChainHash = prevHash;
+
+            return (repaired, $"哈希链修复完成：共 {logs.Count} 条记录，修复 {repaired} 条不匹配的哈希值");
         }
     }
 }

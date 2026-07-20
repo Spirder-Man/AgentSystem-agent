@@ -1,0 +1,5 @@
+﻿  正在确定要还原的项目…
+D:\桌面\agent\项目\Agent1\Agent1.Api\Agent1.Api.csproj : warning NU1902: 包 "MailKit" 4.7.1.1 具有已知的 中 严重性漏洞，https://github.com/advisories/GHSA-9j88-vvj5-vhgr [D:\桌面\agent\项目\Agent1\Agent1.sln]
+D:\桌面\agent\项目\Agent1\Agent1\Agent1.csproj : warning NU1902: 包 "MailKit" 4.7.1.1 具有已知的 中 严重性漏洞，https://github.com/advisories/GHSA-9j88-vvj5-vhgr [D:\桌面\agent\项目\Agent1\Agent1.sln]
+D:\桌面\agent\项目\Agent1\Agent1.Api\Agent1.Api.csproj : warning NU1902: 包 "OpenTelemetry.Exporter.OpenTelemetryProtocol" 1.9.0 具有已知的 中 严重性漏洞，https://github.com/advisories/GHSA-4625-4j76-fww9 [D:\桌面\agent\项目\Agent1\Agent1.sln]
+  所有项目均是最新的，无法还原。

@@ -1,55 +1,110 @@
-# .NET
+# ═══════════════════════════════════════
+# Docker 构建上下文排除规则
+# 仅保留 Dockerfile / docker-compose 引用的文件
+# ═══════════════════════════════════════
+
+# ── 测试项目 ──
+Agent1.Tests/
+ArchitectureTest/
+Benchmark/
+TestResults/
+TestResults2/
+
+# ── 前端独立项目 ──
+agent1-web/
+
+# ── 辅助工具项目 ──
+ssh-runner/
+cache-monitor/
+gravity-maze/
+wechat-group-report/
+
+# ── 脚本（不参与容器构建）──
+scripts/
+
+# ── 文档 ──
+docs/
+
+# ── IDE / Agent 内部目录 ──
+.vs/
+.vscode/
+.qoder/
+.trae/
+.agents/
+.cowork-temp/
+.CodeCounter/
+
+# ── 日志 ──
+logs/
+*.log
+
+# ── 本地运行时数据 ──
+memory/
+
+# ── Git ──
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# ── .NET 编译产物 ──
 **/bin/
 **/obj/
 *.user
 *.suo
 
-# IDE
-.vs/
-.vscode/
-.agents/
-.qoder/
-.trae/
-.cowork-temp/
+# ── NuGet 包缓存 ──
+packages/
+*.nupkg
 
-# Git
-.git/
-.gitignore
+# ── 临时/调试文件 ──
+*.tmp
+*.bak
+*.b64
+*.tar.gz
+debug_chat.ps1
+load_test.ps1
+run-cpu-tests.ps1
+test-all.ps1
+temp_*
+test-output*.txt
+remote_*.txt
+remote_*.log
+l6_test_output.txt
 
-# Logs
-logs/
-*.log
+# ── 非构建相关松散文件 ──
+docker-compose.override.yml
+Dockerfile.llama-cpu
+Modelfile.qwen3-eval
+Program.cs
+ssh_prog.cs
+架构收敛测试报告.txt
+项目架构思维导图.html
 
-# Docker
+# ── 图片资产 ──
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+AI会话记忆机制.assets/
+
+# ── 本地覆盖配置 ──
+.env.local
+*.local.json
+
+# ── Node.js ──
+**/node_modules/
+
+# ── Docker 自引用 ──
 .dockerignore
 
-# Data
-.env
-*.tmp
-
-# Test projects (not needed in Docker build context)
-Agent1.Tests/
-ArchitectureTest/
-Benchmark/
-
-# Scripts
-scripts/
-*.py
-*.sh
-
-# Cache
-cache-monitor/
-**/Microsoft.SemanticKernel/
-
-# Docs (except README)
-docs/
-*.md
-!README.md
-
-# External tools (not part of API)
-wechat-group-report/
-gravity-maze/
-
-# Knowledge base + Models (mounted as volumes at runtime)
+# ═══════════════════════════════════════
+# 注意：以下文件在 docker-compose 中
+# 作为 volume 挂载，不需要打入镜像，
+# 但必须在服务器上存在：
+#   knowledgebase/  → 法规知识库
+#   models/          → GGUF 模型文件
+# ═══════════════════════════════════════
 knowledgebase/
 models/

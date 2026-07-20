@@ -1,4 +1,4 @@
-# Download all .log files from remote server to local (base64 中转, 零编码损失)
+# Download all .log files from remote server to local (base64 transfer, zero encoding loss)
 param(
     [Parameter(Mandatory=$true)]
     [string]$RemoteDir,
@@ -39,9 +39,9 @@ foreach ($fileName in $files) {
     
     Write-Host "[$current/$total] Downloading $fileName ... " -NoNewline
     try {
-        # ✅ 核心：base64 编码传输，保持二进制完整性
         $remotePath = "$RemoteDir/$fileName"
-        $b64 = & $sshRunner $Hostname $Port root $Password "base64 -w0 `"$remotePath`""
+        $cmd = "base64 -w0 '$remotePath'"
+        $b64 = & $sshRunner $Hostname $Port root $Password $cmd
         
         if ($b64 -and $b64.Trim().Length -gt 10) {
             $bytes = [Convert]::FromBase64String($b64.Trim())
@@ -72,7 +72,7 @@ $logFiles | ForEach-Object {
     if ($lines -le 1) { $badFiles += $_.Name }
 }
 if ($badFiles.Count -gt 0) {
-    Write-Host "  ❌ 换行符损坏 ($($badFiles.Count) 个): $badFiles" -ForegroundColor Red
+    Write-Host "  [WARN] Line ending corrupt ($($badFiles.Count) files): $badFiles" -ForegroundColor Red
 } else {
-    Write-Host "  ✅ 换行符正常" -ForegroundColor Green
+    Write-Host "  [OK] Line endings intact" -ForegroundColor Green
 }

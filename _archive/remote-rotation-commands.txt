@@ -1,0 +1,22 @@
+# Remote rotation - paste into SSH session on AutoDL
+# ssh -p 37103 root@connect.nmb2.seetacloud.com
+set -e
+cd /root/autodl-tmp/agent-system
+# start PostgreSQL first (AutoDL container: no systemd, autostart disabled)
+service postgresql start 2>/dev/null || su - postgres -c "pg_ctlcluster 16 main start" || true
+for i in $(seq 1 10); do pg_isready >/dev/null 2>&1 && { echo PG_READY; break; }; sleep 2; done
+pg_isready >/dev/null 2>&1 || { echo 'PG_START_FAILED'; exit 1; }
+[ -z "$(tail -c1 .env)" ] || echo >> .env
+su - postgres -c "psql -v ON_ERROR_STOP=1 -c \"ALTER USER postgres WITH PASSWORD '12345678';\""
+sed -i '/^JWT_KEY=/d' .env && echo 'JWT_KEY=GqOCjHcVP7nizeLxfSoNdlDw06ZEryT2QYKupFasbAkM8t1v' >> .env
+sed -i '/^DB_PASSWORD=/d' .env && echo 'DB_PASSWORD=12345678' >> .env
+sed -i '/^ALERT_EMAIL_USER=/d' .env && echo 'ALERT_EMAIL_USER=2732232706@qq.com' >> .env
+sed -i '/^ALERT_EMAIL_PASSWORD=/d' .env && echo 'ALERT_EMAIL_PASSWORD=gqczheqvhdviddfb' >> .env
+sed -i '/^AUTH_ACCOUNTS_JSON=/d' .env && echo 'QVVUSF9BQ0NPVU5UU19KU09OPSdbeyJVc2VybmFtZSI6ImFkbWluIiwiUm9sZSI6ImFkbWluIiwiUGFzc3dvcmQiOiIxMjM0NTY3OCJ9LHsiVXNlcm5hbWUiOiJhdWRpdG9yIiwiUm9sZSI6ImF1ZGl0b3IiLCJQYXNzd29yZCI6IjEyMzQ1Njc4In1dJwo=' | base64 -d >> .env
+# restart API and verify
+pkill -f '[A]gent1.Api' || true
+sleep 2
+set -a && . ./.env && set +a
+export ASPNETCORE_URLS=http://0.0.0.0:5000
+nohup dotnet run --project Agent1.Api --no-launch-profile --environment Production > /root/autodl-tmp/logs/agent1-api.log 2>&1 &
+for i in $(seq 1 20); do curl -sf http://localhost:5000/health/live >/dev/null 2>&1 && { echo REMOTE_OK; break; }; sleep 3; done

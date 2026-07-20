@@ -1,0 +1,15 @@
+# ═══════════════════════════════════════════════
+# Agent1 — Staging 环境 Docker Compose 覆盖文件
+# 使用方式 (配合基础 docker-compose.yml):
+#   docker-compose -f docker-compose.yml -f docker-compose.staging.yml up -d
+#
+# 用途: 覆盖 api 服务，使用 GHCR 预构建镜像替代本地构建
+# 镜像标签由 CI 自动推送 (latest + commit SHA)
+# ═══════════════════════════════════════════════
+
+services:
+  api:
+    # 覆盖: 使用 GHCR 预构建镜像，不再本地 build
+    build: !reset null
+    image: ghcr.io/${GHCR_REPO_LOWER:-owner/agent1}:${API_IMAGE_TAG:-latest}
+    # 继承 base docker-compose.yml 的其他配置 (ports, env, volumes, depends_on, healthcheck, networks)

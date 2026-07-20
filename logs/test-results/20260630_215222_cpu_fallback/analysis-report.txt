@@ -1,0 +1,267 @@
+Agent1 CPU 降级模式全量测试 — 六维度结构化分析报告
+═══════════════════════════════════════════════════════════════
+
+测试时间: 2026-06-30 21:52:22 ~ 21:54:04
+测试环境: Windows 11 25H2, .NET 8.0.417, PostgreSQL 16
+配置模式: GpuEmbeddingEnabled=false, GpuSearchEnabled=false, RerankerEnabled=false
+编码修复: ModuleInitializer + Program.cs 三层 UTF-8 强制 (✅ 零乱码)
+远程服务: LLM(8080) ❌ 不可用, Embedding(8081) ❌ 不可用, Ollama(11434) ❌ 不可用
+
+═══════════════════════════════════════════════════════════════
+测试汇总
+═══════════════════════════════════════════════════════════════
+  测试总数:  791
+  通过数:    791  (100.0%)
+  失败数:    0    (0.0%)
+  跳过数:    0    (0.0%)
+  总耗时:    1.72 分钟 (103.2s)
+  平均耗时:  130.5 ms/test
+================================================================
+
+
+D1 格式解析 — 日志结构完整性
+─────────────────────────────
+
+日志文件: logs/test-results/20260630_215222_cpu_fallback/full-test-output.log (1250行)
+TRX文件:  TestResults/logs/test-results/20260630_215222_cpu_fallback/test-results.trx (5216行)
+
+字段拆解:
+  - 时间戳:  ISO 8601 格式, 时区 +08:00, 精度 ms
+  - 级别:    INF/WRN 两级
+  - 模块标签: [AlertDispatcher],[工具诊断], Serilog Enrichers
+  - 结构化字段: RunId, MachineName, ProcessId, ThreadId
+
+关键格式验证:
+  ✅ 所有日志行具有一致的时间戳格式
+  ✅ TRX XML 声明: encoding="utf-8"
+  ✅ TRX StdOut 节点中文完整可读 (无锟斤拷乱码)
+  ✅ 控制台输出中文完整 ("告警通道", "降级到硬编码字典")
+  ✅ Serilog FileSink 按天滚动 (agent1-20260630.log)
+
+
+D2 业务映射 — 降级路径代码覆盖
+─────────────────────────────
+
+本次测试在 CPU 模式下验证了以下降级路径:
+
+1. LLM 服务不可用 → 熔断器介入
+   代码: Agent1/Services/AI/LlmService.cs (CircuitBreaker)
+   测试: LlmServiceTests / CircuitBreakerTests
+   行为: 3次连续失败 → 熔断断开 → 30s冷却 → 半开探测
+
+2. Reranker 远程不可达 → 本地降级
+   代码: Agent1/Services/Knowledge/HybridKnowledgeBaseService.cs
+   测试: ErrorPathTests.RerankerService_WithoutConfig_IsDisabled [3ms]
+   行为: 无配置时 IsDisabled=true, 不发送远程请求
+
+3. RAG 不可用 → 硬编码字典降级
+   日志: "[工具诊断] RAG 不可用，降级到硬编码字典"
+   行为: 无 Embedding 服务时自动回退, 不影响合规检查核心流程
+
+4. LLM 工具规划失败 → 关键词匹配降级
+   日志: "⚠️ LLM 工具规划失败，降级到关键词匹配"
+   行为: 解析 LLM 输出失败时启用 BM25 回退
+
+5. EmailAlert SMTP → 自动禁用
+   代码: Agent1/Services/Alerting/EmailAlertService.cs
+   测试: EmailAlertServiceTests (10项全部PASS)
+   行为: SmtpHost/Recipients 为空时 IsDisabled=true
+
+6. SafetyGuard → 恶意输入预拦截
+   测试: SafetyGuardServiceTests
+   行为: Prompt注入/SQL注入/凭证泄露在LLM调用前拦截
+
+7. QueryCache → TTL=0 自动禁用
+   日志: "ℹ️ 查询缓存已禁用 (TTL=0 或 MaxEntries=0)"
+   行为: 不缓存查询结果, 不抛异常
+
+8. SmartChunking → 无语义时 SimpleSplit 回退
+   测试: SmartChunkingTests.SplitTextIntoChunks_NoSemantic_FallbackToSimpleSplit [1ms]
+
+9. Embedding → 不可达时优雅跳过
+   日志: "⚠️ 向量嵌入失败: 由于目标计算机积极拒绝，无法连接。(localhost:8081)"
+   行为: 不阻断流程, 降级为纯 BM25 检索
+
+
+D3 数据链路 — 关键信号流追踪
+─────────────────────────────
+
+降级链路 (CPU模式):
+  用户输入 → [IntentRouter] → [SK Auto FC] 工具调用
+    ├─ RAG 检索: Embedding(8081)❌ → 降级到硬编码字典
+    ├─ Reranker: 无配置 → IsDisabled → 跳过
+    ├─ LLM 调用: Endpoint(8080)❌ → 熔断器断开
+    └─ 告警通知: SMTP❌ → 降级到 ConsoleAlertService
+  
+  结论输出 → [SafetyGuard] 安全检测 → [AuditService] 审计记录
+
+告警链路 (邮件测试):
+  [AlertSink] Critical日志 → [AlertDispatcher] 分发
+    ├─ ConsoleAlertService: ✅ 正常 (始终启用)
+    └─ EmailAlertService: ❌ SMTP连接失败 → 通道降级
+       └─ "[AlertDispatcher] 告警通道 IAlertServiceProxy 发送失败: SMTP连接失败"
+
+数据流层次:
+  L1: 用户意图 → IntentRouter (关键词匹配, <50ms)
+  L2: 工具调用 → Semantic Kernel Auto Function Calling
+  L3: RAG检索 → BM25 (内存) + Vector (不可用降级)
+  L4: 安全检测 → SafetyGuard (关键词+正则)
+  L5: 审计记录 → AuditService → PostgreSQL
+
+
+D4 设计意图 — 架构降级决策验证
+─────────────────────────────
+
+| 降级机制        | 设计意图                          | 验证状态 |
+|:---------------|:----------------------------------|:-------:|
+| 熔断器          | 3次连续失败→断开→30s冷却→半开恢复   | ✅ PASS |
+| Reranker降级    | 远程不可达时本地启发式排序           | ✅ PASS |
+| EmailAlert降级  | SMTP配置不完整时自动禁用             | ✅ PASS |
+| SafetyGuard     | LLM调用前预拦截(0次LLM调用证伪)     | ✅ PASS |
+| Embedding降级   | GPU/Embedding不可用时跳过           | ✅ PASS |
+| Cache降级       | TTL=0时自动禁用不抛异常             | ✅ PASS |
+| Chunking降级    | 无语义边界时SimpleSplit回退         | ✅ PASS |
+| LLM工具降级     | 规划失败→关键词匹配BM25回退         | ✅ PASS |
+
+设计亮点:
+  ① 熔断器使用 Lazy<T> 解决 ILlmService ↔ IKnowledgeBaseService 循环依赖
+  ② AlertDispatcher 支持通道级故障隔离 (一个通道失败不影响其他)
+  ③ 降级行为均不抛异常, 不阻塞主流程, 仅记录 WRN 级别日志
+  ④ ConsoleAlertService 始终作为最小可用通道 (SendOnly), 永不降级
+
+编码基础设施新增:
+  ⑤ [ModuleInitializer] 模块级 UTF-8 初始化 — 在程序集加载时执行
+      保证 dotnet test / VS Test Explorer / CI 管道 中 TRX StdOut 中文正确
+  ⑥ Program.cs Main() 开头强制 UTF-8 — 覆盖控制台/Serilog/docker logs
+
+
+D5 异常识别 — 错误分级分析
+─────────────────────────────
+
+P0 (系统不可用): 0 项
+  无 Connection refused / FATAL / 服务状态码≠200 阻断性错误
+
+P1 (功能受损): 0 项
+  无 ⚠️ 生成错误 / FAIL / 工具调用=0 (预期>0)
+
+P2 (降级/警告): 7 项 (全部为预期降级行为)
+  ① "⚠️ 向量嵌入失败: localhost:8081 拒绝连接" — Embedding 服务不可用 (预期)
+  ② "[AlertDispatcher] SMTP连接失败" — 邮件通道降级 (预期)
+  ③ "⚠️ LLM 工具规划失败，降级到关键词匹配" — LLM 服务不可用 (预期)
+  ④ "[工具诊断] RAG 不可用，降级到硬编码字典" — GPU 不可用 (预期)
+  ⑤ "ℹ️ 查询缓存已禁用 (TTL=0 或 MaxEntries=0)" — 配置关闭缓存 (预期)
+  ⑥ "⚠️ 长期记忆检索失败: db error" — 测试用的 Mock DB (预期)
+  ⑦ "开发环境默认账号（随机生成，仅本次启动有效）" — 开发模式 (预期)
+
+P3 (信息/优化): 0 项
+  无 SKIP 测试, 无 ⚡ 快速模式提示
+
+异常分类判定: 全部 P2 降级均为 CPU 模式下预期的标准行为, 无不正常或意外错误。
+
+
+D6 性能分析 — 耗时分布与基准对比
+─────────────────────────────
+
+全局指标:
+  总测试数: 791
+  总耗时: 103.2s (1.72 分钟)   ← 上次 103.9s, 改善 0.7s
+  平均耗时: 130.5 ms/test
+  TRX 采集: 5216 行 XML, 编码 UTF-8
+
+模块耗时 TOP-10 (从 TRX duration 提取):
+  AlertSinkTests.Emit_FatalLevel            ~216ms  (含 SMTP 连接超时)
+  AlertSinkTests.Emit_WithException          ~206ms  (含 SMTP 连接超时)
+  AgentDialogTests (含 LLM 调用)              ~58ms  (Mock LLM)
+  LongTermMemoryServiceTests.RetrieveAsync   ~54ms  (DB 操作)
+  KnowledgeGraphServiceTests.Traverse        ~30ms  (DB 查询)
+  SemanticChunkerTests.Chunk_EmptyOrNullText ~29ms  (文本处理)
+  DatabaseIntegrationTests                   ~15ms  (PG 读写)
+  KnowledgeBaseServiceTests.RetrieveAsync    ~15ms  (RAG 检索)
+  SafetyGuardServiceTests.ValidateInput      ~10ms  (安全检测)
+  EmailAlertServiceTests.SendAlertAsync       ~7ms  (邮件发送)
+
+性能对比 (vs 2026-06-30 19:52 批次):
+  ┌──────────────────────┬──────────┬──────────┬────────┐
+  │ 指标                  │ 上次      │ 本次      │ 变化   │
+  ├──────────────────────┼──────────┼──────────┼────────┤
+  │ 总耗时                │ 103.9s   │ 103.2s   │ -0.7s  │
+  │ 平均耗时/测试          │ 131.4ms  │ 130.5ms  │ -0.9ms │
+  │ 通过率                │ 100%     │ 100%     │ —      │
+  │ TRX StdOut 中文       │ ❌ 乱码  │ ✅ 正常  │ 修复   │
+  │ Console 中文输出       │ ❌ 乱码  │ ✅ 正常  │ 修复   │
+  └──────────────────────┴──────────┴──────────┴────────┘
+
+性能结论: 性能稳定, 无退化。TRX 和 Console 中文编码问题已通过
+ModuleInitializer + Program.cs 三层修复彻底解决。
+
+
+═══════════════════════════════════════════════════════════════
+降级处理机制专项验证 — 24 项检查表
+═══════════════════════════════════════════════════════════════
+
+#  测试项                                      │ 结果  │ 耗时
+───────────────────────────────────────────────┼───────┼──────
+1. 熔断器: 3次失败→断开                          │ PASS  │ <10ms
+2. 熔断器: 30s冷却后→半开                        │ PASS  │ <10ms
+3. 熔断器: 并发失败计数一致性                     │ PASS  │ <10ms
+4. 熔断器: 输入阻断不调用LLM (0次)               │ PASS  │ <10ms
+5. Reranker: 无配置→IsDisabled                  │ PASS  │ 3ms
+6. Reranker: 远程不可达→本地启发式排序            │ PASS  │ <10ms
+7. KnowledgeBase: 空KB返回空列表                 │ PASS  │ <1ms
+8. SmartChunking: 无语义→SimpleSplit回退         │ PASS  │ 1ms
+9. EmailAlert: 空SMTP→禁用                       │ PASS  │ <1ms
+10.EmailAlert: 空收件人→禁用                     │ PASS  │ <1ms
+11.EmailAlert: 有效配置→启用                     │ PASS  │ <1ms
+12.EmailAlert: 禁用状态不抛异常                   │ PASS  │ 7ms
+13.AlertDispatcher: 通道故障隔离                 │ PASS  │ 2ms
+14.AlertDispatcher: 60s防抖                      │ PASS  │ 53ms
+15.AlertSink: Fatal级别→分发告警                 │ PASS  │ 216ms
+16.AlertSink: Warning级别→不分发                 │ PASS  │ 1ms
+17.SafetyGuard: Prompt注入→阻断                  │ PASS  │ 3ms
+18.SafetyGuard: 记忆重置→阻断                    │ PASS  │ 10ms
+19.SafetyGuard: NULL输入→阻断                    │ PASS  │ <1ms
+20.SafetyGuard: 正常响应→放行                    │ PASS  │ 11ms
+21.QueryCache: TTL=0→禁用                        │ PASS  │ <1ms
+22.QueryCache: LRU淘汰→正确                     │ PASS  │ <1ms
+23.Embedding: 不可达→优雅跳过                     │ PASS  │ <10ms
+24.LLM工具: 规划失败→BM25回退                    │ PASS  │ <10ms
+───────────────────────────────────────────────┴───────┴──────
+总计: 24/24 通过 (100%), 全部降级路径验证成功
+
+
+═══════════════════════════════════════════════════════════════
+编码修复验证 — UTF-8 三层修复效果
+═══════════════════════════════════════════════════════════════
+
+修复方案:
+  Layer 1: Program.cs — Main() 开头: Console.OutputEncoding = UTF8
+  Layer 2: ModuleInitializer.cs — [ModuleInitializer] 初始化 UTF-8
+  Layer 3: run-cpu-tests.ps1 — [Console]::OutputEncoding = UTF8
+
+验证结果:
+  ✅ full-test-output.log 搜索 "锟" → 0 匹配 (上次: 多处乱码)
+  ✅ test-results.trx StdOut 搜索 "锟" → 0 匹配 (上次: 多处乱码)
+  ✅ "告警通道 IAlertServiceProxy 发送失败: SMTP连接失败" → 完整可读
+  ✅ "⚠️ 向量嵌入失败: 由于目标计算机积极拒绝，无法连接。" → 完整可读
+  ✅ "开发环境默认账号（随机生成，仅本次启动有效）" → 完整可读
+  ✅ 化学品名 "甲醇"/"氰化钠"/"氢氧化钠" → TRX testName 属性完整可读
+
+
+═══════════════════════════════════════════════════════════════
+结论与建议
+═══════════════════════════════════════════════════════════════
+
+1. CPU 降级模式: 全部 24 项降级路径验证通过, 无 P0/P1 异常
+2. 降级行为: 所有降级均为 "优雅降级" (Graceful Degradation):
+   - 不抛异常, 不阻塞主流程
+   - 仅记录 WRN 级别日志
+   - 提供可用的回退路径 (硬编码字典/BM25/ConsoleAlert)
+3. UTF-8 编码: 三层修复方案 (ModuleInitializer + Program.cs + PS脚本) 
+   彻底解决了 Windows GB2312→UTF-8 乱码问题
+4. 性能: 103.2s 完成 791 测试, 与上次基本持平, 无退化
+5. 建议: 可进一步验证远程 Linux 环境 (需 Ollama/llama.cpp 双服务运行)
+   以对比 GPU 模式 vs CPU 模式的完整降级差异
+
+日志文件:
+  控制台输出: logs/test-results/20260630_215222_cpu_fallback/full-test-output.log
+  TRX 报告:   TestResults/logs/test-results/20260630_215222_cpu_fallback/test-results.trx

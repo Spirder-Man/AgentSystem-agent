@@ -1,0 +1,28 @@
+# ═══════════════════════════════════════════════
+# Alertmanager 配置模板 — Agent1 化工合规 AI 平台
+# 通过 envsubst 注入 $ALERT_* 环境变量（QQ SMTP）
+# ═══════════════════════════════════════════════
+
+global:
+  smtp_smarthost: '$ALERT_SMTP_HOST'
+  smtp_from: '$ALERT_EMAIL_USER'
+  smtp_auth_username: '$ALERT_EMAIL_USER'
+  smtp_auth_password: '$ALERT_EMAIL_PASSWORD'
+  smtp_require_tls: true
+
+# 告警路由
+route:
+  receiver: 'qq-mail'
+  group_by: ['alertname', 'severity']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+
+# 接收器：QQ 邮箱
+receivers:
+  - name: 'qq-mail'
+    email_configs:
+      - to: '$ALERT_RECIPIENT_EMAILS'
+        send_resolved: true
+        headers:
+          Subject: '[Agent1-Alert] {{ .GroupLabels.alertname }} ({{ .GroupLabels.severity }})'

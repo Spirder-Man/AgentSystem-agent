@@ -170,7 +170,8 @@ namespace Agent1.Modules
                 var trimmed = line.Trim();
                 if (trimmed.Contains("判定") || trimmed.Contains("合规"))
                 {
-                    if (trimmed.Contains("✅") || trimmed.Contains("合规") && !trimmed.Contains("不合规") && !trimmed.Contains("补充"))
+                    // P1-1: 修复运算符优先级 —— && 优先级高于 ||，必须显式加括号
+                    if ((trimmed.Contains("✅") || trimmed.Contains("合规")) && !trimmed.Contains("不合规") && !trimmed.Contains("补充"))
                         status = "✅ 合规";
                     else if (trimmed.Contains("❌") || trimmed.Contains("不合规"))
                         status = "❌ 不合规";

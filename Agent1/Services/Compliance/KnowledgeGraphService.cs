@@ -344,9 +344,15 @@ namespace Agent1.Services
 
         private string? FindEntityId(string name)
         {
+            // 先尝试按 entity label 匹配：查询字符串是否包含化学品名称
+            var byLabel = _entities.Values.FirstOrDefault(e =>
+                name.Contains(e.Label, StringComparison.OrdinalIgnoreCase));
+            if (byLabel != null) return byLabel.Id;
+
+            // 再尝试 key 后缀匹配（如 GB15603 → reg:GB15603）
             return _entities.Keys.FirstOrDefault(k =>
-                _entities[k].Label.Contains(name, StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(name, StringComparison.OrdinalIgnoreCase));
+                k.EndsWith(name, StringComparison.OrdinalIgnoreCase) ||
+                name.Contains(k, StringComparison.OrdinalIgnoreCase));
         }
     }
 
