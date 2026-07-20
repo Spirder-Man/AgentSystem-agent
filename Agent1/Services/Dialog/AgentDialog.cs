@@ -815,42 +815,23 @@ namespace Agent1.Services
             MetricsCollector.RecordDecoupledPipelineInvocation();
 
             var facts = ComplianceFactExtractor.Extract(toolCalls, isInfoQuery);
-            if (facts.HasAnyToolResult)
-            {
-                // 消毒 LLM 输出中的法规引用（硬拦截）
-                var sanitizedExplanation = OutputSanitizer.Sanitize(answer, facts.RegulationRefs);
-                // 确定性事实渲染（不走 LLM）
-                var factOutput = FactAssembler.Build(facts);
-                // 合并双通道输出
-                var merged = ResponseMerger.Merge(factOutput, sanitizedExplanation);
-                Serilog.Log.Information(
-                    "[DecoupledPipeline] 双通道合并 | 法规数={RegCount} | 事实通道={FactLen} | 解释通道={ExplLen}",
-                    facts.RegulationRefs.Count, factOutput.Length, sanitizedExplanation.Length);
-                return merged;
-            }
-            else
-            {
-                // ────────────────────────────────────────────────────
-            // [Bug-032 系统性修复 2026-07-18] toolCalls==0 → LLM 输出不可信
+
+            // ────────────────────────────────────────────────────
+            // [Bug-032 v2 修复 2026-07-20] FC=Required 违约检测 — 最高优先级独立闸门
             //
-            // 背景：
-            //   ExecuteChemicalComplianceAsync 使用 FC=Required（见 LlmService L127），
-            //   这意味着 Semantic Kernel 强制要求 LLM 必须调用至少一个工具。
-            //   当 FC=Required 但 toolCalls.Count==0 时，只有两种可能：
-            //     a) Qwen3-8B 忽略 FC 指令，退化为通用聊天模式（已知模型缺陷）
-            //     b) llama.cpp 的 FC JSON 解析失败，LLM 输出裸文本
-            //   无论哪种情况，LLM 输出都绕过了工具验证，内容不可信。
+            // v1 (2026-07-18) 将 toolCalls==0 检查放在 else 分支（!HasAnyToolResult）内，
+            // 当 HasAnyToolResult==true 时（如历史缓存残留数据）FC 违约检查被完全绕过。
+            // 2026-07-20 远程实测验证：6次 OutputSanitizer 拦截（走第一分支）、
+            // agent1_fc_contract_violation_total=0、[SK诊断] 本轮未调用任何工具 仍在出现。
             //
-            // 设计决策（2026-07-18 评审通过）：
-            //   - 不尝试模式匹配 LLM 输出内容（硬编码正则无法覆盖所有废话变体）
-            //   - 使用 toolCalls.Count 作为唯一确定性信号（框架层结构化数据，非 LLM 文本）
-            //   - 检测到 FC 违约时直接丢弃 LLM 全部输出，走纯确定性拒绝模板
+            // v2 (2026-07-20) 将 toolCalls==0 提升为 HasAnyToolResult 之前的独立最高优先级闸门。
+            // 无论 ComplianceFactExtractor 提取到什么，FC=Required 下 toolCalls==0 意味着
+            // LLM 输出完全绕过了工具验证，必须无条件丢弃。
             //
             // ⚠️ 耦合声明：
             //   此分支的正确性依赖 FC=Required 契约。如果未来将
             //   ExecuteChemicalComplianceAsync 的 FC 策略改为 Auto/None，
-            //   必须同步修改此分支逻辑 — toolCalls==0 在 Auto 模式下是正常行为，
-            //   不应触发拒绝。建议在此分支上方增加 FC 策略检查。
+            //   必须同步移除此检查 — toolCalls==0 在 Auto 模式下是正常行为。
             //
             // 影响范围：
             //   仅影响 ChemicalCompliance 意图（Emergency/RegulatoryAudit/KnowledgeGraph
@@ -869,11 +850,26 @@ namespace Agent1.Services
                 return FactAssembler.BuildNoResult();
             }
 
-            // toolCalls>0 但事实提取为空（工具被调用了但未返回有效业务数据）
-            // 此时 LLM 输出有工具调用作为上下文支撑，相对可靠
-            var sanitized = OutputSanitizer.Sanitize(answer, facts.RegulationRefs);
-            var factOutput = FactAssembler.Build(facts);
-            return ResponseMerger.Merge(factOutput, sanitized);
+            if (facts.HasAnyToolResult)
+            {
+                // 消毒 LLM 输出中的法规引用（硬拦截）
+                var sanitizedExplanation = OutputSanitizer.Sanitize(answer, facts.RegulationRefs);
+                // 确定性事实渲染（不走 LLM）
+                var factOutput = FactAssembler.Build(facts);
+                // 合并双通道输出
+                var merged = ResponseMerger.Merge(factOutput, sanitizedExplanation);
+                Serilog.Log.Information(
+                    "[DecoupledPipeline] 双通道合并 | 法规数={RegCount} | 事实通道={FactLen} | 解释通道={ExplLen}",
+                    facts.RegulationRefs.Count, factOutput.Length, sanitizedExplanation.Length);
+                return merged;
+            }
+            else
+            {
+                // toolCalls>0 但事实提取为空（工具被调用了但未返回有效业务数据）
+                // 此时 LLM 输出有工具调用作为上下文支撑，相对可靠
+                var sanitized = OutputSanitizer.Sanitize(answer, facts.RegulationRefs);
+                var factOutput = FactAssembler.Build(facts);
+                return ResponseMerger.Merge(factOutput, sanitized);
             }
         }
 
