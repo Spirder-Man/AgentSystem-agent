@@ -2,7 +2,7 @@
 
 > **目的**：结构化记录每个 Bug 的根因/修复/影响模块，实现跨批次知识累积，避免同类问题反复出现。
 > **使用方式**：每次修复 Bug 后按模板录入；每次分析日志前浏览「系统弱点了然表」确定重点监控项。
-> **文档版本**：v2.3 | **创建日期**：2026-06-30 | **最后更新**：2026-07-18（新增 Bug-032：FC=Required 违约时 LLM 通用废话透传 — 全业务链路输出质量门系统性缺失，基于 toolCalls 确定性信号兜底）
+> **文档版本**：v2.4 | **创建日期**：2026-06-30 | **最后更新**：2026-07-20（Bug-032 v2 回马枪：防御代码位置正确性 + dotnet run 增量编译缓存陷阱）
 
 ---
 
@@ -1011,12 +1011,12 @@
 | **发现场景** | 仪表盘自动合规扫描完成后，多个物质的检查结果包含 `（注：当前时间为2023-10-05）⏰ 如需计算或有其他问题，随时告诉我！🧮✨` 等通用聊天模版文本。日志显示 `[SK诊断] ⚠️ 本轮未调用任何工具 — LLM 可能绕过 Function Calling 直接回答` |
 | **影响模块** | `Agent1/Services/Dialog/AgentDialog.cs` L831-L837（ApplyDecoupledPipeline else 分支）、L284-L345（ExecuteBusinessWithResultAsync — Emergency/RegulatoryAudit/KnowledgeGraph 走 ExecuteGeneralChatAsync 零质量门）、L146-L181（OutputSanitizer 仅对 ChemicalCompliance + toolCalls>0 生效）、`Agent1/Services/Infrastructure/MetricsCollector.cs`（新增 FC 违约计数器） |
 | **根因** | **L1 现象**：合规扫描结果含通用助手废话；**L2 调用链**：`ExecuteChemicalComplianceAsync` 使用 FC=Required 调用 LLM → Qwen3-8B 忽略 FC 指令退化为通用聊天模式 → `_llmService.LastFunctionCalls.Count == 0` → `ApplyDecoupledPipeline(answer, emptyToolCalls)` 走 else 分支（L831-837）→ `OutputSanitizer.Sanitize(answer, emptyWhitelist)` **只过滤 GB 编号不过滤废话** → `FactAssembler.Build(emptyFacts)` 输出 `BuildNoResult()` 拒绝文本 → `ResponseMerger.Merge(拒绝文本, LLM垃圾)` → **两者合并后一起给用户**；**L3 设计缺陷**：① OutputSanitizer 设计职责是"法规编号幻觉过滤器"而非"响应质量过滤器"，对非 GB 内容的废话无检测能力；② `ApplyDecoupledPipeline` 的 else 分支设计假设"有工具调用 → LLM 可信 / 无工具调用 → LLM 可能不可信但应合并而非丢弃"，该假设在 FC=Required 被违约时不成立；③ Emergency/RegulatoryAudit/KnowledgeGraph 三个意图走 `ExecuteGeneralChatAsync`，不使用 FC=Required 且无任何输出质量门；④ 唯一的质量门（L147-148）同时要求 `intent==ChemicalCompliance && toolCalls.Count>0`，toolCalls==0 时完全跳过 |
-| **修复** | **核心策略：基于 toolCalls.Count 的确定性信号而非 LLM 输出内容模式匹配。** FC=Required 下 toolCalls==0 是二进制违约信号（语义框架层结构化数据，非 LLM 文本），不存在误判。① `ApplyDecoupledPipeline` else 分支：`toolCalls.Count==0` → 直接丢弃 LLM 全部输出 → 返回 `FactAssembler.BuildNoResult()` 纯拒绝模板，不合并任何 LLM 文本；② `toolCalls.Count>0` 但事实为空（工具被调用但未返回有效数据）时保留原合并逻辑（此时 LLM 有工具调用上下文支撑，相对可信）；③ 新增 `MetricsCollector.RecordToolCallContractViolation()` 计数器 + Prometheus 指标 `agent1_fc_contract_violation_total` 用于监控 Qwen3-8B FC 退化趋势；④ Serilog Warning 记录每次违约的原始输出长度和预览 |
-| **修复提交** | 本次 |
+| **修复** | **分两阶段：v1 (7/18) + v2 (7/20)。** 核心策略：基于 toolCalls.Count 的确定性信号而非 LLM 输出内容模式匹配。FC=Required 下 toolCalls==0 是二进制违约信号（语义框架层结构化数据，非 LLM 文本），不存在误判。<br><br>**v1 (7/18，提交 5dcf4f2)：** 将 `toolCalls.Count==0` 检查放在 `ApplyDecoupledPipeline` 的 else 分支（`!facts.HasAnyToolResult`）内。逻辑正确但位置错误 — 当 `HasAnyToolResult==true` 时（如历史工具结果残留），代码走第一分支直接 return，FC 违约检查被完全绕过。<br><br>**v2 (7/20，提交 94e4818)：** 将 `toolCalls.Count==0` 提升为 `HasAnyToolResult` 之前的独立最高优先级闸门。2026-07-20 远程 3 轮扫描实测：v1 拦截 0 次，v2（强制清理 bin/obj 重编译后）拦截 10 次。根因是 `dotnet run` 的增量编译缓存导致 v2 源码未生效 — 需 `rm -rf bin/obj && dotnet build --force`。<br><br>③ 新增 `MetricsCollector.RecordToolCallContractViolation()` + Prometheus `agent1_fc_contract_violation_total`；④ Serilog Warning 记录每次违约的原始输出长度和预览 |
+| **修复提交** | v1: `5dcf4f2`；v2: `94e4818` |
 | **关联 Bug** | [Bug-001](#bug-001)（FC 工具调用跳过同族 — 当时关注的是 LLM 能力，未考虑输出端兜底）；[Bug-018](#bug-018)（FC Required 策略误用）；[Bug-023](#bug-023)（双通道保护多路径不一致 — 本次发现 Emergency 等路径完全无保护，是 Bug-023 的同族延伸）；[Bug-028](#bug-028)（LLM 自推断版本年份 — 同属 LLM 输出质量问题的不同表现） |
-| **验证方法** | ① 触发自动合规扫描，确认 `[SK诊断] ⚠️ 本轮未调用任何工具` 出现时用户端只看到 `基于现有资料无法给出确定结论，建议联系安环部门人工确认`，无任何 emoji/时间戳注释；② `GET /metrics` 端点输出含 `agent1_fc_contract_violation_total` 指标；③ 正常 toolCalls>0 的合规查询结果不受影响 |
-| **教训** | ① **输出质量门不应依赖 LLM 行为正常为前提**：原设计假设 FC=Required → 一定有工具调用 → 输出可信。当模型违约时，质量门本身被绕过。正确设计应为：质量门独立运行，以框架层结构化信号（toolCalls.Count）而非 LLM 输出内容为判断依据；② **"合并"语义在异常路径下是危险的**：`ResponseMerger.Merge(拒绝, LLM垃圾)` 的设计初衷是"给用户尽可能多的信息"，但当 LLM 输出完全不可信时，「尽可能多」就变成了「尽可能多的垃圾」。异常路径应走"安全侧"——宁可信息不足，不可信息错误；③ **影响面分析不是可选的**：一个看似简单的 else 分支修改（丢弃 vs 合并）触发了对 FC 契约依赖、降级链路正交性、Emergency 路径遗漏、Metrics 可观测性缺失的连锁分析。Bug-032 的修复决策过程中，用户明确要求先完成全链路影响面矩阵后才执行修改，这个流程本身应固化为方法论；④ **松耦合点的防御性注释是跨版本保险**：在 else 分支中增加了 68 行注释标注 FC=Required 契约依赖，防止未来某人将 FC 策略改为 Auto 后此分支误杀合法输出 |
-| **追问深度** | 5 层（L1 现象：废话透传 → L2 调用链：ApplyDecoupledPipeline else 分支的合并逻辑 → L3 设计冲突：OutputSanitizer 职责范围 vs 实际需求 → L4 系统性缺陷：Emergency/RegulatoryAudit/KnowledgeGraph 零质量门 → L5 架构哲学：模型问题 vs 工程问题的权重判定 + 兜底方案从"模式匹配"到"确定性信号"的方法论跃迁） |
+| **验证方法** | ① 触发自动合规扫描，确认 `[SK诊断] ⚠️ 本轮未调用任何工具` 出现时用户端只看到 `基于现有资料无法给出确定结论，建议联系安环部门人工确认`，无任何 emoji/时间戳注释；② `GET /metrics` 端点输出含 `agent1_fc_contract_violation_total` 指标；③ 正常 toolCalls>0 的合规查询结果不受影响；④ **2026-07-20 远程 3 轮扫描实锤**：第 1 轮拦截 8 次、第 2 轮拦截 2 次、第 3 轮 0 次（Qwen3-8B FC 遵循率非确定性但 v2 兜底全覆盖），Prometheus 累计 10 次。验证过程中发现 `dotnet run` 增量编译缓存会跳过源码变更 → 强制 `rm -rf bin/obj && dotnet build --force` 是远程部署的必要步骤 |
+| **教训** | ① **输出质量门不应依赖 LLM 行为正常为前提**。② **"合并"语义在异常路径下是危险的**：异常路径应走"安全侧"——宁可信息不足，不可信息错误。③ **影响面分析不是可选的**。④ **松耦合点的防御性注释是跨版本保险**。⑤ **v2 新增教训：防御代码的生效位置比代码本身的正确性更重要** — v1 逻辑完全正确（toolCalls==0 → 丢弃），但放在 `HasAnyToolResult` 之后导致永远不被执行。质量门的"门"必须放在所有绕过路径之前。⑥ **v2 新增教训：`dotnet run` 增量编译不可信** — 源码变更后 `dotnet run` 可能使用缓存的旧 DLL。远程部署关键修复时，必须 `rm -rf bin/obj && dotnet build --force` 确保编译产物与源码一致。v1→v2 在远程验证中浪费了 3 轮扫描（约 45 分钟）才发现此问题 |
+| **追问深度** | 6 层（L1 现象 → L2 调用链 → L3 设计冲突 → L4 系统性缺陷 → L5 架构哲学 → **L6 v2 回马枪：防御代码的"位置正确性"与编译缓存一致性**。v1 逻辑正确但被 `HasAnyToolResult` 提前 return 绕过，且远程 `dotnet run` 增量编译缓存使 v2 源码变更未生效。最终通过 `rm -rf bin/obj && dotnet build --force` 解决，3 轮扫描拦截 10 次 FC 违约） |
 
 ## 思维链路（对话复盘）
 
@@ -1032,6 +1032,7 @@
 | N5 | 方案分支 | "用正则匹配 LLM 输出中的废话模式（emoji、时间戳注释）？" → 用户追问："该工程修复的兜底，只是硬编码的兜底，在当前场景可靠吗？" | 硬编码正则无法覆盖所有 LLM 废话变体（今天是 `（注：当前时间`，明天可能是 `As an AI assistant`）。真正的确定性信号是 `toolCalls.Count` — 框架层结构化数据，二进制：0=违约/>0=正常 | 放弃模式匹配方案，转向基于 toolCalls.Count 的确定性信号兜底 | 模式匹配 LLM 输出：猫捉老鼠，不可靠 |
 | N6 | 影响面分析（用户主动） | "该修复会引出其他bug吗？？如果不需要调用工具的时候但是出现了问题，该怎么办？？是否会影响其他业务链路，是否会影响降级策略？？？" | 逐项排查 7 个维度：① toolCalls==0 在 FC=Required 下永远是异常（协议违约），不存在"合法不需要调用工具"的场景 ② Emergency/RegulatoryAudit/KnowledgeGraph 不受影响（走 GeneralChatAsync） ③ 降级链路（熔断器/规则引擎）正交独立 ④ OutputValidator 在 toolCalls==0 时本就不执行 ⑤ 会话/记忆系统会正确存储拒绝文本作为下次上下文 ⑥ 需新增 Metrics 计数器 ⑦ 需加防御性注释标注 FC 契约依赖 | 执行修复 + 防御性注释 + Metrics 可观测性 | 不做影响面分析直接修：可能导致未来 FC 策略变更为 Auto 时误杀合法输出 |
 | N7 | 实现决策 | 修复粒度：仅 ApplyDecoupledPipeline else 分支，还是也修 Emergency 等路径？ | Emergency 等路径不使用 FC=Required，toolCalls 检查无意义。它们的修复需要先引入 FC 约束（结构性变更），不应与 Bug-032 混在一起 | 先修 ChemicalCompliance 路径（P0），Emergency 等路径留待后续架构迭代 | 一并修复所有路径：Emergency 路径需要 FC 策略调整，改动面过大且风险未知 |
+| N8 | v2 回马枪（用户发起） | "多次重跑扫描"后 FC 违约 15 次但拦截 0 次？"什么意思？？什么叫太晚了？" | ① v1 的 `toolCalls==0` 检查放在 `else` 分支内，当 `HasAnyToolResult==true` 时被提前 return 绕过，永远执行不到。② 远程 `dotnet run` 增量编译缓存导致 v2 源码变更未编译进 DLL。③ 强制 `rm -rf bin/obj && dotnet build --force` 后 v2 生效，3 轮扫描拦截 10 次 FC 违约（Prometheus: 10）。④ 新增教训：防御代码的"位置正确性"是独立于"逻辑正确性"的第二维度 | ① 将 toolCalls==0 提升为 HasAnyToolResult 之前的独立最高优先级闸门 ② 建立远程部署强制清理 bin/obj 的 SOP | 仅依赖 `dotnet run` 自动增量编译：已验证不可靠，浪费 3 轮扫描（~45 分钟） |
 
 ---
 
