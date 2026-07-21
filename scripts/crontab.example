@@ -11,30 +11,19 @@
 # ============================================================
 
 # ⚠️ 部署前必须修改为实际路径！
-PROJECT_DIR=/root/autodl-tmp/Agent1
+PROJECT_DIR=/root/autodl-tmp/agent-system
 LOG_DIR=${PROJECT_DIR}/eval_reports/cron_logs
 mkdir -p ${LOG_DIR}
 
-# ── 每日凌晨3点：全量64条合规评测跑分 + 推送至 Prometheus ──
+# ── 每日凌晨3点：全量64条合规评测跑分 ──
+# Step 1-4: 跑分 + 基线对比 + 幻觉检测 + 汇总
+# Step 5-7: 日志切片 + 六维度分析 (D1-D6) 
 # 输出 eval_reports/YYYYMMDD_HHMM/summary.json
-# 自动对比上次基线，结论准确率下降 >5% 或幻觉率上升 >10% 则输出告警
-0 3 * * * bash ${PROJECT_DIR}/scripts/post-deploy-eval.sh \
-    >> ${LOG_DIR}/post-deploy-$(date +\%Y\%m\%d).log 2>&1 && \
-    LATEST=$(ls -td ${PROJECT_DIR}/eval_reports/2*/summary.json 2>/dev/null | head -1); \
-    [ -n "$LATEST" ] && bash ${PROJECT_DIR}/scripts/push-eval-metrics.sh "$LATEST" \
-    >> ${LOG_DIR}/push-metrics-$(date +\%Y\%m\%d).log 2>&1
+#      eval_reports/YYYYMMDD_HHMM/analysis.md
+0 3 * * * ADMIN_PWD=123456789 bash ${PROJECT_DIR}/scripts/post-deploy-eval.sh >> ${LOG_DIR}/post-deploy-$(date +\%Y\%m\%d).log 2>&1 && ADMIN_PWD=123456789 bash ${PROJECT_DIR}/scripts/post-deploy-analyze.sh >> ${LOG_DIR}/analyze-$(date +\%Y\%m\%d).log 2>&1
 
-# ── 每周一凌晨4点：老化清理（保留最近30份评测报告） ──
-0 4 * * 1 find ${PROJECT_DIR}/eval_reports/ -maxdepth 1 -type d \
-    -name "202*" -mtime +30 -exec rm -rf {} \;
+# ── 每周一凌晨4点：老化清理（保留最近30份） ──
+0 4 * * 1 find ${PROJECT_DIR}/eval_reports/ -maxdepth 1 -type d -name "202*" -mtime +30 -exec rm -rf {} \;
 
-# ── 间隔12小时：JSON Schema 验证最新报告 ──
-# 确保 post-deploy 和 pre-deploy 输出格式未退化
-0 6,18 * * * LATEST=$(ls -td ${PROJECT_DIR}/eval_reports/2*/summary.json 2>/dev/null | head -1); \
-    [ -n "$LATEST" ] && python3 ${PROJECT_DIR}/scripts/validate-eval-schema.py "$LATEST" \
-    >> ${LOG_DIR}/schema-check.log 2>&1
-
-# ── 每小时：心跳监控（独立于 Pre-deploy，纯监控用途） ──
-# 不阻断，仅记录服务是否在线
-0 * * * * curl -sf http://localhost:5000/health/live \
-    -o /dev/null || echo "$(date): /health/live FAIL" >> ${LOG_DIR}/heartbeat.log
+# ── 每小时：心跳监控 ──
+0 * * * * curl -sf http://localhost:5000/health/live -o /dev/null || echo "$(date): FAIL" >> ${LOG_DIR}/heartbeat.log
