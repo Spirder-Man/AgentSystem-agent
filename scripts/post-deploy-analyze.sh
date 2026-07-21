@@ -149,7 +149,11 @@ echo "=== [6/7] Running D1-D6 analysis ==="
 cat > "$ANALYSIS_FILE" << 'REPORT_HEADER'
 # 远程评测六维度深度分析报告
 
-> **自动生成** | 维度框架: D1-D6 | 方法论: engineering-deep-learning-methodology.md
+> **自动生成（数据模板）** | 维度框架: D1-D6 | 方法论: engineering-deep-learning-methodology.md
+>
+> ⚠️ **本报告由 post-deploy-analyze.sh 自动生成，D1-D6 数据已填充但分析为模板占位。**
+> **深度交互分析请使用 Qoder + remote-log-analysis 技能：**
+> `> 帮我深度分析 eval_reports\\analysis\\{date}\\analysis.md`
 
 ---
 

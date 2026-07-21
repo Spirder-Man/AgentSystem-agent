@@ -13,7 +13,8 @@
 param(
     [string]$ReportDir = "",        # 远程报告子目录名，留空=下载最新
     [string]$ProjectRoot = "",      # 项目根目录，留空=自动推断
-    [switch]$OpenAfterDownload = $true
+    [switch]$OpenAfterDownload = $true,
+    [switch]$SendEmail = $true       # 下载完成后发送邮件通知
 )
 
 $ErrorActionPreference = "Continue"
@@ -120,3 +121,68 @@ Write-Host "╔═════════════════════�
 Write-Host "║  Download complete                        ║" -ForegroundColor Cyan
 Write-Host "║  Report: ${LocalDir}\analysis.md          ║" -ForegroundColor Cyan
 Write-Host "╚══════════════════════════════════════════╝" -ForegroundColor Cyan
+
+# ═══════════════════════════════════════
+# 邮件通知：日志已就绪，请人工介入分析
+# ═══════════════════════════════════════
+if ($SendEmail) {
+    Write-Host ""
+    Write-Host ">>> Sending email notification..." -ForegroundColor Yellow
+    
+    # 读取 .env 中的 SMTP 配置
+    $envFile = "$ProjectRoot\.env"
+    if (Test-Path $envFile) {
+        $envContent = Get-Content $envFile -Raw
+        $smtpHost = if ($envContent -match 'ALERT_SMTP_HOST=(.+)') { $Matches[1].Trim() } else { "" }
+        $smtpUser = if ($envContent -match 'ALERT_EMAIL_USER=(.+)') { $Matches[1].Trim() } else { "" }
+        $smtpPass = if ($envContent -match 'ALERT_EMAIL_PASSWORD=([^\r\n]+)') { $Matches[1].Trim() } else { "" }
+        $recipient = if ($envContent -match 'ALERT_RECIPIENT_EMAILS=([^\r\n]+)') { $Matches[1].Trim() } else { "" }
+        
+        if ($smtpHost -and $smtpUser -and $smtpPass -and $recipient) {
+            try {
+                $smtpParts = $smtpHost -split ':'
+                $smtpServer = $smtpParts[0]
+                $smtpPort = if ($smtpParts.Length -gt 1) { [int]$smtpParts[1] } else { 587 }
+                
+                $smtp = New-Object Net.Mail.SmtpClient($smtpServer, $smtpPort)
+                $smtp.EnableSsl = $true
+                $smtp.Credentials = New-Object System.Net.NetworkCredential($smtpUser, $smtpPass)
+                
+                $mail = New-Object Net.Mail.MailMessage
+                $mail.From = $smtpUser
+                $recipient -split ',' | ForEach-Object { $mail.To.Add($_.Trim()) }
+                $mail.Subject = "[Agent1] 每日评测报告已就绪 — ${ReportDir}"
+                $mail.Body = @"
+═══════════════════════════════════
+  Agent1 化工合规 AI — 每日远程评测
+═══════════════════════════════════
+
+评测日期：${ReportDir}
+本地路径：${LocalDir}
+
+已下载文件：
+  ├── analysis.md       — D1-D6 六维度分析报告（数据已填充）
+  ├── summary.json      — 原始评测指标
+  └── log_slices/       — API/llama.cpp 日志切片
+
+═══════════════════════════════════
+  ⚠️ 请进行人工介入分析
+═══════════════════════════════════
+
+打开 analysis.md，使用 Qoder 加载 remote-log-analysis 技能进行深度分析：
+  > 帮我深度分析 eval_reports\analysis\${ReportDir}\analysis.md
+
+— Agent1 自动质量监控系统
+"@
+                $smtp.Send($mail)
+                Write-Host "  ✅ Email sent to: ${recipient}" -ForegroundColor Green
+            } catch {
+                Write-Host "  ⚠️ Email send failed: $_" -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host "  ⏭️ SMTP config incomplete in .env, skip email" -ForegroundColor Gray
+        }
+    } else {
+        Write-Host "  ⏭️ .env not found, skip email" -ForegroundColor Gray
+    }
+}
