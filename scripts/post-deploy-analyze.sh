@@ -16,7 +16,7 @@
 #   0 3 * * * ADMIN_PWD=xxx bash scripts/post-deploy-eval.sh && bash scripts/post-deploy-analyze.sh
 # ============================================================
 
-set -euo pipefail
+set -uo pipefail
 
 # ── 配置 ──
 PROJECT_DIR="${PROJECT_DIR:-/root/autodl-tmp/agent-system}"
