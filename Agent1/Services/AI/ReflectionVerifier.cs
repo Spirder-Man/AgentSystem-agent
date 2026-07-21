@@ -117,7 +117,7 @@ namespace Agent1.Services
         /// <summary>
         /// 业务事实核查：提取结论中的法规编号，在知识库中反向检索验证。
         /// </summary>
-        public async Task<BusinessVerificationReport> VerifyBusinessFactsAsync(string conclusion)
+        public virtual async Task<BusinessVerificationReport> VerifyBusinessFactsAsync(string conclusion)
         {
             var report = new BusinessVerificationReport
             {

@@ -1,0 +1,280 @@
+{
+  "dashboard": {
+    "title": "Agent1 质量趋势看板 (Quality Trends)",
+    "uid": "agent1-quality-trends",
+    "description": "Phase 3 企业级 Dashboard — LLM 评测指标趋势 + 测试覆盖率 + 部署健康 + SLO",
+    "refresh": "5m",
+    "time": { "from": "now-7d", "to": "now" },
+    "panels": [
+      {
+        "id": 100,
+        "title": "📊 行覆盖率 (Line Coverage)",
+        "type": "stat",
+        "description": "后端 .NET 行覆盖率（来源: coverlet cobertura.xml）目标 ≥60%",
+        "targets": [
+          { "expr": "agent1_code_coverage_line_rate", "legendFormat": "line%" }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": { "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 0.4, "color": "orange" },
+              { "value": 0.6, "color": "green" }
+            ]}
+          }
+        },
+        "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 }
+      },
+      {
+        "id": 101,
+        "title": "🌿 分支覆盖率 (Branch Coverage)",
+        "type": "stat",
+        "description": "后端 .NET 分支覆盖率。目标 ≥70%",
+        "targets": [
+          { "expr": "agent1_code_coverage_branch_rate", "legendFormat": "branch%" }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": { "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 0.3, "color": "orange" },
+              { "value": 0.7, "color": "green" }
+            ]}
+          }
+        },
+        "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 }
+      },
+      {
+        "id": 102,
+        "title": "🧪 测试总数",
+        "type": "stat",
+        "description": "xUnit 测试用例总数（后端）",
+        "targets": [
+          { "expr": "agent1_test_total_count", "legendFormat": "tests" }
+        ],
+        "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 }
+      },
+      {
+        "id": 103,
+        "title": "🧪 前端测试总数",
+        "type": "stat",
+        "description": "Vitest 测试用例总数（前端）+ Playwright E2E",
+        "targets": [
+          { "expr": "agent1_frontend_test_count", "legendFormat": "tests" }
+        ],
+        "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 }
+      },
+      {
+        "id": 200,
+        "title": "🎯 结论准确率趋势 (Conclusion Accuracy)",
+        "type": "timeseries",
+        "description": "每日评测结论准确率（来源: post-deploy-eval.sh 64条评测集）。阈值: ≥65%",
+        "targets": [
+          { "expr": "agent1_eval_conclusion_accuracy", "legendFormat": "conclusion%" }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": { "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 0.65, "color": "orange" },
+              { "value": 0.85, "color": "green" }
+            ]}
+          }
+        },
+        "gridPos": { "x": 0, "y": 4, "w": 8, "h": 8 }
+      },
+      {
+        "id": 201,
+        "title": "👻 幻觉率趋势 (Hallucination Rate)",
+        "type": "timeseries",
+        "description": "每日幻觉法规引用比例。阈值: ≤10%",
+        "targets": [
+          { "expr": "agent1_eval_hallucination_rate", "legendFormat": "hallucination%" }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": { "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 0.1, "color": "orange" },
+              { "value": 0.3, "color": "red" }
+            ]}
+          }
+        },
+        "gridPos": { "x": 8, "y": 4, "w": 8, "h": 8 }
+      },
+      {
+        "id": 202,
+        "title": "🔧 工具触发率趋势 (Tool Call Rate)",
+        "type": "timeseries",
+        "description": "LLM 正确触发 FC 工具的比例。阈值: ≥85%",
+        "targets": [
+          { "expr": "agent1_eval_tool_call_rate", "legendFormat": "tool%" }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": { "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 0.7, "color": "orange" },
+              { "value": 0.85, "color": "green" }
+            ]}
+          }
+        },
+        "gridPos": { "x": 16, "y": 4, "w": 8, "h": 8 }
+      },
+      {
+        "id": 300,
+        "title": "🚀 Pre-deploy 检查历史",
+        "type": "timeseries",
+        "description": "Pre-deploy smoke check 通过/失败历史 (1=通过, 0=失败)",
+        "targets": [
+          { "expr": "agent1_predeploy_check_result", "legendFormat": "predeploy" }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "none",
+            "mappings": [
+              { "value": "1", "text": "PASS" },
+              { "value": "0", "text": "FAIL" }
+            ],
+            "thresholds": { "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 1, "color": "green" }
+            ]}
+          }
+        },
+        "gridPos": { "x": 0, "y": 12, "w": 6, "h": 4 }
+      },
+      {
+        "id": 301,
+        "title": "⚡ Phase 1 基础设施通过率",
+        "type": "stat",
+        "description": "Pre-deploy Phase 1 (Infrastructure: PG + LLM + Embedding) 最近一次结果",
+        "targets": [
+          { "expr": "agent1_predeploy_phase1_infra", "legendFormat": "phase1" }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              { "value": "1", "text": "PASS" },
+              { "value": "0", "text": "FAIL" }
+            ]
+          }
+        },
+        "gridPos": { "x": 6, "y": 12, "w": 6, "h": 4 }
+      },
+      {
+        "id": 302,
+        "title": "🔒 Phase 3 安全中间件通过率",
+        "type": "stat",
+        "description": "Pre-deploy Phase 3 (Security: 401 + SQL注入拦截) 最近一次结果",
+        "targets": [
+          { "expr": "agent1_predeploy_phase3_security", "legendFormat": "phase3" }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              { "value": "1", "text": "PASS" },
+              { "value": "0", "text": "FAIL" }
+            ]
+          }
+        },
+        "gridPos": { "x": 12, "y": 12, "w": 6, "h": 4 }
+      },
+      {
+        "id": 303,
+        "title": "🏭 Phase 4 FC 就绪状态",
+        "type": "stat",
+        "description": "Pre-deploy Phase 4 (FC Readiness: 1条测试查询 FC 是否触发) 最近一次结果",
+        "targets": [
+          { "expr": "agent1_predeploy_phase4_fc", "legendFormat": "phase4" }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              { "value": "1", "text": "READY" },
+              { "value": "0", "text": "NOT READY" }
+            ]
+          }
+        },
+        "gridPos": { "x": 18, "y": 12, "w": 6, "h": 4 }
+      },
+      {
+        "id": 400,
+        "title": "📈 结论准确率 vs 幻觉率 (双轴)",
+        "type": "timeseries",
+        "description": "双轴对比: 左轴=结论准确率(绿色), 右轴=幻觉率(红色)。理想趋势: 准确率↑, 幻觉率↓",
+        "targets": [
+          { "expr": "agent1_eval_conclusion_accuracy", "legendFormat": "准确率" },
+          { "expr": "agent1_eval_hallucination_rate", "legendFormat": "幻觉率" }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "custom": { "axisPlacement": "auto" }
+          },
+          "overrides": [
+            { "matcher": { "id": "byName", "options": "幻觉率" }, "properties": [
+              { "id": "custom.axisPlacement", "value": "right" },
+              { "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }
+            ]}
+          ]
+        },
+        "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 }
+      },
+      {
+        "id": 401,
+        "title": "📊 SLO 摘要 (API + LLM)",
+        "type": "timeseries",
+        "description": "API QPS + LLM QPS 在同一面板",
+        "targets": [
+          { "expr": "rate(agent1_api_requests_total[1m])", "legendFormat": "API QPS" },
+          { "expr": "rate(agent1_llm_calls_total[1m])", "legendFormat": "LLM QPS" }
+        ],
+        "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 }
+      },
+      {
+        "id": 500,
+        "title": "📋 覆盖率变化趋势 (Line Coverage History)",
+        "type": "timeseries",
+        "description": "行覆盖率随时间变化。每次 CI 运行 push 一个数据点",
+        "targets": [
+          { "expr": "agent1_code_coverage_line_rate", "legendFormat": "line%" }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": { "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 0.4, "color": "orange" },
+              { "value": 0.6, "color": "green" }
+            ]}
+          }
+        },
+        "gridPos": { "x": 0, "y": 24, "w": 12, "h": 6 }
+      },
+      {
+        "id": 501,
+        "title": "🔄 FC 合约违约监控",
+        "type": "timeseries",
+        "description": "FC=Required 下 toolCalls=0 的违约次数（应始终为0）",
+        "targets": [
+          { "expr": "rate(agent1_fc_contract_violation_total[5m])", "legendFormat": "violations/s" }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": { "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 0.001, "color": "red" }
+            ]}
+          }
+        },
+        "gridPos": { "x": 12, "y": 24, "w": 12, "h": 6 }
+      }
+    ]
+  }
+}

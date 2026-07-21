@@ -1,0 +1,40 @@
+# ============================================================
+# Agent1 远程服务器 Cron 配置示例
+#
+# 定位：Post-deployment 质量监控（定时执行，不阻断服务）
+# 原则：告警式 — 退化通知人工判断，不回滚
+#
+# 用法：
+#   1. 修改下方 PROJECT_DIR 为实际项目路径
+#   2. 确保 ADMIN_PWD 环境变量已设置（或通过 .env 加载）
+#   3. crontab -e  然后粘贴以下内容
+# ============================================================
+
+# ⚠️ 部署前必须修改为实际路径！
+PROJECT_DIR=/root/autodl-tmp/Agent1
+LOG_DIR=${PROJECT_DIR}/eval_reports/cron_logs
+mkdir -p ${LOG_DIR}
+
+# ── 每日凌晨3点：全量64条合规评测跑分 + 推送至 Prometheus ──
+# 输出 eval_reports/YYYYMMDD_HHMM/summary.json
+# 自动对比上次基线，结论准确率下降 >5% 或幻觉率上升 >10% 则输出告警
+0 3 * * * bash ${PROJECT_DIR}/scripts/post-deploy-eval.sh \
+    >> ${LOG_DIR}/post-deploy-$(date +\%Y\%m\%d).log 2>&1 && \
+    LATEST=$(ls -td ${PROJECT_DIR}/eval_reports/2*/summary.json 2>/dev/null | head -1); \
+    [ -n "$LATEST" ] && bash ${PROJECT_DIR}/scripts/push-eval-metrics.sh "$LATEST" \
+    >> ${LOG_DIR}/push-metrics-$(date +\%Y\%m\%d).log 2>&1
+
+# ── 每周一凌晨4点：老化清理（保留最近30份评测报告） ──
+0 4 * * 1 find ${PROJECT_DIR}/eval_reports/ -maxdepth 1 -type d \
+    -name "202*" -mtime +30 -exec rm -rf {} \;
+
+# ── 间隔12小时：JSON Schema 验证最新报告 ──
+# 确保 post-deploy 和 pre-deploy 输出格式未退化
+0 6,18 * * * LATEST=$(ls -td ${PROJECT_DIR}/eval_reports/2*/summary.json 2>/dev/null | head -1); \
+    [ -n "$LATEST" ] && python3 ${PROJECT_DIR}/scripts/validate-eval-schema.py "$LATEST" \
+    >> ${LOG_DIR}/schema-check.log 2>&1
+
+# ── 每小时：心跳监控（独立于 Pre-deploy，纯监控用途） ──
+# 不阻断，仅记录服务是否在线
+0 * * * * curl -sf http://localhost:5000/health/live \
+    -o /dev/null || echo "$(date): /health/live FAIL" >> ${LOG_DIR}/heartbeat.log

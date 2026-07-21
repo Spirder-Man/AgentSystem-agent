@@ -1,44 +1,44 @@
 # Agent1 项目全景分析：现状、目标与整改进度
 
 > 生成日期：2026-06-16
-> 最后核查：2026-06-16（第三轮核查版，P0-P2 全部清完，共 10+ 项修复）
-> 项目：化工园区危化品合规审核 AI Agent (.NET 8 + Semantic Kernel + GPU)
-> 整体完成度：~88%（P0-P2 全部清理，仅剩 P3 大工程）
+> 最后核查：2026-07-20（第四轮核查版，前端 E2E/单元测试 零实施、后端测试 665+63 条、覆盖率 21%）
+> 项目：化工园区危化品合规审核 AI Agent (.NET 8 + Semantic Kernel + GPU + Vue 3)
+> 整体完成度：~85%（P0-P2 全部清完，测试体系为当前最大短板）
 
 ---
 
 ## 一、当前项目的功能入口和架构层次
 
-### 1.1 双入口体系
+### 1.1 三通道入口体系
 
 ```
-┌──────────────────────────────────────────────────────┐
-│                    Agent1 项目                        │
-├──────────────────────┬───────────────────────────────┤
-│  入口1：Console 控制台  │  入口2：ASP.NET Core REST API │
-│  Program.cs            │  Agent1.Api/Program.cs       │
-├──────────────────────┼───────────────────────────────┤
-│  17项交互菜单          │  2个 Controller               │
-│  ├─ 1-7: 通用推理模块   │  ├─ AuthController           │
-│  │  CoT/ReAct/         │  │  POST /api/auth/login     │
-│  │  Reflection/RAG     │  │  (JWT Token 签发)         │
-│  ├─ 8-14: 化工功能      │  └─ ComplianceController     │
-│  │  合规/工单/RAG/     │  │  POST /api/compliance/    │
-│  │  诊断/评测/多模态    │  │       check               │
-│  ├─ 15: 多模态视觉分析  │  5个 API 端点                │
-│  ├─ 16: 知识库增量更新  │  ├─ /health /ready /live     │
-│  └─ 17: 监管核查辅助   │  ├─ /metrics                 │
-│                       │  ├─ /cache/stats /clear      │
-│  命令模式重构          │  ├─ /memory/stats            │
-│  (IMenuCommand 字典)   │  └─ /knowledgebase/          │
-│                       │     incremental-update       │
-│                       │                             │
-│                       │  4个中间件                    │
-│                       │  ├─ GlobalException           │
-│                       │  ├─ RateLimiting              │
-│                       │  ├─ RequestId                 │
-│                       │  └─ RequestMetrics            │
-└──────────────────────┴───────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                         Agent1 项目                               │
+├──────────────────────┬───────────────────────┬───────────────────┤
+│  入口1：Console 控制台│  入口2：REST API       │  入口3：Web SPA    │
+│  Program.cs           │  Agent1.Api/Program.cs│  agent1-web/       │
+├──────────────────────┼───────────────────────┼───────────────────┤
+│  17项交互菜单         │  15个 Controller       │  17 个页面组件     │
+│  ├─ 1-7: 通用推理模块 │  ├─ AuthController     │  ├─ LoginPage      │
+│  │  CoT/ReAct/        │  ├─ ComplianceController│  ├─ DashboardPage  │
+│  │  Reflection/RAG    │  ├─ InspectionController│  ├─ ComplianceCheck│
+│  ├─ 8-14: 化工功能     │  ├─ TicketsController  │  ├─ TicketList/    │
+│  │  合规/工单/RAG/    │  ├─ KnowledgeBase      │  │   Detail         │
+│  │  诊断/评测/多模态   │  │   Controller         │  ├─ AssetList/     │
+│  ├─ 15: 多模态视觉分析 │  ├─ KnowledgeGraph     │  │   Detail         │
+│  ├─ 16: 知识库增量更新 │  │   Controller         │  ├─ Inspection*(6) │
+│  └─ 17: 监管核查辅助   │  ├─ EmergencyController│  ├─ AuditLogPage   │
+│                       │  ├─ DashboardController │  ├─ SystemStatus   │
+│  命令模式重构          │  ├─ AuditController    │  └─ ForbiddenPage  │
+│  (IMenuCommand 字典)   │  └─ HealthController   │                   │
+│                       │                        │  Vue 3 + Vite 5   │
+│                       │  5个 Middleware         │  Element Plus     │
+│                       │  ├─ GlobalException     │  Pinia (8 Stores) │
+│                       │  ├─ RateLimiting        │  MSW Mock         │
+│                       │  ├─ RequestId           │  ECharts 图表     │
+│                       │  ├─ RequestMetrics      │  Playwright (规划)│
+│                       │  └─ TokenBlacklist      │                   │
+└──────────────────────┴───────────────────────┴───────────────────┘
 ```
 
 ### 1.2 六层架构层次
@@ -52,20 +52,25 @@
 | **⑤ 基础设施层** | 数据库 + 会话 + 记忆 + 审计 + 指标 | `DatabaseService.cs`, `MemoryService.cs`, `AuditService.cs`, `MetricsCollector.cs` | ~2100 |
 | **⑥ 外部系统层** | PostgreSQL + Ollama + Embedding | pgvector, llama-server, nomic-embed-text | -- |
 
-### 1.3 模块类型（ModuleType 枚举）
+### 1.3 模块类型（ModuleType 枚举 — 已扩展至 12 种）
 
-| 枚举值 | 模块名称 | 说明 |
-|--------|---------|------|
-| `CoTSolid = 1` | 思维链推理（标准输出） | Chain-of-Thought 非流式 |
-| `CoTStream = 2` | 思维链推理（流式输出） | CoT + SSE 流式输出 |
-| `ReActSolid = 3` | ReAct 推理（标准输出） | Reasoning-Action 非流式 |
-| `ReActStream = 4` | ReAct 推理（流式输出） | ReAct + SSE 流式输出 |
-| `Reflection = 5` | Reflection 自我反思 | LLM 自检 + 纠错循环 |
-| `RAG = 6` | RAG 检索增强生成 | BM25 + Vector 混合检索 |
-| `UnifiedDialog = 7` | 智能对话系统 | 多轮对话 + 记忆 + 意图路由 |
-| `ComplianceCheck = 8` | **化工合规自查** ★核心功能 | 巡检内容 → 合规判断 |
-| `TicketFollowup = 9` | 整改工单跟进 | ✅ 已实现 (173行) |
-| `RegulatoryAudit = 10` | 监管核查辅助 | ✅ 已实现 (187行) — 逐条比对法规+结构化报告 |
+| 枚举值 | 模块名称 | 说明 | 状态 |
+|--------|---------|------|:--:|
+| `CoTSolid = 1` | 思维链推理（标准输出） | Chain-of-Thought 非流式 | ✅ |
+| `CoTStream = 2` | 思维链推理（流式输出） | CoT + SSE 流式输出 | ✅ |
+| `ReActSolid = 3` | ReAct 推理（标准输出） | Reasoning-Action 非流式 | ✅ |
+| `ReActStream = 4` | ReAct 推理（流式输出） | ReAct + SSE 流式输出 | ✅ |
+| `Reflection = 5` | Reflection 自我反思 | LLM 自检 + 纠错循环 | ✅ |
+| `RAG = 6` | RAG 检索增强生成 | BM25 + Vector 混合检索 | ✅ |
+| `UnifiedDialog = 7` | 智能对话系统 | 多轮对话 + 记忆 + 意图路由 | ✅ |
+| `ComplianceCheck = 8` | **化工合规自查** ★ | 巡检内容 → 合规判断 | ✅ |
+| `TicketFollowup = 9` | 整改工单跟进 | 状态机流转 + KB辅助 | ✅ |
+| `RegulatoryAudit = 10` | 监管核查辅助 | 逐条比对法规+结构化报告 | ✅ |
+| `EmergencyResponse = 11` | 应急响应方案 | 🆕 泄漏处置+疏散计算+消防匹配 | 🔶 预留 |
+| `KnowledgeGraph = 12` | 知识图谱查询 | 🆕 化学品-法规-事故关联网 | 🔶 预留 |
+
+> **架构收敛验证**：7个核心验证点（[架构收敛专项测试说明](../architecture/架构收敛专项测试说明.md)）覆盖 ModuleType 1-7。
+> 扩展 ModuleType 8-10 已通过单独测试验证，11-12 为 v4.3 预留扩展。
 
 ---
 
@@ -225,27 +230,35 @@ AI推理引擎
 ├─ ⚠️ 工业系统集成 (ERP/WMS/EHS) — IntegrationService 为空壳
 ├─ ⚠️ 知识图谱构建 — 未启动（化学品-法规-事故关联网）
 
+测试短板（🔴 当前最大风险）
+├─ 🔴 前端 E2E 测试 — 0 条实施（Playwright 配置空缺，5条关键路径未覆盖）
+├─ 🔴 前端单元测试 — 0 条实施（vitest.config.ts + MSW就绪但无测试文件）
+├─ 🔴 后端覆盖率 — 仅 21% 行覆盖（核心模块 LlmService/HybridKB/AgentDialog 无直接测试）
+├─ 🟡 CI 架构收敛卡口 — continue-on-error:true 不阻断退化
+├─ 🟡 CI 覆盖率门禁 — 60%门禁在实际 21% 下可能失效
+
 架构改进
 ├─ ⚠️ 数据加密验证 — EnableDataEncryption 配置就绪, 未端到端验证
-├─ ⚠️ 测试覆盖率 — 核心模块 (LlmService/HybridKB/AgentDialog) 无直接单测
+├─ ⚠️ 循环依赖 — null!+SetService 临时方案，建议迁移到 Lazy<T>
 
 生产加固
 ├─ ⚠️ API 时间窗口限流 — SemaphoreSlim(2,2) 仅有并发控制
-├─ ⚠️ CI/CD — GitHub Actions CI 仅有基本 workflow
+├─ ⚠️ 前端 CIPipeline 空跑 — Job1b 无实际测试执行
 ```
 
-### 4.3 完成度评估
+### 4.3 完成度评估（2026-07-20 更新）
 
-| 维度 | 完成度 | 说明 |
-|------|--------|------|
-| 基础设施与配置 | **95%** | DI/日志/认证/可观测性/健康检查/安全加固已就绪 |
-| 化工合规核心 | **88%** | 7工具+混合检索+结论验证+风险评估+监管核查已就绪 |
-| AI引擎 | **90%** | SK FC + Lazy<T> + 断路器 + GPU嵌入 + 多模态已成熟 |
-| 数据持久化 | **95%** | pgvector + 审计哈希链(DB) + 记忆体系 + 增量更新完整 |
-| 评测体系 | **85%** | 50条评测 + 六维评分已就绪 |
-| 工业集成 | **10%** | 仅有接口定义和配置预留 |
-| 生产加固 | **82%** | 容器化+健康检查+安全检查+PW注入防护就绪 |
-| **总体** | **~88%** | P0-P2 全部清完, 仅剩应急/集成/知识图谱 P3 大工程 |
+| 维度 | 完成度 | 变化 | 说明 |
+|------|:----:|:----:|------|
+| 基础设施与配置 | **95%** | — | DI/日志/认证/可观测性/健康检查/安全加固已就绪 |
+| 化工合规核心 | **90%** | +2% | 7工具+混合检索+结论验证+风险评估+监管核查已就绪 |
+| AI引擎 | **90%** | — | SK FC + Lazy<T> + 断路器 + GPU嵌入 + 多模态已成熟 |
+| 数据持久化 | **95%** | — | pgvector + 审计哈希链(DB) + 记忆体系 + 增量更新完整 |
+| 评测体系 | **85%** | — | 64条评测 + 六维评分已就绪 |
+| **前端 Web SPA** | **60%** | 🆕 | 页面和组件大部完成, Pinia Store + MSW 已就绪, 测试为 0 |
+| 工业集成 | **10%** | — | 仅有接口定义和配置预留 |
+| 测试覆盖率 | **25%** | 🔴 | 后端665条但核心无覆盖, 前端0条, E2E空白 |
+| **总体** | **~85%** | -3pp | P0-P2清完, 测试体系为当前最大短板, 前端E2E为零 |
 
 ---
 
@@ -288,28 +301,25 @@ AI推理引擎
 
 ## 七、事实核查与补充修正（2026-06-16 代码级验证）
 
-### 7.1 测试覆盖率核查
+### 7.1 测试覆盖率核查（2026-07-20 更新）
 
-分析文档原述"测试覆盖率低，仅 KnowledgeBaseService 和 ToolService 有单测"，经核查 **不准确**。
-实际 `Agent1.Tests/` 目录含 **9 个测试文件**（含 `ConclusionVerifierTests.cs` 原分析遗漏）：
+后端测试现状（来源：[测试总纲](../testing/测试总纲.md)）：
 
-| 测试文件 | 行数 | 测试方法数 | 覆盖目标 | Mock/隔离 |
-|---------|------|-----------|---------|----------|
-| `ChemicalSubstanceDatabaseTests.cs` | 321 | 15 ([Fact]) | 化学品别名解析、物化性质、储存不兼容列表、GB编号 | 纯逻辑，无需 Mock |
-| `EvalEngineTests.cs` | 158 | 11+ ([Fact]) | CheckParams/CheckConclusion/CheckSafetyDistance/CheckRegulation | 纯逻辑 |
-| `SensitiveDataMaskerTests.cs` | 97 | 10 ([Fact]) | 手机号/邮箱/身份证/API Key 脱敏 + 长文本截断 | 纯逻辑 |
-| `MetricsCollectorTests.cs` | 146 | 6+ ([Fact]) | LLM调用计数、RAG搜索、缓存命中、MetricsSnapshot | 纯逻辑 |
-| `IntentRouterTests.cs` | 63 | 5 (3 [Theory]+2 [Fact]) | 合规关键词路由、聊天路由、边界条件、优先级 | 纯逻辑 |
-| `ChemicalComplianceToolsTests.cs` | 90 | 5 ([Fact]) | 硬编码字典降级路径（爆炸物/易燃气体/毒性/未知物质） | 无 kbService 注入 |
-| `ConclusionVerifierTests.cs` | 68 | 5 ([Fact]) | 法规编号提取、多标准提取、空响应、GB/T 变体 | 纯逻辑 |
-| `KnowledgeBaseServiceTests.cs` | 27 | 1 ([Fact]) | AddDocuments + Retrieve 基础流程 | 纯逻辑 |
-| `ToolServiceTests.cs` | 54 | 1 ([Fact]) | AnalyzeAndPlanToolsAsync 关键词触发 | Mock<ILlmService> + Mock<IKnowledgeBaseService> |
-| **合计** | **~1024** | **~59** | | |
+| 维度 | 当前值 | 目标 | 差距 |
+|------|:---:|:---:|:---:|
+| 单元测试 | **665 条** (63类) | — | ✅ 数量充足 |
+| 集成测试 | **63 条** (13 xUnit + 25 API + 25 CLI) | — | ⚠️ 偏少 |
+| E2E 测试 (前端) | **0 条** | 5 条关键路径 | 🔴 完全缺失 |
+| 行覆盖率 | **~21%** | ≥80% | 🔴 -59pp |
+| 分支覆盖率 | **~10%** | ≥70% | 🔴 -60pp |
+| 架构收敛测试 | 7/7 通过 | 7/7 | ✅ |
+| 前端单元测试 | **0 条** (vitest.config.ts 存在) | 8 Stores + 6 组件 | 🔴 未启动 |
 
-**核查结论**：
-- 测试文件数和用例数比原分析预估的多（原说"仅2个文件"，实际9个文件 ~59 用例）
-- 但测试范围集中在 **纯逻辑方法**（静态工具类、字符串处理、硬编码字典），核心模块（LlmService 1035行、HybridKnowledgeBaseService 632行、AgentDialog 332行、ComplianceController 321行）**仍无直接单元测试**
-- `ToolServiceTests.cs` 是唯一使用 Mock 的测试文件
+**核心问题**：
+- 665条后端单元测试集中在纯逻辑方法，核心模块（LlmService 1035行、HybridKBService 632行、AgentDialog 332行）**仍无直接单元测试**
+- 前端 `vitest.config.ts` 和 `@playwright/test` 依赖已就绪，但 `src/__tests__/` 和 `e2e/` 目录均为空
+- CI 中 `frontend-test` Job 的 `npx vitest run` 实际空跑
+- 架构收敛测试在 CI 中设置 `continue-on-error: true`，架构退化不会阻断构建
 
 ### 7.2 多模态调用链路核查
 

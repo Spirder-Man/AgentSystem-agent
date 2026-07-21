@@ -597,7 +597,7 @@ public class EvalEngine
     /// 1. 有 ground-truth 标注时：精确对比检索结果与预期文档ID
     /// 2. 无标注时：用预期法规编号作为软相关性判断（出现即视为相关）
     /// </summary>
-    private async Task EvaluateRetrievalQualityAsync(EvalResult result, EvalCase tc)
+    internal virtual async Task EvaluateRetrievalQualityAsync(EvalResult result, EvalCase tc)
     {
         try
         {
@@ -713,7 +713,7 @@ public class EvalEngine
     /// [P7 FIX] 结构性声明提取：只提取「【查询结果】」和「【法规依据】」标签内的结论性语句，
     /// 忽略中间的原文引用块（如「**检索结果 1**」等），防止 RAG 原文全文被误判为幻觉声明。
     /// </summary>
-    private async Task EvaluateFaithfulnessAsync(EvalResult result, string response, EvalCase tc)
+    internal virtual async Task EvaluateFaithfulnessAsync(EvalResult result, string response, EvalCase tc)
     {
         try
         {
@@ -851,7 +851,7 @@ public class EvalEngine
     /// [Sprint 1] Answer Relevance 评估：用 LLM 对回答与问题的语义相关性打分 (1-5)。
     /// 分数含义：1=完全无关, 2=部分相关但大部分偏离, 3=基本相关, 4=高度相关, 5=完美匹配。
     /// </summary>
-    private async Task EvaluateAnswerRelevanceAsync(EvalResult result, string response, EvalCase tc)
+    internal virtual async Task EvaluateAnswerRelevanceAsync(EvalResult result, string response, EvalCase tc)
     {
         try
         {
@@ -940,7 +940,7 @@ public class EvalEngine
     /// [Sprint 1] Citation Accuracy 评估：检查回答中引用的法规编号是否在检索上下文中出现。
     /// 计算方式：出现在检索结果中的法规引用数 / 总法规引用数。
     /// </summary>
-    private void EvaluateCitationAccuracy(EvalResult result, string response)
+    internal virtual void EvaluateCitationAccuracy(EvalResult result, string response)
     {
         try
         {

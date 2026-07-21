@@ -1,8 +1,9 @@
 # 🏗️ Agent1 项目宏观架构导向图
 
 > 生成日期：2026-06-13  
-> 项目：化工园区危化品合规审核 AI Agent (.NET 8 + Semantic Kernel + GPU)  
-> 涵盖：六层宏观架构 / 模块耦合关系 / 数据产生链路 / 代码文件引用 / 请求全链路
+> 最后更新：2026-07-20  
+> 项目：化工园区危化品合规审核 AI Agent (.NET 8 + Semantic Kernel + GPU + Vue 3)  
+> 涵盖：六层宏观架构 + 前端表现层 / 模块耦合关系 / 数据产生链路 / 代码文件引用 / 请求全链路 / CI/CD 持续集成
 
 ---
 
@@ -15,38 +16,57 @@
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────────────────────────────┐
-│  [第1层] 表现层 (Presentation)                                                                 │
-│  ┌─────────────────────────┐  ┌──────────────────────────────────────────────────────────┐    │
-│  │  Console 交互            │  │  ASP.NET Core REST API                                    │    │
-│  │  Program.cs (585行)      │  │  Agent1.Api/Program.cs (438行)                           │    │
-│  │  ├─ 14项菜单循环          │  │  ├─ AuthController  POST /api/auth/login                │    │
-│  │  ├─ ModuleDispatcher     │  │  ├─ ComplianceController  POST /api/compliance/check       │    │
-│  │  ├─ 评测/测试/对话 入口    │  │  ├─ Middleware: GlobalException / RateLimiting /         │    │
-│  │  └─ ConsoleTeeWriter     │  │  │   RequestId / RequestMetrics                          │    │
-│  └─────────┬───────────────┘  │  ├─ JWT Bearer 认证 (密钥来自 DB_PASSWORD 环境变量)      │    │
-│            │                  │  ├─ OpenTelemetry (Metrics+Traces)                        │    │
-│            │                  │  └─ Serilog + Seq 结构化日志                              │    │
-│            │                  └──────────────────────────────────────────────────────────┘    │
+│  [第1层] 表现层 (Presentation) — 三通道入口                                                 │
+│  ┌─────────────────────────┐  ┌──────────────────────────────────────┐  ┌──────────────────┐ │
+│  │  Console 控制台          │  │  ASP.NET Core REST API (Agent1.Api)  │  │  Web 前端 SPA     │ │
+│  │  Program.cs (663行)      │  │  Program.cs (438行)                  │  │  agent1-web/      │ │
+│  │  ├─ 17项菜单循环          │  │  ├─ 15 个 Controllers               │  │  ├─ Vue 3 + Vite 5│ │
+│  │  ├─ IMenuCommand 命令模式 │  │  │   Auth / Compliance / Inspection │  │  ├─ 17 页面组件   │ │
+│  │  ├─ 评测/测试/对话 入口    │  │  │   Tickets / KnowledgeBase /      │  │  ├─ 8 个 Pinia    │ │
+│  │  └─ ConsoleTeeWriter     │  │  │   KnowledgeGraph / Emergency /   │  │  │   Store        │ │
+│  └─────────┬───────────────┘  │  │   Dashboard / Audit / System      │  │  ├─ Element Plus  │ │
+│            │                  │  ├─ 5 个 Middleware:                   │  │  │   + Tailwind   │ │
+│            │                  │  │   GlobalException / RateLimiting /  │  │  ├─ MSW Mock      │ │
+│            │                  │  │   RequestId / RequestMetrics /      │  │  ├─ ECharts 图表  │ │
+│            │                  │  │   TokenBlacklist                    │  │  └─ Playwright    │ │
+│            │                  │  ├─ JWT Bearer 认证 (3级 RBAC)         │  │     (E2E 规划中) │ │
+│            │                  │  ├─ OpenTelemetry (Metrics+Traces)     │  └────────┬─────────┘ │
+│            │                  │  └─ Serilog + Seq 结构化日志           │           │           │
+│            │                  └──────────────────┬───────────────────┘           │           │
+│            │                                     │                               │           │
+│            │              HTTP/REST (JWT Auth)   │         HTTP (Vite Proxy)     │           │
+│            │                  ┌──────────────────┘                               │           │
+│            │                  │                                                  │           │
+│            │              ┌───▼──────────────────────────────────────────────────▼───┐       │
+│            │              │         SSH Tunnel (远程GPU环境联调)                     │       │
+│            │              └──────────────────────────────────────────────────────────┘       │
 ├────────────┼─────────────────────────────────────────────────────────────────────────────────┤
-│  [第2层]  模块调度层 (Module Dispatch)                                                        │
+│  [第2层]  模块调度层 (Module Dispatch) — 12 种 ModuleType 统一调度                           │
 │            │                                                                                  │
-│  ┌─────────▼──────────────────────────────────────────────────────────────────────────┐       │
-│  │  ModuleDispatcher (Services/Infrastructure/ModuleDispatcher.cs, 54行)               │       │
-│  │  ┌─────────────────────────────────────────────────────────────────────────────┐   │       │
-│  │  │  ExecuteModuleAsync(ModuleType) → 懒创建 + Dictionary 缓存                     │   │       │
-│  │  │  if (!_modules.TryGetValue(type))  →  _factory.CreateModule(type) → 缓存       │   │       │
-│  │  │  ↓                                                                             │   │       │
-│  │  │  ModuleFactory (Services/Infrastructure/ModuleFactory.cs, 67行)                 │   │       │
-│  │  │  ┌──────┬───────────┬───────────┬───────────┬────────┬─────────────┬────────┐ │   │       │
-│  │  │  │CoTSolid│CoTStream │ReActSolid │ReActStream│Reflection│ RAG │UnifiedDialog│   │       │
-│  │  │  │       │           │           │           │          │      │ Compliance  │   │       │
-│  │  │  │       │           │           │           │          │      │   Check     │   │       │
-│  │  │  ├───────┼───────────┼───────────┼───────────┼──────────┼──────┼─────────────┤   │       │
-│  │  │  │ LLM   │ LLM       │ LLM       │ LLM       │ LLM+KB   │ LLM  │ KB+LLM      │   │       │
-│  │  │  │+KB    │ +KB       │           │           │          │      │ +Integ+Audit│   │       │
-│  │  │  └───────┴───────────┴───────────┴───────────┴──────────┴──────┴─────────────┘   │       │
-│  │  └─────────────────────────────────────────────────────────────────────────────┘   │       │
-│  └────────────────────────────────────────────────────────────────────────────────────┘       │
+│  ┌─────────▼──────────────────────────────────────────────────────────────────────────────────┐
+│  │  ModuleDispatcher (Services/Infrastructure/ModuleDispatcher.cs, 54行)                       │
+│  │  ┌─────────────────────────────────────────────────────────────────────────────────────┐   │
+│  │  │  ExecuteModuleAsync(ModuleType) → 懒创建 + Dictionary 缓存                             │   │
+│  │  │  if (!_modules.TryGetValue(type))  →  _factory.CreateModule(type) → 缓存              │   │
+│  │  │  ↓                                                                                    │   │
+│  │  │  ModuleFactory (Services/Infrastructure/ModuleFactory.cs, 67行)                        │   │
+│  │  │  ┌──────┬───────┬───────┬───────┬────────┬────┬─────────┬──────────┬───────┬─────┐   │   │
+│  │  │  │CoT   │CoT    │ReAct  │ReAct  │Reflect-│RAG │Unified  │Compliance│Ticket │Regu-│   │   │
+│  │  │  │Solid │Stream │Solid  │Stream │ion     │    │Dialog   │Check     │Follow-│latory│   │   │
+│  │  │  │(1)   │(2)    │(3)    │(4)    │(5)     │(6) │(7)      │(8)☆      │up (9) │Audit│   │   │
+│  │  │  │      │       │       │       │        │    │         │          │       │(10)  │   │   │
+│  │  │  ├──────┼───────┼───────┼───────┼────────┼────┼─────────┼──────────┼───────┼─────┤   │   │
+│  │  │  │ LLM  │ LLM   │ LLM   │ LLM   │ LLM+KB │LLM │KB+LLM   │KB+LLM    │状态机  │法规 │   │   │
+│  │  │  │+KB   │ +KB   │       │       │        │    │+Audit   │+Tool     │+KB    │比对 │   │   │
+│  │  │  └──────┴───────┴───────┴───────┴────────┴────┴─────────┴──────────┴───────┴─────┘   │   │
+│  │  │  ┌──────────┐  ┌──────────────────┐                                                    │   │
+│  │  │  │Emergency │  │KnowledgeGraph    │  ← 🆕 v4.3 预留扩展                                │   │
+│  │  │  │Response  │  │(12)              │                                                    │   │
+│  │  │  │(11)      │  │                  │                                                    │   │
+│  │  │  │应急响应   │  │知识图谱可视化     │                                                    │   │
+│  │  │  └──────────┘  └──────────────────┘                                                    │   │
+│  │  └─────────────────────────────────────────────────────────────────────────────────────┘   │
+│  └────────────────────────────────────────────────────────────────────────────────────────────┘
 ├──────────────────────────────────────────────────────────────────────────────────────────────┤
 │  [第3层] 业务编排层 (Orchestration)                                                           │
 │                                                                                               │
@@ -160,6 +180,27 @@
 │  │-评测集存储   │  │/api/chat     │  │               │  │              │  │              │    │  │
 │  └──────────────┘  └──────────────┘  └───────────────┘  └──────────────┘  └──────────────┘    │  │
 │                                                                                               │  │
+│  配置文件: appsettings.json ← DB_PASSWORD(环境变量)  ModelConfig(Endpoint+ModelId)          │    │  │
+│                                                                                               │    │  │
+├───────────────────────────────────────────────────────────────────────────────────────────────┤──┘──┤
+│  [CI/CD 持续集成层] — GitHub Actions 七阶段质量流水线                                              │  │
+│                                                                                                  │  │
+│  ┌──────────────────────────────────────────────────────────────────────────────────────────┐    │  │
+│  │  push → [Job1] build-and-test (compile + unit tests + 覆盖率≥60%门禁)                      │    │  │
+│  │      → [Job1b] frontend-test (Vitest 单元测试)                                            │    │  │
+│  │      → [Job2] integration-test (PostgreSQL service容器 + Category=Integration)            │    │  │
+│  │      → [Job3] docker (main分支 → GHCR构建推送)                                            │    │  │
+│  │      → [Job4] benchmark (API性能回归: P95退步>50%阻断 + 错误率>5%阻断)                    │    │  │
+│  │      → [Job5] staging-deploy (SSH → docker-compose up)                                    │    │  │
+│  │      → [Job7] notify (QQ邮箱双通道: 成功摘要 vs 失败告警)                                  │    │  │
+│  └──────────────────────────────────────────────────────────────────────────────────────────┘    │  │
+│                                                                                                  │  │
+│  [架构收敛验证层] — ArchitectureTest 7点收敛 + 12 ModuleType 覆盖                                │  │
+│  ┌──────────────────────────────────────────────────────────────────────────────────────────┐    │  │
+│  │  验证: 文件收敛 / IntentRouter / 统一调度 / 6步流水线 / 基础设施共享 / 无硬编码 / 范式集成  │    │  │
+│  │  CI状态: dotnet run --project ArchitectureTest (continue-on-error待修复→硬阻断)           │    │  │
+│  └──────────────────────────────────────────────────────────────────────────────────────────┘    │  │
+│                                                                                                  │  │
 │  配置文件: appsettings.json ← DB_PASSWORD(环境变量)  ModelConfig(Endpoint+ModelId)          │    │  │
 │                                                                                               │  │
 └───────────────────────────────────────────────────────────────────────────────────────────────┘──┘
@@ -818,3 +859,95 @@ Agent1/                                Agent1.Api/                        Agent1
 | **API入口** | `Agent1.Api/Program.cs` | DI + Middleware | 1-438 |
 | **API控制器** | `Agent1.Api/Controllers/ComplianceController.cs` | `Check()` | - |
 | **指标收集** | `Agent1/Services/Infrastructure/MetricsCollector.cs` | `RecordLlmCall()` 等 | 33-53 |
+
+---
+
+## 七、前端表现层与后端架构对齐
+
+### 7.1 三通道入口 → 统一调度
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     前端 agent1-web (Vue 3 + Vite 5)                 │
+├─────────────────────────────────────────────────────────────────────┤
+│  [路由守卫]  →  router.beforeEach 检查 authStore.hasPermission()    │
+│  [状态管理]  →  8 个 Pinia Store 对应 12 个 ModuleType 的业务状态   │
+│  [数据获取]  →  @tanstack/vue-query useQuery/useMutation            │
+│  [HTTP层]    →  lib/axios.ts JWT拦截器 → Agent1.Api:5000            │
+├─────────────────────────────────────────────────────────────────────┤
+│  ↓ Vite Proxy / SSH Tunnel ↓                                        │
+├─────────────────────────────────────────────────────────────────────┤
+│                    Agent1.Api (ASP.NET Core)                          │
+│  Middleware → Controller → [第2层 ModuleDispatcher] → ...            │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 7.2 前端路由 → ModuleType 映射表（架构收敛关键）
+
+| 前端路由 | 权限 | 后端 ModuleType | Controller | HTTP 动词 |
+|----------|------|:--------------:|------------|-----------|
+| `/login` | Public | — | AuthController | POST |
+| `/dashboard` | admin,auditor | — | ComplianceController | GET summary |
+| `/compliance` | admin,auditor | **ComplianceCheck (8)** | ComplianceController | POST check |
+| `/inspection` | admin,auditor | **ComplianceCheck (8)** | InspectionController | GET plans |
+| `/inspection/:id/execute` | admin,auditor | **ComplianceCheck (8)** | InspectionController | POST execute |
+| `/tickets` | admin,auditor | **TicketFollowup (9)** | TicketsController | GET list |
+| `/tickets/:id` | admin,auditor | **TicketFollowup (9)** | TicketsController | PUT status |
+| `/assets` | admin,auditor | **ComplianceCheck (8)** | InspectionController | GET assets |
+| `/audit` | admin | — | AuditService | — |
+| `/system` | admin,auditor | — | HealthController | GET |
+
+### 7.3 前端测试金字塔对齐后端分层
+
+```
+         ╱  Playwright E2E  ╲       ← L3: 对应后端 第1→6层全链路
+        ╱  (5条关键路径)     ╲
+       ╱  组件测试 (Vitest)   ╲     ← L2: 对应后端 第1层 Controller
+      ╱   (6个核心组件)        ╲
+     ╱   单元测试 (Vitest)      ╲   ← L1: 对应后端 第2→4层逻辑
+    ╱    (8个Store + Utils)     ╲
+```
+
+---
+
+## 八、CI/CD 持续集成层
+
+### 8.1 GitHub Actions 七阶段质量流水线
+
+```
+git push (main/develop/feature)  →  .github/workflows/ci.yml
+│
+├── [Job1] build-and-test         ← dotnet build + test (排除Integration)
+│     ├─ coverlet 覆盖率收集 (cobertura格式)
+│     ├─ 60% 门禁阻断 (<60% → build fail)
+│     ├─ 覆盖率回归检测 (下降>2% → build fail)
+│     ├─ 架构收敛测试 dotnet run --project ArchitectureTest
+│     └─ 上传覆盖率 artifact (retention: 30天)
+│
+├── [Job1b] frontend-test         ← npx vitest run (Vitest + jsdom)
+│
+├── [Job2] integration-test       ← PostgreSQL service容器 (pgvector/pg16)
+│     ├─ psql init_database.sql
+│     └─ dotnet test --filter "Category=Integration"
+│
+├── [Job3] docker (main only)     ← docker/build-push-action → GHCR
+│
+├── [Job4] benchmark              ← dotnet run Benchmark (P95基线回归)
+│     ├─ 心跳轮询: curl -sf /health/live (30×2s)
+│     ├─ P95退步>50% → 阻断
+│     └─ 错误率>5% → 阻断
+│
+├── [Job5] staging-deploy         ← SSH → docker-compose pull + up
+│     └─ 冒烟测试: curl /health/live (12×5s)
+│
+└── [Job7] notify                 ← QQ邮箱双通道通知
+      ├─ ✅ 成功摘要: 覆盖率 + 测试数 + 性能
+      └─ 🚨 失败告警: 失败Job详情 + 工作流链接
+```
+
+### 8.2 架构收敛测试在CI中的定位
+
+- **位置**: [Job1] build-and-test → Architecture Convergence Test
+- **当前状态**: `continue-on-error: true` (不阻断构建) → 🔴 待改进
+- **目标状态**: `continue-on-error: false` → 架构退化即阻断
+- **覆盖**: 7个验证点 × ArchitectureTest/Program.cs

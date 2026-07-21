@@ -100,6 +100,9 @@ public class StubDatabaseService : IDatabaseService
 
     public Task<string?> GetLastAuditChainHashAsync() => Task.FromResult<string?>(null);
 
+    public Task UpdateAuditChainHashAsync(long id, string chainHash)
+        => Task.CompletedTask;
+
     public Task<List<AuditLog>> GetAuditLogsAsync(DateTime? startTime, DateTime? endTime, string? userId = null)
         => Task.FromResult(new List<AuditLog>());
 
