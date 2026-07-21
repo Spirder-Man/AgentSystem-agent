@@ -222,16 +222,23 @@ namespace Agent1.Services
                         new ToolPlan { NeedsTools = execResult.ToolCalls.Count > 0, ToolNames = execResult.ToolCalls.Select(tc => tc.FunctionName).ToList() });
                     Console.WriteLine($"完成 (执行:{sysReport.ToolsExecuted} 取消:{sysReport.ToolsCancelled})");
 
-                    // 4c. 输出核查报告
+                    // 4c. [Tier 2] 结论完整性评估（在输出核查报告前）
+                    bizReport.Completeness = ReflectionVerifier.AssessCompleteness(initialConclusion);
+
+                    // 4d. 输出核查报告
                     Console.WriteLine();
                     Console.ForegroundColor = ConsoleColor.DarkCyan;
                     Console.WriteLine(bizReport.ToMarkdown());
                     Console.WriteLine(sysReport.ToMarkdown());
                     Console.ResetColor();
 
-                    // 4d. LLM 修正（基于代码核查报告，而非自我幻觉检查）
-                    if (bizReport.FactualPrecision < 1.0 || sysReport.ToolsCancelled > 0)
+                    // 4e. 分层反思处理
+                    var hasPrecisionIssue = bizReport.FactualPrecision < 1.0 || sysReport.ToolsCancelled > 0;
+                    var needsEnrichment = bizReport.Completeness?.NeedsEnrichment == true;
+
+                    if (hasPrecisionIssue)
                     {
+                        // Tier 1 + 修正: 精度问题 → 使用 BuildCorrectedPrompt（已集成Tier1建议+Tier2完整性提示）
                         Console.WriteLine("\n⚠️ 核查发现问题，基于客观报告修正结论...");
                         Console.ForegroundColor = ConsoleColor.Blue;
                         var correctedPrompt = _verifier.BuildCorrectedPrompt(
@@ -242,10 +249,23 @@ namespace Agent1.Services
                         Console.ResetColor();
                         Console.WriteLine();
                     }
+                    else if (needsEnrichment)
+                    {
+                        // Tier 2 富化: 精度通过但结论单薄 → 使用 BuildEnrichedPrompt 补充维度
+                        Console.WriteLine($"\n📝 核查精度通过，但结论完整度偏低 ({bizReport.Completeness!.Score}/10)，触发 Tier 2 富化...");
+                        Console.ForegroundColor = ConsoleColor.Cyan;
+                        var enrichedPrompt = _verifier.BuildEnrichedPrompt(
+                            userInput, initialConclusion, bizReport);
+                        Console.WriteLine();
+                        await _llmService.InvokeStreamAsync(enrichedPrompt, ConsoleColor.Cyan,
+                            fcBehavior: FunctionChoiceBehavior.None());
+                        Console.ResetColor();
+                        Console.WriteLine();
+                    }
                     else
                     {
                         Console.ForegroundColor = ConsoleColor.Green;
-                        Console.WriteLine("✅ 核查通过，结论所有法规引用均在知识库中得到验证");
+                        Console.WriteLine($"✅ 核查通过 (精度: {bizReport.FactualPrecision*100:F0}%, 完整度: {bizReport.Completeness?.Score ?? 10}/10)，结论所有法规引用均在知识库中得到验证");
                         Console.ResetColor();
                     }
                 }

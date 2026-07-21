@@ -1101,6 +1101,21 @@ public class EvalEngine
                 return true;
             }
 
+            // [P2 FIX] 路径B: GB编号格式/映射预校验
+            // 在法规编号匹配前，先用 ValidateGbNumberHallucinations 做交叉验证
+            // 检测格式错误（如 GB3025→应GB 30000.25）和映射错误（错误编号）
+            // 命中任意问题 → 直接判为不可信，跳过后续匹配
+            if (expected.ExpectedRegulationNumbers.Count > 0)
+            {
+                var gbValidation = ReflectionVerifier.ValidateGbNumberHallucinations(response);
+                if (!string.IsNullOrWhiteSpace(gbValidation))
+                {
+                    // 有 GB 编号格式错误或疑似幻觉 → 不可信
+                    Console.WriteLine($"      🔍 P2 GB校验失败: {gbValidation.Replace("\n", " | ").Truncate(120)}");
+                    return false;
+                }
+            }
+
             if (category == "安全距离" && expected.ExpectedDistance.HasValue)
             {
                 if (CheckSafetyDistanceMatch(response, expected.ExpectedDistance.Value))
