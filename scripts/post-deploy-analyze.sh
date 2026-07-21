@@ -128,10 +128,10 @@ NO_TOOL_CALLS=$(jq -r '[.cases[]? | select(.toolMatch == false)] | length' "$SUM
 
 # API 日志中的关键信号提取
 if [ -f "${LOG_SLICE_DIR}/api-eval-window.log" ]; then
-  API_ERRORS=$(grep -c "ERR\|FATAL\|❌" "${LOG_SLICE_DIR}/api-eval-window.log" 2>/dev/null || echo "0")
-  API_WARNS=$(grep -c "WRN\|⚠️" "${LOG_SLICE_DIR}/api-eval-window.log" 2>/dev/null || echo "0")
-  PIPELINE_LINES=$(grep -c "\[Pipeline\]" "${LOG_SLICE_DIR}/api-eval-window.log" 2>/dev/null || echo "0")
-  FC_VIOLATIONS=$(grep -c "本轮未调用任何工具\|工具调用=0" "${LOG_SLICE_DIR}/api-eval-window.log" 2>/dev/null || echo "0")
+  API_ERRORS=$(grep -c "ERR\|FATAL\|❌" "${LOG_SLICE_DIR}/api-eval-window.log" 2>/dev/null | tr -d '\n' || echo "0")
+  API_WARNS=$(grep -c "WRN\|⚠️" "${LOG_SLICE_DIR}/api-eval-window.log" 2>/dev/null | tr -d '\n' || echo "0")
+  PIPELINE_LINES=$(grep -c "\[Pipeline\]" "${LOG_SLICE_DIR}/api-eval-window.log" 2>/dev/null | tr -d '\n' || echo "0")
+  FC_VIOLATIONS=$(grep -c "本轮未调用任何工具\|工具调用=0" "${LOG_SLICE_DIR}/api-eval-window.log" 2>/dev/null | tr -d '\n' || echo "0")
 else
   API_ERRORS="N/A"
   API_WARNS="N/A"
