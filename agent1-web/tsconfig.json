@@ -20,6 +20,6 @@
     },
     "types": ["vite/client"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "src/env.d.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "src/env.d.ts", "e2e-real/**/*.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

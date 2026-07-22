@@ -1,12 +1,14 @@
 {
   "compilerOptions": {
+    "composite": true,
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "strict": true,
-    "noEmit": true,
+    "emitDeclarationOnly": true,
+    "declaration": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "vitest.config.ts", "playwright.config.ts"]
+  "include": ["vite.config.ts", "vitest.config.ts", "playwright.config.ts", "playwright.real.config.ts"]
 }
