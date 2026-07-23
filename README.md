@@ -80,6 +80,11 @@ dotnet run --project Agent1.Api  # API 服务 (localhost:52320)
 cd agent1-web && npm install
 npm run dev:mock   # Mock 模式（纯前端，不需要后端）
 npm run dev        # 真实 API 模式
+
+# E2E 测试（三层契约架构）
+npm run test:e2e        # MSW Mock 层 — CI 快速门禁（不依赖后端 GPU/DB）
+npm run test:e2e:real   # 真实 GPU 层 — 全链路（需 SSH 隧道 + 远程 GPU）
+npm run tunnel:start    # 启动 SSH 隧道（真实 E2E 前置）
 ```
 
 ### Linux 生产环境（GPU）
@@ -117,6 +122,14 @@ export AUTH_ACCOUNTS_JSON='[{"Username":"admin","Password":"...","Role":"admin"}
 
 Vue 3 + TypeScript + Element Plus + Vite 5，支持 MSW Mock 前后端并行开发。页面覆盖：登录/仪表盘/合规审核/危化品查询/巡检/资产台账/知识图谱/应急响应/工单/系统管理。
 
+**E2E 三层契约架构**（`agent1-web/e2e-real`）：
+
+- **Layer 1 Test-ID 契约**：`src/test-ids.ts` 作为 data-testid 单一真值源，`scripts/check-test-ids.mjs` CI 自动校验注册合规性
+- **Layer 2 数据契约**：`e2e-real/fixtures/data-manifest.ts` 声明式数据依赖，`global-setup.ts` / `seed-test-data.mjs` 自动检查并补种
+- **Layer 3 质量基线契约**：`e2e-real/baseline.json` + `utils/llm-assertions.ts` 基于真实推理基线的可演进断言，`baseline-collector.mjs` 离线采集
+- **双 E2E 分层**：`playwright.config.ts`（MSW Mock CI 门禁）+ `playwright.real.config.ts`（真实 GPU 主力，经 SSH 隧道全链路）
+- **代码质量**：ESLint(flat config) + Prettier，经 husky `pre-commit` + lint-staged 在提交时自动校验格式化
+
 ## 📊 可观测性
 
 ```
@@ -145,6 +158,14 @@ docs/
 
 ## 📋 近期更新
 
+### v4.5 — E2E 三层契约架构落地 + 提交钩子环境修复（2026-07-21）
+
+- **E2E 三层契约架构**：Test-ID 契约（`test-ids.ts` 单一真值源 + CI 校验）/ 数据契约（`data-manifest.ts` 声明式依赖 + 自动补种）/ 质量基线契约（`baseline.json` + `llm-assertions.ts` 可演进断言）
+- **双 E2E 分层**：`playwright.config.ts` MSW Mock CI 门禁 + `playwright.real.config.ts` 真实 GPU 全链路（经 SSH 隧道）；新增 `test:e2e:real`、`tunnel:start/stop`、`health:check` 等 npm 脚本
+- **契约消费重构**：14 个 e2e/e2e-real spec 改用 `getByTestId()` 精确定位，6 个 Vue 组件 data-testid 规范化，消除 strict mode 冲突
+- **提交钩子修复**：补齐缺失的 ESLint(flat config)/Prettier 依赖与配置，`pre-commit` + lint-staged 恢复可用
+- **`.gitignore` 收敛**：忽略 `playwright-report/`、`test-results/`、`eval_reports/` 等测试产物与含令牌的本地脚本
+
 ### v4.4 — Bug-032 v2 回马枪：防御代码位置正确性（2026-07-20）
 
 - **Bug-032 v2**：FC=Required 违约检测从 `HasAnyToolResult` 之后提升为独立最高优先级闸门
@@ -167,4 +188,4 @@ docs/
 
 ---
 
-**文档版本**：v4.17 | **最后更新**：2026-07-20 | **许可证**：MIT
+**文档版本**：v4.18 | **最后更新**：2026-07-21 | **许可证**：MIT
