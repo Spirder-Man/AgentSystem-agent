@@ -38,7 +38,7 @@ export async function loginAs(page: Page, role: Role = 'admin') {
 
   // viewer 角色在仪表盘可能看到受限视图
   if (role === 'admin' || role === 'auditor') {
-    await expect(page.locator('text=合规仪表盘').or(page.locator('text=仪表盘'))).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('h1:has-text("仪表盘")')).toBeVisible({ timeout: 10_000 });
   }
 }
 
@@ -54,7 +54,6 @@ export const test = base.extend<AuthFixtures>({
     };
     await use(factory);
   },
-
 });
 
 export { expect };

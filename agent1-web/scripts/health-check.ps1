@@ -2,7 +2,7 @@
 # health-check.ps1 — Remote service health check
 #
 # Checks: API health / Auth login / LLM compliance / Assets
-# Prereq: SSH tunnel running (localhost:15001 -> remote API:5000)
+# Prereq: SSH tunnel running (localhost:15001 -> remote API:5002)
 # ============================================================
 
 param(

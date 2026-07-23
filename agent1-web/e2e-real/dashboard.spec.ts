@@ -10,6 +10,7 @@
 
 import { test, expect, loginAs, ACCOUNTS } from './fixtures/auth.fixture';
 import { expectResponseTimeInRange } from './utils/llm-assertions';
+import { DASHBOARD } from '../src/test-ids';
 
 test.describe('P3-Real: 仪表盘 — 合规总览 + 指标验证 (真实数据)', () => {
   test.beforeEach(async ({ page }) => {
@@ -29,20 +30,18 @@ test.describe('P3-Real: 仪表盘 — 合规总览 + 指标验证 (真实数据)
 
   // ── 扫描功能 (真实 LLM) ──
   test('admin 点击扫描应触发真实 LLM 扫描并更新结果', async ({ page }) => {
-    const scanBtn = page.locator('button:has-text("扫描")').or(
-      page.locator('button:has-text("自动扫描")').or(
-        page.locator('[data-testid="auto-scan-btn"]'),
-      ),
-    );
+    const scanBtn = page
+      .locator('button:has-text("扫描")')
+      .or(page.locator('button:has-text("自动扫描")').or(page.locator(`[data-testid="${DASHBOARD.scanBtn}"]`)));
 
     if (await scanBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
       const startTime = Date.now();
       await scanBtn.click();
 
       // 等待扫描结果（真实 LLM 推理可能需要 30s+）
-      const scanResult = page.locator('text=新发现').or(
-        page.locator('text=newFindings').or(page.locator('text=扫描完成')),
-      );
+      const scanResult = page
+        .locator('text=新发现')
+        .or(page.locator('text=newFindings').or(page.locator('text=扫描完成')));
       await expect(scanResult.first()).toBeVisible({ timeout: 60_000 });
 
       // 验证扫描耗时合理
@@ -62,9 +61,7 @@ test.describe('P3-Real: 仪表盘 — 合规总览 + 指标验证 (真实数据)
     const title = page.locator('text=合规仪表盘');
     await expect(title.first()).toBeVisible({ timeout: 15_000 });
 
-    const scanBtn = page.locator('button:has-text("扫描")').or(
-      page.locator('button:has-text("自动扫描")'),
-    );
+    const scanBtn = page.locator('button:has-text("扫描")').or(page.locator('button:has-text("自动扫描")'));
     const isVisible = await scanBtn.isVisible().catch(() => false);
     if (isVisible) {
       const isDisabled = await scanBtn.isDisabled().catch(() => false);

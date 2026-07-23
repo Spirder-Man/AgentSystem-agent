@@ -39,23 +39,24 @@ const error = ref('');
 const activeTab = ref<'findings' | 'history' | 'hazard'>('findings');
 
 // ── 合规率百分比 ──
-const complianceRatePercent = computed(() =>
-  overview.value ? Math.round(overview.value.complianceRate * 100) : 0
-);
+const complianceRatePercent = computed(() => (overview.value ? Math.round(overview.value.complianceRate * 100) : 0));
 
-const remediationRatePercent = computed(() =>
-  overview.value ? Math.round(overview.value.remediationRate * 100) : 0
-);
+const remediationRatePercent = computed(() => (overview.value ? Math.round(overview.value.remediationRate * 100) : 0));
 
 // ── 严重程度颜色映射 ──
 const severityColor = (s: string) =>
-  ({ Critical: 'text-red-700 bg-red-50', High: 'text-orange-700 bg-orange-50',
-     Medium: 'text-amber-700 bg-amber-50', Low: 'text-blue-700 bg-blue-50',
-     Info: 'text-slate-500 bg-slate-50' })[s] ?? 'text-slate-500 bg-slate-50';
+  ({
+    Critical: 'text-red-700 bg-red-50',
+    High: 'text-orange-700 bg-orange-50',
+    Medium: 'text-amber-700 bg-amber-50',
+    Low: 'text-blue-700 bg-blue-50',
+    Info: 'text-slate-500 bg-slate-50',
+  })[s] ?? 'text-slate-500 bg-slate-50';
 
 const severityBarColor = (s: string) =>
-  ({ Critical: 'bg-red-500', High: 'bg-orange-500', Medium: 'bg-amber-500',
-     Low: 'bg-blue-400', Info: 'bg-slate-300' })[s] ?? 'bg-slate-300';
+  ({ Critical: 'bg-red-500', High: 'bg-orange-500', Medium: 'bg-amber-500', Low: 'bg-blue-400', Info: 'bg-slate-300' })[
+    s
+  ] ?? 'bg-slate-300';
 
 // ── 巡检状态中文 ──
 const planStatusLabel = (s: string) =>
@@ -85,7 +86,9 @@ async function fetchHazardReport() {
   try {
     const { data } = await apiClient.get<DashboardHazardReport>('/api/Dashboard/report/hazard');
     hazardReport.value = data;
-  } catch { /* 静默失败，用户可手动重试 */ }
+  } catch {
+    /* 静默失败，用户可手动重试 */
+  }
 }
 
 onMounted(() => {
@@ -98,21 +101,32 @@ const statCards = computed(() => {
   if (!overview.value) return [];
   const o = overview.value;
   return [
-    { label: '合规率', value: `${complianceRatePercent.value}%`,
+    {
+      label: '合规率',
+      value: `${complianceRatePercent.value}%`,
       color: o.complianceRate >= 0.8 ? 'text-emerald-600' : o.complianceRate >= 0.6 ? 'text-amber-600' : 'text-red-600',
-      sub: `${o.compliantAssets}/${o.checkedAssets} 合规` },
-    { label: '资产总量', value: String(o.totalAssets),
-      color: 'text-slate-900', sub: `${o.checkedAssets} 已检查 · ${o.totalAssets - o.checkedAssets} 未检查` },
-    { label: '未闭环发现', value: String(o.openFindings),
+      sub: `${o.compliantAssets}/${o.checkedAssets} 合规`,
+    },
+    {
+      label: '资产总量',
+      value: String(o.totalAssets),
+      color: 'text-slate-900',
+      sub: `${o.checkedAssets} 已检查 · ${o.totalAssets - o.checkedAssets} 未检查`,
+    },
+    {
+      label: '未闭环发现',
+      value: String(o.openFindings),
       color: o.openFindings > 0 ? 'text-red-600' : 'text-emerald-600',
-      sub: `共 ${o.totalFindings} 条 · 整改率 ${remediationRatePercent.value}%` },
-    { label: '最近扫描', value: o.lastAutoScanAt
-      ? new Date(o.lastAutoScanAt).toLocaleDateString('zh-CN')
-      : '暂无',
+      sub: `共 ${o.totalFindings} 条 · 整改率 ${remediationRatePercent.value}%`,
+    },
+    {
+      label: '最近扫描',
+      value: o.lastAutoScanAt ? new Date(o.lastAutoScanAt).toLocaleDateString('zh-CN') : '暂无',
       color: o.lastAutoScanAt ? 'text-blue-600' : 'text-slate-400',
       sub: o.lastAutoScanAt
         ? new Date(o.lastAutoScanAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-        : '尚未执行自动扫描' },
+        : '尚未执行自动扫描',
+    },
   ];
 });
 
@@ -122,9 +136,7 @@ const severityBars = computed(() => {
   const m = overview.value.findingsBySeverity;
   const max = Math.max(1, ...Object.values(m));
   const order = ['Critical', 'High', 'Medium', 'Low', 'Info'];
-  return order
-    .filter(k => k in m)
-    .map(k => ({ name: k, count: m[k], pct: Math.round((m[k] / max) * 100) }));
+  return order.filter((k) => k in m).map((k) => ({ name: k, count: m[k], pct: Math.round((m[k] / max) * 100) }));
 });
 
 // ── 一键快检 ──
@@ -135,15 +147,20 @@ const quickError = ref('');
 
 async function runQuickCheck() {
   if (!quickQuery.value.trim()) return;
-  quickError.value = ''; quickResult.value = null;
+  quickError.value = '';
+  quickResult.value = null;
   quickLoading.value = true;
   try {
-    const { data } = await apiClient.post<QuickCheckResult>('/api/Inspection/quick-check', { query: quickQuery.value.trim() });
+    const { data } = await apiClient.post<QuickCheckResult>('/api/Inspection/quick-check', {
+      query: quickQuery.value.trim(),
+    });
     quickResult.value = data;
   } catch (e: unknown) {
     const ae = e as { response?: { data?: { error?: string } } };
     quickError.value = ae.response?.data?.error || '快检失败';
-  } finally { quickLoading.value = false; }
+  } finally {
+    quickLoading.value = false;
+  }
 }
 
 // ── 自动扫描 ──
@@ -152,7 +169,8 @@ const scanLoading = ref(false);
 const scanError = ref('');
 
 async function runAutoScan() {
-  scanError.value = ''; scanResult.value = null;
+  scanError.value = '';
+  scanResult.value = null;
   scanLoading.value = true;
   try {
     const { data } = await apiClient.post<DashboardScanResult>('/api/Dashboard/scan', null, { timeout: 600_000 });
@@ -162,7 +180,9 @@ async function runAutoScan() {
   } catch (e: unknown) {
     const ae = e as { response?: { data?: { error?: string } } };
     scanError.value = ae.response?.data?.error || '扫描启动失败';
-  } finally { scanLoading.value = false; }
+  } finally {
+    scanLoading.value = false;
+  }
 }
 </script>
 
@@ -181,8 +201,11 @@ async function runAutoScan() {
     <template v-else-if="overview">
       <!-- ── 统计卡片 ── -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div v-for="c in statCards" :key="c.label"
-          class="bg-white border border-slate-200 rounded-lg p-4 hover:shadow-sm transition-shadow">
+        <div
+          v-for="c in statCards"
+          :key="c.label"
+          class="bg-white border border-slate-200 rounded-lg p-4 hover:shadow-sm transition-shadow"
+        >
           <p class="text-xs text-slate-500 mb-1">{{ c.label }}</p>
           <p class="text-2xl font-bold" :class="c.color">{{ c.value }}</p>
           <p class="text-xs text-slate-400 mt-1">{{ c.sub }}</p>
@@ -196,19 +219,26 @@ async function runAutoScan() {
           <h3 class="text-sm font-semibold text-slate-700 mb-3">🔍 一键快检</h3>
           <div class="flex gap-2 mb-3">
             <input
-              v-model="quickQuery" @keyup.enter="runQuickCheck" :disabled="quickLoading"
+              v-model="quickQuery"
+              @keyup.enter="runQuickCheck"
+              :disabled="quickLoading"
               class="flex-1 px-3 py-1.5 text-xs border border-slate-300 rounded focus:outline-none focus:border-blue-400"
               placeholder="输入合规问题，如：硝酸储存条件是否合规"
             />
-            <button @click="runQuickCheck" :disabled="quickLoading || !quickQuery.trim()"
-              class="px-4 py-1.5 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50 transition-colors">
+            <button
+              @click="runQuickCheck"
+              :disabled="quickLoading || !quickQuery.trim()"
+              class="px-4 py-1.5 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
               {{ quickLoading ? '检测中…' : '检测' }}
             </button>
           </div>
           <div v-if="quickError" class="text-xs text-red-600">{{ quickError }}</div>
-          <div v-if="quickResult"
+          <div
+            v-if="quickResult"
             class="p-3 rounded border text-xs space-y-1"
-            :class="quickResult.isCompliant ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'">
+            :class="quickResult.isCompliant ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'"
+          >
             <p class="font-medium" :class="quickResult.isCompliant ? 'text-green-800' : 'text-red-800'">
               {{ quickResult.isCompliant ? '✅ 合规' : '❌ 不合规' }}
               <span class="text-slate-400 font-normal ml-2">{{ quickResult.elapsedMs }}ms</span>
@@ -224,16 +254,23 @@ async function runAutoScan() {
           <h3 class="text-sm font-semibold text-slate-700 mb-3">🔄 自动合规扫描</h3>
           <p class="text-xs text-slate-500 mb-3">对全部化学资产执行 AI 合规规则扫描，生成最新发现报告</p>
           <button
-            @click="runAutoScan" :disabled="scanLoading"
-            class="px-5 py-2 text-sm font-medium text-white bg-emerald-600 rounded hover:bg-emerald-700 disabled:opacity-50 transition-colors">
+            @click="runAutoScan"
+            :disabled="scanLoading"
+            data-testid="dashboard-scan-btn"
+            class="px-5 py-2 text-sm font-medium text-white bg-emerald-600 rounded hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+          >
             {{ scanLoading ? '扫描中…' : '触发全库扫描' }}
           </button>
           <div v-if="scanError" class="text-xs text-red-600 mt-2">{{ scanError }}</div>
-          <div v-if="scanResult" class="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded text-xs space-y-1">
+          <div
+            v-if="scanResult"
+            data-testid="dashboard-scan-result"
+            class="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded text-xs space-y-1"
+          >
             <p class="font-medium text-emerald-800">✅ 扫描完成</p>
             <p class="text-slate-600">
-              资产 {{ scanResult.overview.checkedAssets }}/{{ scanResult.overview.totalAssets }}
-              · 发现 {{ scanResult.totalFindings }} 条 · 新增 {{ scanResult.newFindings }} 条
+              资产 {{ scanResult.overview.checkedAssets }}/{{ scanResult.overview.totalAssets }} · 发现
+              {{ scanResult.totalFindings }} 条 · 新增 {{ scanResult.newFindings }} 条
             </p>
             <p class="text-slate-400">{{ new Date(scanResult.scannedAt).toLocaleString('zh-CN') }}</p>
           </div>
@@ -249,15 +286,21 @@ async function runAutoScan() {
               { key: 'findings' as const, label: '合规发现', count: findings?.total ?? '-' },
               { key: 'history' as const, label: '巡检历史', count: history?.total ?? '-' },
               { key: 'hazard' as const, label: '隐患报告', count: hazardReport?.summary?.openFindings ?? '-' },
-            ]" :key="tab.key"
+            ]"
+            :key="tab.key"
             @click="activeTab = tab.key"
             class="px-5 py-2.5 text-xs font-medium border-b-2 transition-colors"
-            :class="activeTab === tab.key
-              ? 'border-blue-600 text-blue-700'
-              : 'border-transparent text-slate-500 hover:text-slate-700'">
+            :class="
+              activeTab === tab.key
+                ? 'border-blue-600 text-blue-700'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            "
+          >
             {{ tab.label }}
-            <span class="ml-1.5 px-1.5 py-0.5 rounded text-xs"
-              :class="activeTab === tab.key ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-400'">
+            <span
+              class="ml-1.5 px-1.5 py-0.5 rounded text-xs"
+              :class="activeTab === tab.key ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-400'"
+            >
               {{ tab.count }}
             </span>
           </button>
@@ -278,8 +321,11 @@ async function runAutoScan() {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="f in findings.items.slice(0, 8)" :key="f.findingId"
-                  class="border-b border-slate-50 hover:bg-slate-50">
+                <tr
+                  v-for="f in findings.items.slice(0, 8)"
+                  :key="f.findingId"
+                  class="border-b border-slate-50 hover:bg-slate-50"
+                >
                   <td class="py-2">
                     <span class="px-1.5 py-0.5 rounded text-xs font-medium" :class="severityColor(f.severity)">
                       {{ f.severity }}
@@ -308,15 +354,24 @@ async function runAutoScan() {
         <div v-if="activeTab === 'history'" class="p-4">
           <div v-if="!history?.items.length" class="text-xs text-slate-400 text-center py-8">暂无巡检记录</div>
           <div v-else class="space-y-3">
-            <div v-for="plan in history.items.slice(0, 5)" :key="plan.planId"
-              class="border border-slate-100 rounded p-3 hover:border-blue-200 transition-colors">
+            <div
+              v-for="plan in history.items.slice(0, 5)"
+              :key="plan.planId"
+              class="border border-slate-100 rounded p-3 hover:border-blue-200 transition-colors"
+            >
               <div class="flex items-center justify-between mb-2">
                 <div>
                   <span class="text-sm font-medium text-slate-800">{{ plan.name }}</span>
-                  <span class="ml-2 px-1.5 py-0.5 text-xs rounded"
-                    :class="plan.status === 'Completed' ? 'bg-emerald-50 text-emerald-600' :
-                            plan.status === 'InProgress' ? 'bg-blue-50 text-blue-600' :
-                            'bg-slate-100 text-slate-500'">
+                  <span
+                    class="ml-2 px-1.5 py-0.5 text-xs rounded"
+                    :class="
+                      plan.status === 'Completed'
+                        ? 'bg-emerald-50 text-emerald-600'
+                        : plan.status === 'InProgress'
+                          ? 'bg-blue-50 text-blue-600'
+                          : 'bg-slate-100 text-slate-500'
+                    "
+                  >
                     {{ planStatusLabel(plan.status) }}
                   </span>
                 </div>
@@ -325,8 +380,10 @@ async function runAutoScan() {
               <div class="flex items-center gap-4 text-xs text-slate-500">
                 <span>{{ plan.itemCount }} 检查项</span>
                 <span>{{ plan.roundCount }} 轮次</span>
-                <span v-if="plan.rounds.length && plan.rounds[0].complianceRate != null"
-                  :class="(plan.rounds[0].complianceRate ?? 0) >= 0.8 ? 'text-emerald-600' : 'text-red-600'">
+                <span
+                  v-if="plan.rounds.length && plan.rounds[0].complianceRate != null"
+                  :class="(plan.rounds[0].complianceRate ?? 0) >= 0.8 ? 'text-emerald-600' : 'text-red-600'"
+                >
                   最新合规率: {{ Math.round((plan.rounds[0].complianceRate ?? 0) * 100) }}%
                 </span>
                 <span class="ml-auto text-slate-400">{{ new Date(plan.createdAt).toLocaleDateString('zh-CN') }}</span>
@@ -343,8 +400,10 @@ async function runAutoScan() {
           <div v-if="!hazardReport">
             <div class="flex items-center justify-between mb-3">
               <p class="text-xs text-slate-500">点击加载隐患报告</p>
-              <button @click="fetchHazardReport"
-                class="px-3 py-1 text-xs font-medium text-blue-600 border border-blue-200 rounded hover:bg-blue-50">
+              <button
+                @click="fetchHazardReport"
+                class="px-3 py-1 text-xs font-medium text-blue-600 border border-blue-200 rounded hover:bg-blue-50"
+              >
                 加载
               </button>
             </div>
@@ -361,10 +420,16 @@ async function runAutoScan() {
               </span>
             </div>
             <div class="space-y-2">
-              <div v-for="item in hazardReport.items.slice(0, 10)" :key="item.findingId"
-                class="border border-slate-100 rounded p-2.5 text-xs">
+              <div
+                v-for="item in hazardReport.items.slice(0, 10)"
+                :key="item.findingId"
+                class="border border-slate-100 rounded p-2.5 text-xs"
+              >
                 <div class="flex items-start gap-2">
-                  <span class="px-1.5 py-0.5 rounded text-xs font-medium shrink-0" :class="severityColor(item.severity)">
+                  <span
+                    class="px-1.5 py-0.5 rounded text-xs font-medium shrink-0"
+                    :class="severityColor(item.severity)"
+                  >
                     {{ item.severity }}
                   </span>
                   <div class="flex-1 min-w-0">
@@ -392,8 +457,11 @@ async function runAutoScan() {
             <div v-for="b in severityBars" :key="b.name" class="flex items-center gap-3">
               <span class="text-xs text-slate-500 w-16">{{ b.name }}</span>
               <div class="flex-1 h-5 bg-slate-100 rounded overflow-hidden">
-                <div class="h-full rounded transition-all duration-500"
-                  :class="severityBarColor(b.name)" :style="{ width: `${b.pct}%` }" />
+                <div
+                  class="h-full rounded transition-all duration-500"
+                  :class="severityBarColor(b.name)"
+                  :style="{ width: `${b.pct}%` }"
+                />
               </div>
               <span class="text-xs font-mono text-slate-600 w-6 text-right">{{ b.count }}</span>
             </div>
@@ -402,11 +470,18 @@ async function runAutoScan() {
 
         <div class="bg-white border border-slate-200 rounded-lg p-4">
           <h3 class="text-xs font-semibold text-slate-500 uppercase mb-4">发现按状态分布</h3>
-          <div v-if="!overview.findingsByStatus || !Object.keys(overview.findingsByStatus).length"
-            class="text-xs text-slate-400 text-center py-6">暂无数据</div>
+          <div
+            v-if="!overview.findingsByStatus || !Object.keys(overview.findingsByStatus).length"
+            class="text-xs text-slate-400 text-center py-6"
+          >
+            暂无数据
+          </div>
           <div v-else class="flex flex-wrap gap-3">
-            <div v-for="(count, status) in overview.findingsByStatus" :key="status"
-              class="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded">
+            <div
+              v-for="(count, status) in overview.findingsByStatus"
+              :key="status"
+              class="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded"
+            >
               <span class="text-xs text-slate-600">{{ status }}</span>
               <span class="text-sm font-bold text-slate-800">{{ count }}</span>
             </div>

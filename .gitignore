@@ -93,3 +93,18 @@ logs/linux/eval_report*.json
 
 # 知识库文件（运行时生成）
 knowledgebase/
+
+# === 2026-07-21 新增：E2E 三层契约架构相关忽略项 ===
+
+# Playwright / 测试自动生成产物（禁止提交）
+agent1-web/playwright-report/
+agent1-web/playwright-report-real/
+agent1-web/test-results/
+eval_reports/
+
+# E2E 控制台输出转储（临时产物）
+真实E2E测试控制台输出*
+
+# 含硬编码 AutoDL API 令牌的本地脚本（禁止提交，令牌应移至 .env）
+scripts/autodl-find-uuid.ps1
+scripts/autodl-poweron.ps1

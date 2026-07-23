@@ -1,0 +1,99 @@
+{
+  "_comment": "Qwen3-8B 质量基线 — 离线采集，基于真实 GPU 推理结果人工审核后填写。定期重新采集以跟踪模型能力变化。",
+  "_collectedAt": "待采集",
+  "_collectedBy": "E2E baseline-collector",
+
+  "scenarios": {
+    "emergency-benzene-leak": {
+      "query": "苯泄漏事故应急处置方案",
+      "typicalResponseTime": { "min": 8000, "max": 30000, "unit": "ms" },
+      "commonKeywords": ["撤离", "堵漏", "稀释", "防护", "报警", "警戒", "疏散人员", "切断泄漏源"],
+      "rareKeywords": ["疏散", "隔离", "处置"],
+      "typicalLength": { "min": 80, "max": 500, "unit": "chars" },
+      "qualityFloor": {
+        "mustContainAtLeast": 2,
+        "minLength": 80,
+        "description": "应急响应至少包含 2 个处置关键词，输出不少于 80 字符"
+      }
+    },
+    "emergency-methanol-fire": {
+      "query": "甲醇火灾事故应急处置方案",
+      "typicalResponseTime": { "min": 8000, "max": 30000, "unit": "ms" },
+      "commonKeywords": ["灭火", "泡沫", "冷却", "撤离", "报警", "消防", "隔离"],
+      "rareKeywords": ["疏散", "处置"],
+      "typicalLength": { "min": 80, "max": 500, "unit": "chars" },
+      "qualityFloor": {
+        "mustContainAtLeast": 2,
+        "minLength": 80,
+        "description": "应急响应至少包含 2 个处置关键词"
+      }
+    },
+    "emergency-nitric-acid-corrosion": {
+      "query": "硝酸腐蚀事故应急处置方案",
+      "typicalResponseTime": { "min": 8000, "max": 30000, "unit": "ms" },
+      "commonKeywords": ["冲洗", "稀释", "防护", "中和", "报警", "隔离"],
+      "rareKeywords": ["疏散", "处置"],
+      "typicalLength": { "min": 80, "max": 500, "unit": "chars" },
+      "qualityFloor": {
+        "mustContainAtLeast": 2,
+        "minLength": 80,
+        "description": "应急响应至少包含 2 个处置关键词"
+      }
+    },
+    "compliance-benzene-acetone-storage": {
+      "query": "苯和丙酮能同库储存吗",
+      "typicalResponseTime": { "min": 3000, "max": 90000, "unit": "ms" },
+      "commonKeywords": ["GB", "禁配", "间距", "兼容", "储存条件", "法规", "标准", "不可同库"],
+      "rareKeywords": ["隔离", "疏散"],
+      "typicalLength": { "min": 100, "max": 1000, "unit": "chars" },
+      "qualityFloor": {
+        "mustContainAtLeast": 2,
+        "minLength": 100,
+        "description": "合规审核至少包含 2 个合规关键词，输出不少于 100 字符"
+      }
+    },
+    "compliance-storage-distance": {
+      "query": "硝酸和甲醇的储存安全距离是多少",
+      "typicalResponseTime": { "min": 3000, "max": 90000, "unit": "ms" },
+      "commonKeywords": ["米", "m", "距离", "GB", "安全", "间距", "防火"],
+      "rareKeywords": [],
+      "typicalLength": { "min": 80, "max": 800, "unit": "chars" },
+      "qualityFloor": {
+        "mustContainAtLeast": 2,
+        "minLength": 80,
+        "description": "安全距离查询至少包含 2 个信息关键词"
+      }
+    },
+    "compliance-hazard-class": {
+      "query": "苯属于哪类危险化学品",
+      "typicalResponseTime": { "min": 3000, "max": 60000, "unit": "ms" },
+      "commonKeywords": ["易燃", "危险", "类别", "3类", "中毒", "GB"],
+      "rareKeywords": [],
+      "typicalLength": { "min": 50, "max": 400, "unit": "chars" },
+      "qualityFloor": {
+        "mustContainAtLeast": 1,
+        "minLength": 50,
+        "description": "危险分类查询至少包含危险类别信息"
+      }
+    },
+    "knowledge-gb15603": {
+      "query": "GB 15603",
+      "typicalResponseTime": { "min": 3000, "max": 60000, "unit": "ms" },
+      "commonKeywords": ["GB 15603", "储存", "仓库", "安全"],
+      "rareKeywords": [],
+      "typicalLength": { "min": 50, "max": 500, "unit": "chars" },
+      "qualityFloor": {
+        "mustContainAtLeast": 1,
+        "minLength": 50,
+        "description": "GB 编号查询至少包含法规引用"
+      }
+    }
+  },
+
+  "_instructions": {
+    "collect": "对每个场景调用真实 LLM 3-5 次，记录实际输出文本到 reports/ 目录，人工审核后填写 commonKeywords 和 rareKeywords。",
+    "update_qualityFloor": "根据实际输出的最低表现设置 qualityFloor，确保所有 3-5 次运行都能通过门槛。",
+    "recalibrate": "每月或模型升级后重新采集基线，同步更新本文件和 llm-assertions.ts。",
+    "collector_script": "node scripts/baseline-collector.mjs — 向远程 API 发送查询并收集原始输出"
+  }
+}

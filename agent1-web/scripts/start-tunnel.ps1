@@ -1,13 +1,13 @@
 # ============================================================
 # start-tunnel.ps1 — Start SSH tunnel to remote Agent1 API
 #
-# Usage: .\start-tunnel.ps1 [-LocalPort <15001>] [-RemotePort <5000>] [-Stop]
+# Usage: .\start-tunnel.ps1 [-LocalPort <15001>] [-RemotePort <5003>] [-Stop]
 # Prereq: $env:SSH_HOST, $env:SSH_PORT, $env:SSH_USER, $env:SSH_PASSWORD
 # ============================================================
 
 param(
     [int]$LocalPort = 15001,
-    [int]$RemotePort = 5000,
+    [int]$RemotePort = 5003,
     [switch]$Stop
 )
 

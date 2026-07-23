@@ -13,10 +13,11 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e-real',
-  timeout: 120_000,               // LLM 真实推理最大等待 2 分钟
-  expect: { timeout: 30_000 },    // 单个断言等待最长 30s
-  retries: 1,                     // LLM 推理偶有波动，重试 1 次
-  workers: 1,                     // 串行执行，避免 GPU 并发过载
+  globalSetup: './e2e-real/global-setup.ts',
+  timeout: 120_000, // LLM 真实推理最大等待 2 分钟
+  expect: { timeout: 30_000 }, // 单个断言等待最长 30s
+  retries: 1, // LLM 推理偶有波动，重试 1 次
+  workers: 1, // 串行执行，避免 GPU 并发过载
   forbidOnly: false,
 
   reporter: [
@@ -45,10 +46,10 @@ export default defineConfig({
   webServer: {
     command: 'npx vite --host 0.0.0.0 --port 5173',
     port: 5173,
-    reuseExistingServer: true,    // 允许复用已启动的 Vite（隧道已就绪）
+    reuseExistingServer: true, // 允许复用已启动的 Vite（隧道已就绪）
     timeout: 30_000,
     env: {
-      VITE_ENABLE_MOCK: 'false',       // 关闭 MSW Mock
+      VITE_ENABLE_MOCK: 'false', // 关闭 MSW Mock
       VITE_PROXY_TARGET: 'http://localhost:15001', // 指向 SSH 隧道
     },
   },

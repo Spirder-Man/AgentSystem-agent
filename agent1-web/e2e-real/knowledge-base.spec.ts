@@ -10,12 +10,9 @@
 
 import { test, expect, loginAs } from './fixtures/auth.fixture';
 import { expectGbNumberPresent } from './utils/llm-assertions';
+import { COMPLIANCE_CHECK } from '../src/test-ids';
 
-const GB_QUERIES = [
-  'GB 15603',
-  'GB 30000.7',
-  'GB 18218',
-];
+const GB_QUERIES = ['GB 15603', 'GB 30000.7', 'GB 18218'];
 
 test.describe('KnowledgeBase-Real: 知识库查询 + 增量更新 (真实后端)', () => {
   test.beforeEach(async ({ page }) => {
@@ -24,9 +21,7 @@ test.describe('KnowledgeBase-Real: 知识库查询 + 增量更新 (真实后端)
 
   // ── 导航到知识库页面 ──
   test('应能导航到知识库页面', async ({ page }) => {
-    const navKB = page.locator('text=知识库').or(
-      page.locator('text=Knowledge').or(page.locator('text=知识管理')),
-    );
+    const navKB = page.locator('text=知识库').or(page.locator('text=Knowledge').or(page.locator('text=知识管理')));
     if (await navKB.isVisible({ timeout: 5_000 }).catch(() => false)) {
       await navKB.first().click();
       // 知识库页面可能在不同路由
@@ -49,9 +44,10 @@ test.describe('KnowledgeBase-Real: 知识库查询 + 增量更新 (真实后端)
       await sendBtn.click();
 
       // 等待结果（真实 RAG 检索需要时间）
-      const regulationPanel = page.locator('[data-testid="regulation-panel"]').or(
-        page.locator('text=法规引用'),
-      );
+      const regulationPanel = page
+        .locator(`[data-testid="${COMPLIANCE_CHECK.regulationPanel}"]`)
+        .or(page.locator('text=法规引用'))
+        .first();
       await expect(regulationPanel.first()).toBeVisible({ timeout: 60_000 });
 
       // 验证法规引用包含 GB 编号
@@ -62,11 +58,9 @@ test.describe('KnowledgeBase-Real: 知识库查询 + 增量更新 (真实后端)
   // ── 检索模式切换 ──
   test('应能切换 BM25/Vector/Hybrid 检索模式', async ({ page }) => {
     // 检查是否有检索模式切换控件
-    const modeSwitch = page.locator('text=BM25').or(
-      page.locator('text=Vector').or(page.locator('text=混合')).or(
-        page.locator('text=Hybrid'),
-      ),
-    );
+    const modeSwitch = page
+      .locator('text=BM25')
+      .or(page.locator('text=Vector').or(page.locator('text=混合')).or(page.locator('text=Hybrid')));
 
     if (await modeSwitch.isVisible({ timeout: 5_000 }).catch(() => false)) {
       // 验证至少有一种模式可见
@@ -88,9 +82,10 @@ test.describe('KnowledgeBase-Real: 知识库查询 + 增量更新 (真实后端)
     await sendBtn.click();
 
     // 等待 LLM 响应
-    const llmPanel = page.locator('[data-testid="llm-explanation-panel"]').or(
-      page.locator('text=分析结果'),
-    );
+    const llmPanel = page
+      .locator(`[data-testid="${COMPLIANCE_CHECK.llmPanel}"]`)
+      .or(page.locator('text=分析结果'))
+      .first();
     await expect(llmPanel.first()).toBeVisible({ timeout: 90_000 });
 
     // 至少应有响应内容

@@ -18,6 +18,7 @@ import {
   expectResponseTimeInRange,
   expectDualChannelOutput,
 } from './utils/llm-assertions';
+import { COMPLIANCE_CHECK } from '../src/test-ids';
 
 // ── 七大评测类目测试数据 ──
 const QUALITY_TESTS = [
@@ -51,15 +52,18 @@ test.describe('LLM-Quality-Real: LLM 推理质量专项 (七大评测类目)', (
       await expectDualChannelOutput(page);
 
       // 验证 GB 编号
-      const regulationPanel = page.locator('[data-testid="regulation-panel"]').or(
-        page.locator('text=法规引用'),
-      );
+      const regulationPanel = page
+        .locator(`[data-testid="${COMPLIANCE_CHECK.regulationPanel}"]`)
+        .or(page.locator('text=法规引用'))
+        .first();
       await expectGbNumberPresent(regulationPanel, category);
 
       // 验证工具调用链
-      const hasToolChain = await page.locator('[data-testid="tool-call-chain"]').or(
-        page.locator('text=工具调用'),
-      ).isVisible({ timeout: 5_000 }).catch(() => false);
+      const hasToolChain = await page
+        .locator(`[data-testid="${COMPLIANCE_CHECK.toolChain}"]`)
+        .or(page.locator('text=工具调用'))
+        .isVisible({ timeout: 5_000 })
+        .catch(() => false);
 
       if (hasToolChain) {
         await expectToolCallPresent(page, expectedTool, `${category} - 工具调用`);
@@ -85,7 +89,7 @@ test.describe('LLM-Quality-Real: LLM 推理质量专项 (七大评测类目)', (
     await expectDualChannelOutput(page);
 
     // 验证所有 GB 编号格式合法
-    const bodyText = await page.locator('body').textContent() ?? '';
+    const bodyText = (await page.locator('body').textContent()) ?? '';
     const gbPattern = /GB\s*\d{4,5}(?:\.\d+)?\s*-\s*\d{4}/gi;
     const matches = bodyText.match(gbPattern) ?? [];
 
@@ -112,10 +116,8 @@ test.describe('LLM-Quality-Real: LLM 推理质量专项 (七大评测类目)', (
 
     await expectDualChannelOutput(page);
 
-    const llmPanel = page.locator('[data-testid="llm-explanation-panel"]').or(
-      page.locator('text=分析结果'),
-    );
-    const text = await llmPanel.first().textContent() ?? '';
+    const llmPanel = page.locator(`[data-testid="${COMPLIANCE_CHECK.llmPanel}"]`).or(page.locator('text=分析结果'));
+    const text = (await llmPanel.first().textContent()) ?? '';
 
     // 具体判断依据关键词
     const hasSpecificEvidence = /GB|禁配|间距|兼容|储存条件|法规|标准/.test(text);

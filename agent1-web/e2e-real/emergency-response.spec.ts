@@ -9,13 +9,10 @@
 // ============================================================
 
 import { test, expect, loginAs } from './fixtures/auth.fixture';
-import { expectResponseTimeInRange } from './utils/llm-assertions';
+import { expectResponseTimeInRange, expectBaselineQuality } from './utils/llm-assertions';
+import { COMPLIANCE_CHECK } from '../src/test-ids';
 
-const EMERGENCY_SCENARIOS = [
-  '苯泄漏',
-  '甲醇火灾',
-  '硝酸腐蚀',
-];
+const EMERGENCY_SCENARIOS = ['苯泄漏', '甲醇火灾', '硝酸腐蚀'];
 
 test.describe('Emergency-Real: 应急响应 — 上报 → 分级 → 预案 (真实 GPU)', () => {
   test.beforeEach(async ({ page }) => {
@@ -24,18 +21,16 @@ test.describe('Emergency-Real: 应急响应 — 上报 → 分级 → 预案 (�
 
   // ── 导航到应急响应页面 ──
   test('应能导航到应急响应页面', async ({ page }) => {
-    const navEmergency = page.locator('text=应急响应').or(
-      page.locator('text=应急管理').or(page.locator('text=Emergency')),
-    );
+    const navEmergency = page
+      .locator('text=应急响应')
+      .or(page.locator('text=应急管理').or(page.locator('text=Emergency')));
     if (await navEmergency.isVisible({ timeout: 5_000 }).catch(() => false)) {
       await navEmergency.first().click();
       // 应急响应路由
       await expect(page).toHaveURL(/\/(emergency|response)/, { timeout: 10_000 });
 
       // 验证页面标题
-      const title = page.locator('text=应急响应').or(
-        page.locator('text=事故上报').or(page.locator('text=应急')),
-      );
+      const title = page.locator('text=应急响应').or(page.locator('text=事故上报').or(page.locator('text=应急')));
       await expect(title.first()).toBeVisible({ timeout: 10_000 });
     }
   });
@@ -55,15 +50,18 @@ test.describe('Emergency-Real: 应急响应 — 上报 → 分级 → 预案 (�
       await sendBtn.click();
 
       // 等待 LLM 应急响应
-      const llmPanel = page.locator('[data-testid="llm-explanation-panel"]').or(
-        page.locator('text=分析结果'),
-      );
+      const llmPanel = page.locator(`[data-testid="${COMPLIANCE_CHECK.llmPanel}"]`).or(page.locator('text=分析结果'));
       await expect(llmPanel.first()).toBeVisible({ timeout: 90_000 });
 
-      // 验证响应包含处置措施关键词
-      const text = await llmPanel.first().textContent() ?? '';
-      const hasEmergencyContent = /疏散|隔离|防护|处置|应急/.test(text);
-      expect(hasEmergencyContent, `应急响应应包含处置措施: ${scenario}`).toBe(true);
+      // 验证响应包含处置措施关键词（基于 baseline.json 中 Qwen3-8B 实际用词）
+      const text = (await llmPanel.first().textContent()) ?? '';
+      const baselineKey =
+        scenario === '苯泄漏'
+          ? 'emergency-benzene-leak'
+          : scenario === '甲醇火灾'
+            ? 'emergency-methanol-fire'
+            : 'emergency-nitric-acid-corrosion';
+      expectBaselineQuality(text, baselineKey, `应急响应 - ${scenario}`);
 
       // 验证响应耗时
       expectResponseTimeInRange(startTime, 3_000, 90_000, `应急响应 - ${scenario}`);

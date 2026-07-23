@@ -1,0 +1,16 @@
+Agent1 化工合规 AI -- 每日远程评测
+
+评测日期：{{ReportDir}}
+本地路径：{{LocalDir}}
+
+已下载文件：
+  - analysis.md       D1-D6 六维度分析报告（数据已填充）
+  - summary.json      原始评测指标
+  - log_slices/       API/llama.cpp 日志切片
+
+请进行人工介入分析。
+
+打开 analysis.md，使用 Qoder 加载 remote-log-analysis 技能进行深度分析：
+  > 帮我深度分析 eval_reports\analysis\{{ReportDir}}\analysis.md
+
+-- Agent1 自动质量监控系统

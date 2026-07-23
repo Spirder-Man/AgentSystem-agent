@@ -9,6 +9,7 @@
 
 import { test, expect, loginAs } from './fixtures/auth.fixture';
 import { expectResponseTimeInRange } from './utils/llm-assertions';
+import { COMPLIANCE_CHECK } from '../src/test-ids';
 
 test.describe('EvalFlow-Real: 合规评测流程 (真实 GPU)', () => {
   test.beforeEach(async ({ page }) => {
@@ -17,19 +18,15 @@ test.describe('EvalFlow-Real: 合规评测流程 (真实 GPU)', () => {
 
   // ── 导航到评测页面 ──
   test('应能导航到合规评测页面', async ({ page }) => {
-    const navEval = page.locator('text=合规评测').or(
-      page.locator('text=评测管理').or(page.locator('text=Eval')).or(
-        page.locator('text=Evaluation'),
-      ),
-    );
+    const navEval = page
+      .locator('text=合规评测')
+      .or(page.locator('text=评测管理').or(page.locator('text=Eval')).or(page.locator('text=Evaluation')));
     if (await navEval.isVisible({ timeout: 5_000 }).catch(() => false)) {
       await navEval.first().click();
       await expect(page).toHaveURL(/\/(eval|evaluation)/, { timeout: 10_000 });
 
       // 验证页面标题
-      const title = page.locator('text=合规评测').or(
-        page.locator('text=评测').or(page.locator('text=Evaluation')),
-      );
+      const title = page.locator('text=合规评测').or(page.locator('text=评测').or(page.locator('text=Evaluation')));
       await expect(title.first()).toBeVisible({ timeout: 10_000 });
     }
   });
@@ -47,18 +44,16 @@ test.describe('EvalFlow-Real: 合规评测流程 (真实 GPU)', () => {
     await sendBtn.click();
 
     // 等待双通道输出
-    const regulationPanel = page.locator('[data-testid="regulation-panel"]').or(
-      page.locator('text=法规引用'),
-    );
+    const regulationPanel = page
+      .locator(`[data-testid="${COMPLIANCE_CHECK.regulationPanel}"]`)
+      .or(page.locator('text=法规引用'));
     await expect(regulationPanel.first()).toBeVisible({ timeout: 60_000 });
 
-    const llmPanel = page.locator('[data-testid="llm-explanation-panel"]').or(
-      page.locator('text=分析结果'),
-    );
+    const llmPanel = page.locator(`[data-testid="${COMPLIANCE_CHECK.llmPanel}"]`).or(page.locator('text=分析结果'));
     await expect(llmPanel.first()).toBeVisible({ timeout: 10_000 });
 
     // 验证包含 GB 编号引用和结论
-    const bodyText = await page.locator('body').textContent() ?? '';
+    const bodyText = (await page.locator('body').textContent()) ?? '';
     expect(bodyText, '应包含 GB 编号').toMatch(/GB/i);
 
     // 验证推理耗时
@@ -84,9 +79,7 @@ test.describe('EvalFlow-Real: 合规评测流程 (真实 GPU)', () => {
       await sendBtn.click();
 
       // 等待 LLM 响应
-      const llmPanel = page.locator('[data-testid="llm-explanation-panel"]').or(
-        page.locator('text=分析结果'),
-      );
+      const llmPanel = page.locator(`[data-testid="${COMPLIANCE_CHECK.llmPanel}"]`).or(page.locator('text=分析结果'));
       await expect(llmPanel.first()).toBeVisible({ timeout: 90_000 });
 
       // 验证非空响应

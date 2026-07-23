@@ -1,15 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { auditApi } from '@/api';
-import type {
-  AuditLogEntry,
-  AuditIntegrityResponse,
-  AuditStatsResponse,
-} from '@/types/api';
+import type { AuditLogEntry, AuditIntegrityResponse, AuditStatsResponse } from '@/types/api';
 import { ElMessage } from 'element-plus';
-import {
-  Search, RefreshRight, CircleCheck, CircleClose, WarningFilled,
-} from '@element-plus/icons-vue';
+import { Search, RefreshRight, CircleCheck, CircleClose, WarningFilled } from '@element-plus/icons-vue';
 import SkeletonTable from '@/components/common/SkeletonTable.vue';
 import EmptyState from '@/components/common/EmptyState.vue';
 
@@ -75,7 +69,9 @@ async function verifyIntegrity() {
 async function fetchStats() {
   try {
     stats.value = await auditApi.getStats();
-  } catch { /* non-critical */ }
+  } catch {
+    /* non-critical */
+  }
 }
 
 async function exportReport() {
@@ -119,6 +115,7 @@ onMounted(() => {
           :icon="integrity?.intact ? CircleCheck : WarningFilled"
           :type="integrity?.intact ? 'success' : 'warning'"
           size="small"
+          data-testid="audit-integrity-btn"
           @click="verifyIntegrity"
         >
           {{ integrity?.intact ? '哈希链完整' : checkingIntegrity ? '验证中…' : '验证哈希链' }}
@@ -149,18 +146,16 @@ onMounted(() => {
       <div class="bg-white border border-slate-200 rounded px-4 py-3">
         <div class="text-xs text-slate-500 mb-2">操作分布</div>
         <div class="flex flex-wrap gap-2">
-          <el-tag
-            v-for="(count, op) in stats.byOperation"
-            :key="op"
-            size="small"
-            type="info"
-          >
+          <el-tag v-for="(count, op) in stats.byOperation" :key="op" size="small" type="info">
             {{ op }}: {{ count }}
           </el-tag>
         </div>
       </div>
       <!-- 用户活跃 -->
-      <div v-if="stats.byUser && Object.keys(stats.byUser).length" class="bg-white border border-slate-200 rounded px-4 py-3">
+      <div
+        v-if="stats.byUser && Object.keys(stats.byUser).length"
+        class="bg-white border border-slate-200 rounded px-4 py-3"
+      >
         <div class="text-xs text-slate-500 mb-2">用户活跃</div>
         <div class="flex flex-wrap gap-2">
           <el-tag
@@ -211,6 +206,7 @@ onMounted(() => {
       type="error"
       :closable="false"
       show-icon
+      data-testid="audit-integrity-result"
     />
 
     <!-- 日志表格 -->
@@ -224,7 +220,7 @@ onMounted(() => {
       <EmptyState icon="empty" title="暂无审计日志" description="系统操作记录将自动生成" />
     </div>
 
-    <div v-else class="bg-white border border-slate-200 rounded overflow-hidden">
+    <div v-else data-testid="audit-log-table" class="bg-white border border-slate-200 rounded overflow-hidden">
       <table class="w-full text-sm">
         <thead>
           <tr class="border-b border-slate-200 bg-slate-50">
@@ -237,11 +233,7 @@ onMounted(() => {
           </tr>
         </thead>
         <tbody>
-          <tr
-            v-for="log in logs"
-            :key="log.id"
-            class="border-b border-slate-100 hover:bg-slate-50"
-          >
+          <tr v-for="log in logs" :key="log.id" class="border-b border-slate-100 hover:bg-slate-50">
             <td class="px-4 py-3 text-xs text-slate-400 font-mono">{{ log.id }}</td>
             <td class="px-4 py-3 text-xs text-slate-500 font-mono">{{ log.timestamp }}</td>
             <td class="px-4 py-3 text-xs text-slate-700">{{ log.user }}</td>
@@ -253,7 +245,8 @@ onMounted(() => {
                 <span
                   v-if="log.isSensitive"
                   class="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-1 leading-none py-0.5"
-                >敏感</span>
+                  >敏感</span
+                >
               </div>
             </td>
             <td class="px-4 py-3 text-xs text-slate-600 max-w-xs truncate">

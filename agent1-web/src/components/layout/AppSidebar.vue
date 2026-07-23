@@ -12,9 +12,28 @@ import { computed, ref } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import {
-  Monitor, Document, Clock, List, Warning, Box, Setting, Search, Link,
-  ChatDotRound, Odometer, Cpu, DataAnalysis, Picture, Aim, FirstAidKit, Connection,
-  TrendCharts, Checked, FolderOpened, MagicStick, Tools,
+  Monitor,
+  Document,
+  Clock,
+  List,
+  Warning,
+  Box,
+  Setting,
+  Search,
+  Link,
+  ChatDotRound,
+  Odometer,
+  Cpu,
+  DataAnalysis,
+  Picture,
+  Aim,
+  FirstAidKit,
+  Connection,
+  TrendCharts,
+  Checked,
+  FolderOpened,
+  MagicStick,
+  Tools,
 } from '@element-plus/icons-vue';
 
 const auth = useAuthStore();
@@ -37,14 +56,16 @@ interface NavGroup {
 
 const allGroups: NavGroup[] = [
   {
-    title: '总览', icon: TrendCharts,
+    title: '总览',
+    icon: TrendCharts,
     items: [
       { path: '/dashboard', title: '仪表盘', icon: Monitor, roles: ['admin', 'auditor', 'viewer'] },
       { path: '/system', title: '运维看板', icon: Odometer, roles: ['admin'] },
     ],
   },
   {
-    title: '合规管理', icon: Checked,
+    title: '合规管理',
+    icon: Checked,
     items: [
       { path: '/compliance', title: '合规检查', icon: Document, roles: ['admin', 'auditor', 'viewer'] },
       { path: '/compliance/history', title: '合规历史', icon: Clock, roles: ['admin', 'auditor', 'viewer'] },
@@ -52,7 +73,8 @@ const allGroups: NavGroup[] = [
     ],
   },
   {
-    title: '巡检与资产', icon: FolderOpened,
+    title: '巡检与资产',
+    icon: FolderOpened,
     items: [
       { path: '/inspection/plans', title: '巡检计划', icon: List, roles: ['admin', 'auditor', 'viewer'] },
       { path: '/inspection/rounds', title: '巡检记录', icon: Clock, roles: ['admin', 'auditor', 'viewer'] },
@@ -61,14 +83,16 @@ const allGroups: NavGroup[] = [
     ],
   },
   {
-    title: '危化品管理', icon: Search,
+    title: '危化品管理',
+    icon: Search,
     items: [
       { path: '/hazard', title: '危化品查询', icon: Search, roles: ['admin', 'auditor', 'viewer'] },
       { path: '/storage/compatibility', title: '储存兼容性', icon: Link, roles: ['admin', 'auditor', 'viewer'] },
     ],
   },
   {
-    title: 'AI 智能工具', icon: MagicStick,
+    title: 'AI 智能工具',
+    icon: MagicStick,
     items: [
       { path: '/chat', title: 'AI 合规助手', icon: ChatDotRound, roles: ['admin', 'auditor', 'viewer'] },
       { path: '/regulatory', title: '法规审计', icon: Aim, roles: ['admin', 'auditor', 'viewer'] },
@@ -78,7 +102,8 @@ const allGroups: NavGroup[] = [
     ],
   },
   {
-    title: '系统管理', icon: Tools,
+    title: '系统管理',
+    icon: Tools,
     items: [
       { path: '/knowledgebase', title: '知识库', icon: FolderOpened, roles: ['admin', 'auditor', 'viewer'] },
       { path: '/database', title: '数据库诊断', icon: Odometer, roles: ['admin'] },
@@ -111,9 +136,7 @@ function toggleGroup(title: string) {
 const activePath = computed(() => route.path);
 
 function isGroupActive(group: NavGroup): boolean {
-  return group.items.some(
-    (item) => activePath.value === item.path || activePath.value.startsWith(item.path + '/')
-  );
+  return group.items.some((item) => activePath.value === item.path || activePath.value.startsWith(item.path + '/'));
 }
 
 function navigateTo(path: string) {
@@ -133,10 +156,7 @@ function navigateTo(path: string) {
     <nav class="flex-1 py-2 overflow-y-auto">
       <div v-for="group in visibleGroups" :key="group.title" class="mb-1">
         <!-- 分组标题（可点击折叠） -->
-        <div
-          class="flex items-center px-3 py-1.5 mx-3 cursor-pointer select-none"
-          @click="toggleGroup(group.title)"
-        >
+        <div class="flex items-center px-3 py-1.5 mx-3 cursor-pointer select-none" @click="toggleGroup(group.title)">
           <span class="text-xs text-gray-400 mr-1.5 w-3 inline-block">
             {{ collapsed[group.title] ? '▸' : '▾' }}
           </span>
@@ -154,9 +174,11 @@ function navigateTo(path: string) {
           <div
             v-for="item in group.items"
             :key="item.path"
+            :data-testid="'nav-' + item.path.replace(/\//g, '-').replace(/^-/, '')"
             class="nav-item flex items-center px-5 py-2 ml-2 mr-1 rounded-md cursor-pointer transition-colors text-sm"
             :class="{
-              'bg-blue-50 text-blue-700 font-medium': activePath === item.path || activePath.startsWith(item.path + '/'),
+              'bg-blue-50 text-blue-700 font-medium':
+                activePath === item.path || activePath.startsWith(item.path + '/'),
               'text-gray-600 hover:bg-gray-50': !(activePath === item.path || activePath.startsWith(item.path + '/')),
             }"
             @click="navigateTo(item.path)"
@@ -169,9 +191,7 @@ function navigateTo(path: string) {
     </nav>
 
     <!-- 底部用户信息 -->
-    <div class="px-5 py-3 border-t border-gray-100 text-xs text-gray-400">
-      {{ auth.username }} · {{ auth.role }}
-    </div>
+    <div class="px-5 py-3 border-t border-gray-100 text-xs text-gray-400">{{ auth.username }} · {{ auth.role }}</div>
   </div>
 </template>
 

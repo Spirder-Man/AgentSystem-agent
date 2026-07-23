@@ -19,12 +19,9 @@ import {
   expectResponseTimeInRange,
   expectDualChannelOutput,
 } from './utils/llm-assertions';
+import { COMPLIANCE_CHECK } from '../src/test-ids';
 
-const COMPLIANCE_QUERIES = [
-  '苯和丙酮能同库储存吗',
-  '硝酸和甲醇的储存安全距离是多少',
-  '苯属于哪类危险化学品',
-];
+const COMPLIANCE_QUERIES = ['苯和丙酮能同库储存吗', '硝酸和甲醇的储存安全距离是多少', '苯属于哪类危险化学品'];
 
 test.describe('P1-Real: 登录 → 合规自查 → 真实 GPU 推理', () => {
   test.beforeEach(async ({ page }) => {
@@ -55,15 +52,18 @@ test.describe('P1-Real: 登录 → 合规自查 → 真实 GPU 推理', () => {
     expectResponseTimeInRange(startTime, 3_000, 90_000);
 
     // 6. 验证 GB 编号非幻觉
-    const regulationPanel = page.locator('[data-testid="regulation-panel"]').or(
-      page.locator('text=法规引用'),
-    );
+    const regulationPanel = page
+      .locator(`[data-testid="${COMPLIANCE_CHECK.regulationPanel}"]`)
+      .or(page.locator('text=法规引用'))
+      .first();
     await expectGbNumberPresent(regulationPanel, '合规自查法规引用');
 
     // 7. 验证工具调用链（真实 GPU 才会产生工具调用）
-    const hasToolChain = await page.locator('[data-testid="tool-call-chain"]').or(
-      page.locator('text=工具调用'),
-    ).isVisible({ timeout: 5_000 }).catch(() => false);
+    const hasToolChain = await page
+      .locator(`[data-testid="${COMPLIANCE_CHECK.toolChain}"]`)
+      .or(page.locator('text=工具调用'))
+      .isVisible({ timeout: 5_000 })
+      .catch(() => false);
 
     if (hasToolChain) {
       await expectToolCallPresent(page, 'CheckStorageCompatibility');
@@ -81,7 +81,7 @@ test.describe('P1-Real: 登录 → 合规自查 → 真实 GPU 推理', () => {
     if (!isDisabled) {
       await sendBtn.click();
       await expect(
-        page.locator('[data-testid="regulation-panel"]').or(page.locator('text=法规引用')),
+        page.locator(`[data-testid="${COMPLIANCE_CHECK.regulationPanel}"]`).or(page.locator('text=法规引用')),
       ).not.toBeVisible({ timeout: 5_000 });
     }
   });
