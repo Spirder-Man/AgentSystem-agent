@@ -27,9 +27,13 @@ echo "========================================"
 
 # ── 1. PostgreSQL ──
 echo "[1/4] PostgreSQL..."
-pg_ctlcluster 16 main start 2>/dev/null && echo "  ✅ PG (cluster)" || {
-  pg_ctl start -D /var/lib/postgresql/16/main -l /var/log/postgresql/postgresql.log 2>/dev/null && echo "  ✅ PG (pg_ctl)" || echo "  ⚠️ PG 启动失败（可能已在运行）"
-}
+if pg_isready -q 2>/dev/null; then
+  echo "  ✅ 已运行"
+else
+  pg_ctlcluster 16 main start 2>/dev/null && echo "  ✅ 已启动" || {
+    pg_ctl start -D /var/lib/postgresql/16/main -l /var/log/postgresql/postgresql.log 2>/dev/null && echo "  ✅ 已启动" || echo "  ❌ 启动失败"
+  }
+fi
 
 # ── 2. llama.cpp LLM ──
 echo "[2/4] llama.cpp LLM (8080)..."
