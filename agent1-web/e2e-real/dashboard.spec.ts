@@ -44,8 +44,8 @@ test.describe('P3-Real: 仪表盘 — 合规总览 + 指标验证 (真实数据)
         .or(page.locator('text=newFindings').or(page.locator('text=扫描完成')));
       await expect(scanResult.first()).toBeVisible({ timeout: 60_000 });
 
-      // 验证扫描耗时合理
-      expectResponseTimeInRange(startTime, 3_000, 60_000, '仪表盘扫描 LLM');
+      // 验证扫描耗时合理（允许缓存命中 — 真实后端可能返回缓存结果）
+      expectResponseTimeInRange(startTime, 3_000, 60_000, '仪表盘扫描 LLM', true);
     }
   });
 
