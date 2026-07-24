@@ -89,7 +89,7 @@ pkill -f "dotnet.*Agent1.Api" 2>/dev/null || true
 sleep 2
 
 dotnet build Agent1.Api/Agent1.Api.csproj -c Release --nologo -v q
-nohup dotnet run --project Agent1.Api --configuration Release \
+nohup dotnet run --project Agent1.Api --configuration Release --no-launch-profile \
   > "$LOG_DIR/api-e2e.log" 2>&1 &
 
 for i in $(seq 1 10); do
