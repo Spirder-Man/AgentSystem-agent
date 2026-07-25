@@ -4,8 +4,11 @@ import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  // VITE_PROXY_TARGET 默认 localhost:15000，可通过 .env 覆盖为 SSH 隧道端口
-  const proxyTarget = env.VITE_PROXY_TARGET || 'http://localhost:15000';
+  const isMock = mode === 'mock';
+
+  // Mock 模式下不配置代理，MSW 在浏览器端全拦截
+  // 非 Mock 模式：VITE_PROXY_TARGET 默认 127.0.0.1:15000（SSH 隧道）
+  const proxyTarget = env.VITE_PROXY_TARGET || 'http://127.0.0.1:15000';
 
   return {
     plugins: [vue()],
@@ -16,49 +19,53 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 5173,
-      proxy: {
-        // 当 Mock 关闭时，将 /api 请求转发到后端
-        '/api': {
-          target: proxyTarget,
-          changeOrigin: true,
-          secure: false,
-        },
-        '/health': {
-          target: proxyTarget,
-          changeOrigin: true,
-          secure: false,
-        },
-        '/metrics': {
-          target: proxyTarget,
-          changeOrigin: true,
-          secure: false,
-        },
-        '/cache': {
-          target: proxyTarget,
-          changeOrigin: true,
-          secure: false,
-        },
-        '/knowledgebase': {
-          target: proxyTarget,
-          changeOrigin: true,
-          secure: false,
-        },
-        '/memory': {
-          target: proxyTarget,
-          changeOrigin: true,
-          secure: false,
+      ...(isMock
+        ? {}
+        : {
+            proxy: {
+              // 将 /api 请求转发到真实后端
+              '/api': {
+                target: proxyTarget,
+                changeOrigin: true,
+                secure: false,
+              },
+              '/health': {
+                target: proxyTarget,
+                changeOrigin: true,
+                secure: false,
+              },
+              '/metrics': {
+                target: proxyTarget,
+                changeOrigin: true,
+                secure: false,
+              },
+              '/cache': {
+                target: proxyTarget,
+                changeOrigin: true,
+                secure: false,
+              },
+              '/knowledgebase': {
+                target: proxyTarget,
+                changeOrigin: true,
+                secure: false,
+              },
+              '/memory': {
+                target: proxyTarget,
+                changeOrigin: true,
+                secure: false,
+              },
+            },
+          }),
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'element-plus': ['element-plus'],
+            echarts: ['echarts', 'vue-echarts'],
+          },
         },
       },
     },
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'element-plus': ['element-plus'],
-          'echarts': ['echarts', 'vue-echarts'],
-        },
-      },
-    },
-  },
   };
 });

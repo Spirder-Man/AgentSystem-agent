@@ -12,6 +12,7 @@ import { useAuthStore } from './stores/auth';
 import { vPermission } from './directives/permission';
 
 async function bootstrap() {
+  // VITE_ENABLE_MOCK=true 由 .env.mock 文件控制，仅 npm run dev:mock 加载
   if (import.meta.env.VITE_ENABLE_MOCK === 'true') {
     try {
       const { worker } = await import('./mocks/server');
