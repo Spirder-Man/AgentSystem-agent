@@ -631,6 +631,28 @@ namespace Agent1.Services
 
             Console.WriteLine("完成");
 
+            // ── [E1 修复] FC 关键字兜底：当 LLM 未调用任何工具时，
+            // 根据用户查询中的关键字直接调用 ChemicalComplianceTools。
+            // 解决 qwen3:8b 对"同库储存""安全距离"等模式零触发 FC 的问题。
+            if (llmService != null && llmService.LastFunctionCalls.Count == 0 && !string.IsNullOrWhiteSpace(userInput))
+            {
+                var fallbackCalls = await llmService.TryKeywordToolFallbackAsync(userInput);
+                if (fallbackCalls != null && fallbackCalls.Count > 0)
+                {
+                    // 将关键字兜底产生的工具结果注入 LastFunctionCalls
+                    llmService.LastFunctionCalls.AddRange(fallbackCalls);
+                    LastToolResults = new Dictionary<string, string>();
+                    foreach (var fc in fallbackCalls)
+                        LastToolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
+                    LastToolPlan = new ToolPlan
+                    {
+                        NeedsTools = true,
+                        ToolNames = fallbackCalls.Select(fc => fc.FunctionName).ToList()
+                    };
+                    Console.WriteLine($"   [E1兜底] 已通过关键字匹配调用 {fallbackCalls.Count} 个工具，绕过 LLM 工具选择");
+                }
+            }
+
             // ★ 双通道解耦架构：统一入口（覆盖 API / 旧评测路径）
             var evalToolCalls = llmService?.LastFunctionCalls
                 .Select(fc => new FunctionCallRecord

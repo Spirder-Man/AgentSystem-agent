@@ -276,6 +276,12 @@ public class EvalEngine
                                         }
                                         catch { /* 单条验证异常不中断 */ }
                                     }
+                                    // [E5 FIX] 检测到幻觉时，更新 Level4 判定为不通过
+                                    if (result.HallucinatedClaims > 0 && result.ConclusionReasons.Count > 0)
+                                    {
+                                        result.ConclusionReasons[0].Passed = false;
+                                        result.ConclusionReasons[0].RuleApplied += $" (检测到{result.HallucinatedClaims}条疑似幻觉)";
+                                    }
                                     if (extraRegs.Count > 0 && result.TotalClaims > 0)
                                         result.FaithfulnessScore = (double)result.VerifiedClaims / result.TotalClaims;
                                 }

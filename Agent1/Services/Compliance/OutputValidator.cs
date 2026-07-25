@@ -171,10 +171,13 @@ public static class OutputValidator
                     regs.Add(trimmed);
             }
         }
-
-        // 也提取独立的 GB 编号
-        foreach (var gb in ExtractGbNumbers(toolOutput))
-            regs.Add(gb);
+        else
+        {
+            // [E6 FIX] 兜底：仅在没有 [REGULATIONS:] 标签时，才从全文提取 GB 编号
+            // 避免工具输出中的解释性文本（如"参考标准：GB30000.2"）被误加入白名单
+            foreach (var gb in ExtractGbNumbers(toolOutput))
+                regs.Add(gb);
+        }
 
         return regs;
     }
@@ -196,28 +199,34 @@ public static class OutputValidator
         return regs;
     }
 
-    /// <summary>检查法规编号是否在允许列表中</summary>
+    /// <summary>检查法规编号是否在允许列表中（仅精确匹配，防止跨标准误放行）</summary>
     private static bool IsRegulationAllowed(string reg, HashSet<string> allowedRegs)
     {
         if (allowedRegs.Count == 0)
             return true; // 无允许列表时不拦截（可能是无工具调用的场景）
 
+        var nReg = NormalizeRegNumber(reg);
         foreach (var allowed in allowedRegs)
         {
-            // 标准化后比对：忽略空格和连字符差异
-            var nReg = NormalizeRegNumber(reg);
             var nAllowed = NormalizeRegNumber(allowed);
-            if (nReg.Equals(nAllowed, StringComparison.OrdinalIgnoreCase)
-                || nReg.Contains(nAllowed, StringComparison.OrdinalIgnoreCase)
-                || nAllowed.Contains(nReg, StringComparison.OrdinalIgnoreCase))
+            // 仅精确匹配：GB 30000.2 ≠ GB 30000.27（两个独立标准）
+            if (nReg.Equals(nAllowed, StringComparison.OrdinalIgnoreCase))
                 return true;
         }
         return false;
     }
 
+    /// <summary>
+    /// 标准化法规编号：去空格/连字符/斜杠/T标记，剥离年份后缀，
+    /// 确保同一标准的不同写法（GB 30000.27、GB/T 30000.27-2013）归一为同一键。
+    /// </summary>
     private static string NormalizeRegNumber(string reg)
     {
-        return Regex.Replace(reg, @"[\s\-/T]", "").ToUpperInvariant();
+        // Step 1: 剥离年份后缀（-2020, —2013 等）
+        var normalized = Regex.Replace(reg.Trim(), @"[\s\-—]\d{4}$", "");
+        // Step 2: 去除空格、连字符、斜杠、T（GB/T → GB）
+        normalized = Regex.Replace(normalized, @"[\s\-/T]", "");
+        return normalized.ToUpperInvariant();
     }
 
     /// <summary>数值一致性校验</summary>

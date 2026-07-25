@@ -375,13 +375,49 @@ namespace Agent1.Services
 
                 return true;
             }).ToList();
-            // Step 3: 重排序结果
-            var rerankedResults = filteredResults
+            // Step 3: 重排序 + 来源去重（防止单一文档垄断 topK）
+            var scored = filteredResults
                 .Select(r => new { Chunk = r, Score = CalculateChemicalRelevanceScore(r) })
                 .OrderByDescending(x => x.Score)
-                .Take(topK)
-                .Select(x => x.Chunk)
                 .ToList();
+
+            // [E4 FIX] 来源去重：每个源文档最多 maxPerSource 条，至少保证 minSources 个不同来源
+            const int maxPerSource = 2;
+            const int minSources = 3;
+            var diverseResults = new List<RetrievedChunk>();
+            var sourceCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var usedSources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // 第一轮：按 maxPerSource 限制取，收集不同来源
+            foreach (var item in scored)
+            {
+                var sourceFile = item.Chunk.Metadata.TryGetValue("SourceFile", out var sf)
+                    ? sf?.ToString() ?? "" : "";
+                if (!sourceCounts.ContainsKey(sourceFile))
+                    sourceCounts[sourceFile] = 0;
+                if (sourceCounts[sourceFile] >= maxPerSource)
+                    continue;
+
+                sourceCounts[sourceFile]++;
+                usedSources.Add(sourceFile);
+                diverseResults.Add(item.Chunk);
+
+                if (diverseResults.Count >= topK && usedSources.Count >= minSources)
+                    break;
+            }
+
+            // 第二轮：如果来源不够 minSources，放宽限制补足
+            if (usedSources.Count < minSources)
+            {
+                foreach (var item in scored)
+                {
+                    if (diverseResults.Count >= topK) break;
+                    if (diverseResults.Contains(item.Chunk)) continue;
+                    diverseResults.Add(item.Chunk);
+                }
+            }
+
+            var rerankedResults = diverseResults;
             // Step 4: 输出结果
             Console.WriteLine($"   🔬 化工合规检索: 查询='{query}', 危化品={chemicalType ?? "全部"}, 法规类型={regulationType ?? "全部"}, 法规编号={regulationNumber ?? "全部"}, 召回={rerankedResults.Count}条");
             return rerankedResults;

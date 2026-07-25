@@ -234,6 +234,8 @@ namespace Agent1.Services
 
         [KernelFunction, Description("查询指定危化品的危险类别、危险特性、GHS分类及适用国标（GB 30000 系列）。适用于「XX属于什么危险类别」「XX的危险特性」「XX的GHS分类」等问题。输入参数 substanceName: 危化品名称，如\"苯\"、\"硫酸\"。")]
         public async Task<string> CheckHazardCategory(string substanceName)
+        //substanceName 物质名称
+        //CheckHazardCategory检查危险类别
         {
             // [P2-1] 别名归一化
             substanceName = NormalizeSubstanceName(substanceName);
