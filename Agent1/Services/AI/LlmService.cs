@@ -1264,45 +1264,9 @@ namespace Agent1.Services
         }
 
         // ════════════════════════════════════════
-        // E1 修复: FC 关键字兜底
+        // E1 修复已移除: TryKeywordToolFallbackAsync 的正则兜底被确定性规则引擎替代。
+        // 参见 DeterministicRuleEngine.TryHandleComplianceQuery + IComplianceQueryHandler 责任链。
         // ════════════════════════════════════════
-        public async Task<List<FunctionCallRecord>?> TryKeywordToolFallbackAsync(string userInput)
-        {
-            if (string.IsNullOrWhiteSpace(userInput)) return null;
-            var results = new List<FunctionCallRecord>();
-
-            // 模式1: "{X}和{Y}可以同库储存吗"
-            var storageMatch = Regex.Match(userInput, @"([\u4e00-\u9fa5a-zA-Z0-9]+)\s*[和与、]\s*([\u4e00-\u9fa5a-zA-Z0-9]+)\s*(?:可以|能否|是否可)?\s*(?:同库)?\s*[储贮存](?:兼容|禁忌|共存|安全)");
-            if (storageMatch.Success)
-            {
-                var a = storageMatch.Groups[1].Value.Trim(); var b = storageMatch.Groups[2].Value.Trim();
-                Console.WriteLine($"   [E1兜底] 同库储存 -> CheckStorageCompatibility(\"{a}\", \"{b}\")");
-                try { var r = await _complianceTools.CheckStorageCompatibility(a, b); results.Add(new FunctionCallRecord { FunctionName = "CheckStorageCompatibility", Arguments = $"substanceA={a}, substanceB={b}", Result = r, Success = true, Quality = QualityLevel.DATABASE_HIT }); } catch (Exception ex) { Console.WriteLine($"   [E1兜底] 异常: {ex.Message}"); }
-                return results;
-            }
-
-            // 模式2: "{X}的安全距离"
-            var safetyMatch = Regex.Match(userInput, @"(?:([\u4e00-\u9fa5a-zA-Z0-9]+)\s*(?:和|与|、)\s*)?([\u4e00-\u9fa5a-zA-Z0-9]+)\s*(?:的)?\s*(?:安全距离|防火间距|最小间距|间距)");
-            if (safetyMatch.Success)
-            {
-                var ft = safetyMatch.Groups[1].Success ? $"{safetyMatch.Groups[1].Value.Trim()}-{safetyMatch.Groups[2].Value.Trim()}" : safetyMatch.Groups[2].Value.Trim();
-                Console.WriteLine($"   [E1兜底] 安全距离 -> GetSafetyDistance(\"{ft}\")");
-                try { var r = await _complianceTools.GetSafetyDistance(ft); results.Add(new FunctionCallRecord { FunctionName = "GetSafetyDistance", Arguments = $"facilityType={ft}", Result = r, Success = true, Quality = QualityLevel.RAG_HIT }); } catch (Exception ex) { Console.WriteLine($"   [E1兜底] 异常: {ex.Message}"); }
-                return results;
-            }
-
-            // 模式3: "{X}的危险类别" — [Bug-033] 扩充覆盖 "属于危险化学品" 类措辞
-            var hazardMatch = Regex.Match(userInput, @"([\u4e00-\u9fa5a-zA-Z0-9]+)\s*(?:的|属于|是)?\s*(?:危险类别|危险特性|危险化学品|GHS分类|什么危险)");
-            if (hazardMatch.Success)
-            {
-                var sn = hazardMatch.Groups[1].Value.Trim();
-                Console.WriteLine($"   [E1兜底] 危险类别 -> CheckHazardCategory(\"{sn}\")");
-                try { var r = await _complianceTools.CheckHazardCategory(sn); results.Add(new FunctionCallRecord { FunctionName = "CheckHazardCategory", Arguments = $"substanceName={sn}", Result = r, Success = true, Quality = QualityLevel.DATABASE_HIT }); } catch (Exception ex) { Console.WriteLine($"   [E1兜底] 异常: {ex.Message}"); }
-                return results;
-            }
-
-            return null;
-        }
 
     }
 

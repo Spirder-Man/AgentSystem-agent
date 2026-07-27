@@ -2,7 +2,7 @@
 
 > **目的**：结构化记录每个 Bug 的根因/修复/影响模块，实现跨批次知识累积，避免同类问题反复出现。
 > **使用方式**：每次修复 Bug 后按模板录入；每次分析日志前浏览「系统弱点了然表」确定重点监控项。
-> **文档版本**：v2.4 | **创建日期**：2026-06-30 | **最后更新**：2026-07-20（Bug-032 v2 回马枪：防御代码位置正确性 + dotnet run 增量编译缓存陷阱）
+> **文档版本**：v2.5 | **创建日期**：2026-06-30 | **最后更新**：2026-07-27（Bug-033：降级路径架构收敛 — 门卫+责任链+统一入口）
 
 ---
 
@@ -33,6 +33,7 @@
 | W19 | **外部依赖缺少降级路径** | 数据库唯一约束 / embedding 服务不可用 → 应用崩溃或核心功能静默失效 | `致命错误` / `ECONNREFUSED` / chunks 表行数 0 | [Bug-029](#bug-029) [Bug-030](#bug-030) |
 | W20 | **哈希输入含微秒时间戳致往返漂移** | 每次时间归一化逻辑变更后历史记录哈希验证全败，修复后不重写旧记录致循环复发 | `哈希链断裂于 ID=1` / `RepairChainAsync` 修复数>0 反复出现 | [Bug-031](#bug-031) |
 | W21 | **FC=Required 违约时 LLM 废话透传（系统性）** | Qwen3-8B 忽略 FC 指令输出通用助手废话，ApplyDecoupledPipeline 兜底分支合并废话到用户可见输出；Emergency/RegulatoryAudit/KnowledgeGraph 路径零质量门 | `[SK诊断] ⚠️ 本轮未调用任何工具` + 输出含 emoji/时间戳注释 | [Bug-032](#bug-032) |
+| W22 | **LLM 零工具调用降级路径分裂** | 4 条 LLM 零工具调用降级路径各自处理方式不同：E1 正则猜测、FC=Required 违约→BuildNoResult、熔断器→规则引擎、"生成失败"→规则引擎。同一场景不同入口行为不一致，E1 正则永远不被 T13 评测路径触发 | `toolCalls==0` 在不同调用路径下行为不一致 / E1 命中率 0 vs 规则引擎命中率 >0 | [Bug-033](#bug-033) |
 
 ---
 
@@ -45,6 +46,7 @@
 | [Bug-027](#bug-027) | 07-03 | P0 | 评测引擎 | Citation Accuracy 误判数据库源GB编号为幻觉（42条中仅8-12条为真实幻觉） |
 | [Bug-028](#bug-028) | 07-03 | P1 | LLM幻觉 | Qwen3:8b 自行编造法规年代版本号（GB 15603-2023实际为2022）+ 三层约束修复 |
 | [Bug-032](#bug-032) | 07-18 | P0 | 输出质量门 | FC=Required 违约时 LLM 通用废话透传 — 全业务链路输出质量门系统性缺失 + toolCalls 确定性信号兜底 |
+| [Bug-033](#bug-033) | 07-27 | P0 | 架构收敛 | LLM 零工具调用降级路径分裂 — E1正则+FC违约+熔断器+生成失败四条路径各自处理，统一为责任链+信号词门卫+规则引擎 |
 | [Bug-031](#bug-031) | 07-18 | P0 | 审计 | 哈希链含微秒 createTime — 三次修复仍断裂，彻底移除时间参数 + 启动自愈 |
 | [Bug-029](#bug-029) | 07-18 | P0 | 数据库 | INSERT 无 ON CONFLICT — 重复文档导致 API 启动崩溃 |
 | [Bug-030](#bug-030) | 07-18 | P0 | 降级逻辑 | 向量嵌入失败跳过 chunk DB 写入 — knowledge_chunks 永远为空，启动永远全量管道 |
@@ -1033,6 +1035,39 @@
 | N6 | 影响面分析（用户主动） | "该修复会引出其他bug吗？？如果不需要调用工具的时候但是出现了问题，该怎么办？？是否会影响其他业务链路，是否会影响降级策略？？？" | 逐项排查 7 个维度：① toolCalls==0 在 FC=Required 下永远是异常（协议违约），不存在"合法不需要调用工具"的场景 ② Emergency/RegulatoryAudit/KnowledgeGraph 不受影响（走 GeneralChatAsync） ③ 降级链路（熔断器/规则引擎）正交独立 ④ OutputValidator 在 toolCalls==0 时本就不执行 ⑤ 会话/记忆系统会正确存储拒绝文本作为下次上下文 ⑥ 需新增 Metrics 计数器 ⑦ 需加防御性注释标注 FC 契约依赖 | 执行修复 + 防御性注释 + Metrics 可观测性 | 不做影响面分析直接修：可能导致未来 FC 策略变更为 Auto 时误杀合法输出 |
 | N7 | 实现决策 | 修复粒度：仅 ApplyDecoupledPipeline else 分支，还是也修 Emergency 等路径？ | Emergency 等路径不使用 FC=Required，toolCalls 检查无意义。它们的修复需要先引入 FC 约束（结构性变更），不应与 Bug-032 混在一起 | 先修 ChemicalCompliance 路径（P0），Emergency 等路径留待后续架构迭代 | 一并修复所有路径：Emergency 路径需要 FC 策略调整，改动面过大且风险未知 |
 | N8 | v2 回马枪（用户发起） | "多次重跑扫描"后 FC 违约 15 次但拦截 0 次？"什么意思？？什么叫太晚了？" | ① v1 的 `toolCalls==0` 检查放在 `else` 分支内，当 `HasAnyToolResult==true` 时被提前 return 绕过，永远执行不到。② 远程 `dotnet run` 增量编译缓存导致 v2 源码变更未编译进 DLL。③ 强制 `rm -rf bin/obj && dotnet build --force` 后 v2 生效，3 轮扫描拦截 10 次 FC 违约（Prometheus: 10）。④ 新增教训：防御代码的"位置正确性"是独立于"逻辑正确性"的第二维度 | ① 将 toolCalls==0 提升为 HasAnyToolResult 之前的独立最高优先级闸门 ② 建立远程部署强制清理 bin/obj 的 SOP | 仅依赖 `dotnet run` 自动增量编译：已验证不可靠，浪费 3 轮扫描（~45 分钟） |
+
+---
+
+### Bug-033：LLM 零工具调用降级路径分裂 — E1正则+FC违约+熔断器+生成失败四条路径各自处理，统一为责任链+信号词门卫+规则引擎 {#bug-033}
+
+| 字段 | 内容 |
+|------|------|
+| **发现日期** | 2026-07-27 |
+| **严重等级** | 🔴 P0 — 架构级收敛：同一场景（LLM 零工具调用）存在 4 条互不相同的降级路径，E1 正则路径甚至不被 T13 评测触发 |
+| **发现场景** | Bug-032 修复后的架构追问：用户质疑「E1 正则兜底不是工程解法，靠猜测来兜底 LLM 监护」。进一步审查发现 4 条零工具调用降级路径各自为政：① E1 正则猜测（仅 ExecuteEvalInternalAsync/ExecuteEvalPerCaseAsync 触发）、② FC=Required 违约→BuildNoResult（仅 ExecuteChemicalComplianceAsync else 分支触发）、③ 熔断器打开→规则引擎（全部路径触发）、④ "生成失败"→规则引擎（全部路径触发）。Git 历史分析显示同一开发者（2732232706@qq.com）在 35 天内分 4 次 commit 加入了互不感知的降级路径 |
+| **影响模块** | `Agent1/Services/Orchestration/DeterministicRuleEngine.cs`（重构：新增 IComplianceQueryHandler 接口 + ChemicalSignalGate 信号词门卫 + 3 个 Handler 类 + _handlers 责任链，废弃 3 个旧 private 方法）、`Agent1/Services/Dialog/AgentDialog.cs`（3 处调用点统一：ExecuteChemicalComplianceAsync/L484、ExecuteEvalInternalAsync/L642、ExecuteEvalPerCaseAsync/L716 → 全部替换为 TryFallbackToRuleEngine）、`Agent1/Services/AI/LlmService.cs`（删除 TryKeywordToolFallbackAsync 方法 — 40 行 3 个正则模式） |
+| **根因** | **三层根因，层层递进。L1 现象**：4 条路径各自独立处理 toolCalls==0，行为不一致。对话路径（ExecuteChemicalComplianceAsync）走 FC=Required 违约→BuildNoResult→ResponseMerger 合并 LLM 废话；评测路径（ExecuteEvalInternalAsync/ExecuteEvalPerCaseAsync）走 E1 正则猜测→注入假工具结果。**L2 心理边界分裂**：Git 历史显示同一开发者在不同时间点将「LLM 完全宕机」（熔断器打开、「生成失败」）和「LLM 未调用工具」（FC=Required 违约）视为两类不同问题，分别写了独立处理逻辑。6/23 创建规则引擎用于熔断器降级（LLM down），7/3 创建 FC=Required 违约分支（LLM didn't call tools），7/11 加 E1 正则猜测（LLM didn't call tools but in eval context），7/20 Bug-032 修复 FC 废话透传（仍保留 BuildNoResult）。**L3 设计假设**：规则引擎的原始设计定位是「LLM 完全不可用时」的降级，而非「LLM 没有调用工具时」的兜底。但本质上两者都是 toolCalls==0 → 需要确定性答案，完全可以用同一套机制处理 |
+| **修复** | **分两层：收敛 + 架构升级。**<br><br>**第一层（收敛 — 统一降级入口）**：将 4 个分散的降级点全部收敛到 `TryFallbackToRuleEngine`。ExecuteChemicalComplianceAsync 的 else 分支（原 FC=Required 违约→BuildNoResult）改为先调规则引擎→命中返回/未命中走 DecoupledPipeline；ExecuteEvalInternalAsync 和 ExecuteEvalPerCaseAsync 的 E1 正则块删除，改为 toolCalls==0 时调 TryFallbackToRuleEngine；熔断器打开和"生成失败"两条路径原本已调规则引擎，保持一致。<br><br>**第二层（架构升级 — 门卫+责任链）**：规则引擎内部从硬编码三步 if/else 重构为可扩展的责任链模式。① 新增 `IComplianceQueryHandler` 接口（`TryHandle(string query) → ComplianceFallbackResult?`）；② 新增 `ChemicalSignalGate` 信号词门卫（18 个化工关键词，O(18) 纯字符串包含检查，拦截"蜘蛛侠""今天天气"等完全无关输入，避免无效 handler 运行）；③ 新增 3 个 Handler 类（StorageCompatibilityHandler/HazardCategoryHandler/SafetyDistanceHandler），各自内部做二次关键词过滤→查数据库→拼答案；④ `_handlers` 列表管理责任链，`TryHandleComplianceQuery` 核心方法：`if !Gate.Pass → return null | foreach handler → 首个命中返回`；⑤ 删除 3 个旧的 private 方法（TryHandleStorageQuery/TryHandleHazardQuery/TryHandleSafetyDistanceQuery）和 LlmService.cs 的 TryKeywordToolFallbackAsync（3 正则模式）。<br><br>**聚合架构对比**：改前 4 条路径→3 种不同处理器（正则/规则引擎/BuildNoResult）；改后 4 条路径→1 个统一入口（TryFallbackToRuleEngine）→门卫→责任链。新增场景（如应急响应）只需新增一个 IComplianceQueryHandler 实现 + 在 _handlers 列表加一行注册，核心代码零改动 |
+| **修复提交** | 本次（待提交） |
+| **关联 Bug** | [Bug-032](#bug-032)（FC=Required 违约时 LLM 废话透传 — 同一 toolCalls==0 场景的不同表现）；[Bug-023](#bug-023)（双通道保护多路径不一致 — 同为路径分裂的系统性缺陷）；[Bug-029](#bug-029) [Bug-030](#bug-030)（降级路径缺失族 — 同类设计假设缺陷） |
+| **验证方法** | ① Windows 本地 `dotnet build` 编译 0 错误通过；② 远程 GPU 评测：FC 违约场景确认走规则引擎而非 E1 正则/BuildNoResult，`grep "规则引擎接管" T13*.log` 应出现命中日志；③ 无关输入（"今天天气怎么样"）应被门卫拦截，不打印规则引擎日志；④ 正常 toolCalls>0 场景不受影响 |
+| **教训** | ① **心理边界分裂是架构腐化的隐形推手**：同一开发者在不同时间点将「同一根因（toolCalls==0）的不同表现」视为不同问题，导致 4 条互不感知的降级路径。代码审查时应对照 Git 历史检查新加入的降级逻辑是否与已有逻辑重复或冲突；② **正则模式匹配 LLM 输出是伪工程方案**：E1 的 3 个正则（储存安全关键词、安全距离关键词、危险类别关键词）本质上是将 LLM 零工具调用时的「意图猜测」前置到代码层，不可靠且不可维护。真正的确定性信号是 `toolCalls.Count`（框架层结构化数据，二进制：0=违约/大于0=正常）；③ **责任链 + 信号词门卫是确定性兜底的可演进架构**：门卫负责粗筛（O(18) 字符串包含），责任链负责精细匹配（数据库查询），核心方法 `TryHandleComplianceQuery` 只写一次永不再改。未来应急响应、泄漏处理等场景只需新增 Handler 实现 + 一行注册；④ **FC=Required 下 toolCalls==0 是全局确定性信号**：不应按调用路径（对话 vs 评测）分治，统一在降级入口处处理 |
+| **追问深度** | 5 层（L1 现象：4 条路径行为不一致 → L2 Git 历史：同一开发者心理边界分裂 → L3 设计意图：规则引擎原始定位"LLM down"≠"LLM didn't call tools" → L4 架构哲学：门卫+责任链 vs 硬编码 if/else 的可演进性 → L5 方法论：设计理据追问法 — 问"为什么当时选正则而不选规则引擎"比问"怎么修正则"更有价值） |
+
+## 思维链路（对话复盘）
+
+> 记录本次 Bug 分析的关键思考节点，使后续复盘时不依赖记忆即可还原推理过程。
+> **特别标注**：N2 节点是用户发起的「心理边界」追问，将分析从技术层上升到认知层；N3 节点是方法论觉醒 — 建立了「设计理据追问法」作为 AI 协同开发的通用思考工具。
+
+| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
+|:---:|------|------|------|------|------|
+| N1 | 现象确认 | Bug-032 修复后，用户质疑：「E1 正则兜底不是工程解法吧，靠猜测来兜底 LLM 监护，这个设计不合理」 | E1 用 3 个正则模式匹配用户输入中的"储存""安全距离""危险类别"关键词 → 调用 ChemicalSubstanceDatabase 并注入为假工具结果。实质是将 LLM 零工具调用的意图猜测前置到代码层，不可靠且不可维护 | 确认 E1 正则方案是架构问题而非 Bug | — |
+| N2 | L1→L2 追问（用户发起） | 「既然写了规则引擎为什么之前没有用呢？？？为什么当时选择了正则？？？」 | Git log 显示所有 commit 作者均为 2732232706@qq.com（同一人）。6/23 创建规则引擎（LLM down），7/11 加 E1 正则（LLM didn't call tools in eval）。同一开发者将「LLM 完全宕机」和「LLM 未调用工具」视为两类问题，心理上做了边界划分 → 行为上写了独立方案 → 代码上产生了 4 条分裂路径 | 确认根因是心理边界分裂导致的设计分歧，非能力问题。引出「设计理据追问法」 | 一开始想直接改正则位置（Bug-033 原方案）→ 被否决：修症状不改结构 |
+| N3 | L2→L3 追问 | 「应该问问当时在协同开发的时候设计得这些模块时到底怎么想的，这个思维层面很重要」 | 提炼出「设计理据追问法」：每次看到 AI 生成的代码时多问自己 3 个问题 — ① 它为什么选这个方案而不是已有的 XXX？② 这个选择暴露了我的什么认知盲区？③ 如果重来，应该在哪一步纠正 AI？ 决定先记录方法论再动手修 | 创建 `docs/methodology/ai-collaboration-design-rationale.md` 作为知识沉淀 | 直接动手修代码：错过提取可迁移方法论的机会 |
+| N4 | 方案分支 | 「架构收敛如何做？4 条路径统一为 1 条 vs 保留分层？」 | 当前 4 条路径的 3 种不同处理器的核心差异是"由谁来决定要不要降级"：E1 是用户意图猜测、FC 违约是 LLM 行为信号、熔断器是服务健康信号、"生成失败"是输出内容信号。收敛策略：统一入口→信号词门卫（粗筛）→责任链（精细匹配） | 选全收敛方案：4 条路径全部调 TryFallbackToRuleEngine → 门卫 → 责任链。门卫拦无关输入，责任链匹配具体场景 | 保留分层但加统一调度器：过度设计，当前 4 条路径场景重叠度高达 80% |
+| N5 | 实现决策 | 「规则引擎当前只覆盖三类场景，如何从设计上解决扩展性？」 | 现行硬编码三步 if/else（TryHandleStorageQuery → TryHandleHazardQuery → TryHandleSafetyDistanceQuery）每次新增场景必须修改核心方法。引入 IComplianceQueryHandler 接口 + _handlers 列表：新增场景 = 新 Handler 类 + 一行注册，核心方法零改动 | 选责任链模式：接口定义契约 → ChemicalSignalGate 粗筛 → foreach _handlers → 首个命中返回 | 保持 if/else 但抽取为独立方法列表：实现形式不同但本质相同，不如一步到位用接口 |
+| N6 | 实现决策 | 「信号词门卫放多少词？会不会误拦？」 | 18 个化工信号词（危险/安全/储存/化学品/合规/法规/GB/禁忌/物质/特性/类别/分类/分级/间距/距离/防火/同库/共存/混合/配伍/闪点/沸点/危害/储罐）。门卫只做粗筛不做精准判断：放行"危险的蜘蛛侠"（含"危险"），由责任链二次过滤 → 三个 handler 都不匹配 → 返回 null → 走 DecoupledPipeline/BuildNoResult。宁可漏进不可误拦 | 信号词控制在 20 个以内，保持 O(20) 复杂度。不追求穷举，因为责任链有二次过滤 | 做 NLP 意图分类 → 过度设计，引入 LLM 依赖违背"确定性兜底"设计哲学 |
+| N7 | 实现决策 | 「E1 正则删除后是否影响 Bot 对话的正常问题回答？」 | E1 正则原本只在评测路径（ExecuteEvalInternalAsync/ExecuteEvalPerCaseAsync）触发，对话路径走的是 FC=Required 违约→BuildNoResult 分支。删除 E1 后评测路径统一为 TryFallbackToRuleEngine → 门卫 → 责任链 → 未命中走 DecoupledPipeline，与对话路径完全一致。不影响正常 toolCalls>0 的任何场景 | 四路径全收敛：ExecuteChemicalComplianceAsync/ExecuteEvalInternalAsync/ExecuteEvalPerCaseAsync + 原有熔断器/生成失败路径 | 只删 E1 不改对话路径：继续维持路径分裂 |
 
 ---
 

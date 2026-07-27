@@ -1,6 +1,6 @@
 # Agent1 — 化工园区危化品合规审查 AI Agent
 
-> **版本**：v4.6 | **编译**：0 错误 | **测试**：1500 通过 | **分支**：`linux原生编译模型llama.cpp`
+> **版本**：v4.7 | **编译**：0 错误 | **测试**：1500 通过 | **分支**：`linux原生编译模型llama.cpp`
 
 基于 .NET 8 + Semantic Kernel + **llama.cpp 原生编译**构建的企业级化工园区危化品合规审查 AI Agent。支持 REST API、JWT 认证、PostgreSQL+pgvector 混合检索、OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对 NVIDIA GPU (RTX 3090/3080 Ti) Linux 环境 RAG 全链路 GPU 加速**。
 
@@ -8,6 +8,7 @@
 
 ```
 ┌──────────────────────────────────────────────────┐
+│  LLM 降级体系  │  门卫+责任链+规则引擎确定性兜底    │
 │  AI 推理引擎  │  SK Auto FC + 三层防御 + GPU嵌入   │
 │  化工合规工具  │  8 个 [KernelFunction] + Token预算 │
 │  知识库       │  BM25+Vector+RRF+增量更新          │
@@ -58,6 +59,7 @@ scripts/                # 开发者工具箱（日志下载/远程监控）
 ## ✨ 核心功能
 
 - **双通道解耦架构** ★：法规引用归 C# 确定性代码（100% 准确），推理分析归 LLM — 四道防线防幻觉
+- **LLM 降级体系 v2** ★：门卫(信号词粗筛) → 责任链(多Handler精细匹配) → 规则引擎确定性兜底。新增场景仅需一行注册
 - **RAG GPU 全链路加速**：批量嵌入 + GPU 向量索引 + Cross-Encoder Reranker + 查询缓存
 - **结构化化学品数据库**：58 种危化品（CAS/UN编号/闪点/爆炸极限）+ 20 组储存禁忌 + 安全距离
 - **8 个 AI 工具**：危险类别查询/储存兼容性/安全距离/化学品属性/法规引用 + GHS 标签识别
@@ -158,9 +160,20 @@ docs/
 
 ## 📋 近期更新
 
+### v4.7 — 架构收敛：降级路径统一为门卫+责任链+规则引擎（2026-07-27）
+
+- **Bug-033 架构收敛**：4 条 LLM 零工具调用降级路径（E1正则猜测/FC=Required违约→BuildNoResult/熔断器打开→规则引擎/"生成失败"→规则引擎）统一收敛为单一入口 `TryFallbackToRuleEngine`
+  - **DeterministicRuleEngine 重构**：新增 `IComplianceQueryHandler` 接口 + `ChemicalSignalGate` 信号词门卫（18 个化工关键词粗筛）+ 3 个 Handler 类（StorageCompatibility/HazardCategory/SafetyDistance）→ `_handlers` 责任链 → 首个命中返回
+  - **AgentDialog 三调用点统一**：ExecuteChemicalComplianceAsync/ExecuteEvalInternalAsync/ExecuteEvalPerCaseAsync → 全部替换为 TryFallbackToRuleEngine
+  - **LlmService 清理**：删除 `TryKeywordToolFallbackAsync` 方法（40 行 3 个正则模式，伪工程方案）
+- **长期可演进策略**：门卫拦无关输入（"蜘蛛侠"不触发 handler），责任链匹配具体场景，新增合规场景（如应急响应）仅需新增一个 `IComplianceQueryHandler` 实现 + 在 `_handlers` 列表加一行注册，核心方法 `TryHandleComplianceQuery` 永不再改
+- **根因方法论**：Git 历史分析发现同一开发者在 35 天内分 4 次 commit 加入互不感知的降级路径，根因是"LLM 完全宕机"和"LLM 未调用工具"的心理边界分裂。提炼出「设计理据追问法」— 看到 AI 生成的代码时问 3 个问题：为什么选这个方案？暴露了什么认知盲区？应该在哪个环节纠正？
+- **Bug 知识库**：新增 Bug-033 完整记录 + W22 系统弱点 + 7 节点思维链路复盘
+- 详见 [Bug知识库](docs/project/Bug知识库.md) Bug-033
+
 ### v4.6 — 工程侧7项缺陷修复：幻觉防护 + 别名归一化 + 评测准确性（2026-07-25）
 
-- **E1 FC关键字兜底机制**：LLM零工具调用时按关键词正则自动触发 ChemicalComplianceTools，覆盖同库储存/安全距离/危险类别三类场景
+- **E1 FC关键字兜底机制（v4.7 已重构为门卫+责任链架构）**：原LLM零工具调用时按关键词正则自动触发 ChemicalComplianceTools，见下方 v4.7 架构收敛
 - **E2 Prompt反幻觉指令强化**：将 `[REGULATIONS:]` 标签引用改为自然语言「所见即所得」式指令，明确GB编号相似≠相同规则
 - **E3 法规编号精确匹配**：`IsRegulationAllowed` 删除 Contains 模糊匹配，仅保留 Equals；`NormalizeRegNumber` 新增年份后缀剥离
 - **E4 RAG检索来源去重**：重排序后增加来源去重——每源文档最多2条，至少3个不同来源，防止单一文档垄断 topK
@@ -198,4 +211,4 @@ docs/
 
 ---
 
-**文档版本**：v4.19 | **最后更新**：2026-07-25 | **许可证**：MIT
+**文档版本**：v4.20 | **最后更新**：2026-07-27 | **许可证**：MIT

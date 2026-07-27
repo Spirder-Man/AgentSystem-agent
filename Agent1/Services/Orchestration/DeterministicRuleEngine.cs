@@ -5,6 +5,201 @@ using Agent1.Models;
 
 namespace Agent1.Services.Orchestration
 {
+    // ═══════════════════════════════════════════════════════
+    // LLM 降级查询责任链 — 可扩展的确定性兜底
+    // ═══════════════════════════════════════════════════════
+
+    /// <summary>合规查询处理器接口：每个实现负责一类化工合规场景的确定性回答。</summary>
+    public interface IComplianceQueryHandler
+    {
+        /// <summary>尝试处理用户查询，返回确定性回答；null 表示当前 handler 不适用。</summary>
+        ComplianceFallbackResult? TryHandle(string query);
+    }
+
+    /// <summary>
+    /// 化工信号词门卫 — 查询必须包含至少一个化工相关信号词才进入责任链。
+    /// 拦截"蜘蛛侠""今天天气"等完全无关的输入，防止无效查询浪费 handler 计算。
+    /// </summary>
+    internal static class ChemicalSignalGate
+    {
+        private static readonly string[] Signals =
+        {
+            "危险", "安全", "储存", "化学品", "合规", "法规", "GB", "禁忌",
+            "物质", "特性", "类别", "分类", "分级", "间距", "距离", "防火",
+            "同库", "共存", "混合", "配伍", "闪点", "沸点", "危害", "储罐"
+        };
+
+        public static bool Pass(string query) => Signals.Any(s => query.Contains(s));
+    }
+
+    /// <summary>储存兼容性查询处理器</summary>
+    internal class StorageCompatibilityHandler : IComplianceQueryHandler
+    {
+        private static readonly string[] Keywords =
+            { "同库", "共存", "混合", "禁忌", "配伍", "储存", "一起存放", "放在一起",
+              "同库存放", "兼容", "能否", "可以", "不可" };
+
+        public ComplianceFallbackResult? TryHandle(string query)
+        {
+            if (!Keywords.Any(k => query.Contains(k)))
+                return null;
+
+            var allSubstances = ChemicalSubstanceDatabase.GetAll();
+            var mentioned = allSubstances
+                .Where(s => query.Contains(s.Name, StringComparison.OrdinalIgnoreCase))
+                .Select(s => s.Name)
+                .ToList();
+
+            foreach (var sub in allSubstances)
+            {
+                if (!mentioned.Contains(sub.Name))
+                {
+                    foreach (var alias in sub.Aliases)
+                    {
+                        if (query.Contains(alias, StringComparison.OrdinalIgnoreCase))
+                        {
+                            mentioned.Add(sub.Name);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (mentioned.Count < 2)
+            {
+                foreach (var rule in DeterministicRuleEngine.StorageCompatibilityRules)
+                {
+                    var (a, b) = rule.Key;
+                    if (query.Contains(a) && query.Contains(b))
+                    {
+                        return new ComplianceFallbackResult
+                        {
+                            Answer = $"【储存兼容性】{a}与{b}禁止同库储存",
+                            RegulationRefs = new List<string> { DeterministicRuleEngine.ExtractRegulationRef(rule.Value) },
+                            Quality = "DICTIONARY_HIT"
+                        };
+                    }
+                }
+                return null;
+            }
+
+            var subA = mentioned[0];
+            var subB = mentioned[1];
+
+            foreach (var rule in DeterministicRuleEngine.StorageCompatibilityRules)
+            {
+                var (a, b) = rule.Key;
+                if ((string.Equals(a, subA, StringComparison.OrdinalIgnoreCase) && string.Equals(b, subB, StringComparison.OrdinalIgnoreCase)) ||
+                    (string.Equals(a, subB, StringComparison.OrdinalIgnoreCase) && string.Equals(b, subA, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return new ComplianceFallbackResult
+                    {
+                        Answer = $"【储存兼容性】{subA}与{subB}禁止同库储存",
+                        RegulationRefs = new List<string> { DeterministicRuleEngine.ExtractRegulationRef(rule.Value) },
+                        Quality = "DICTIONARY_HIT"
+                    };
+                }
+            }
+
+            var compat = ChemicalSubstanceDatabase.CheckCompatibility(subA, subB);
+            if (compat != null)
+            {
+                var verdict = compat.IsCompatible ? "可同库储存" : "不得同库储存";
+                return new ComplianceFallbackResult
+                {
+                    Answer = $"【储存兼容性】{subA}与{subB}: {verdict}\n原因: {compat.Reason}",
+                    RegulationRefs = new List<string> { compat.RegulationRef ?? "GB 15603" },
+                    Quality = "DATABASE_HIT"
+                };
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>危险类别查询处理器</summary>
+    internal class HazardCategoryHandler : IComplianceQueryHandler
+    {
+        private static readonly string[] Keywords =
+            { "类别", "分类", "属于", "危险", "危害", "特性", "性质", "闪点", "沸点" };
+
+        public ComplianceFallbackResult? TryHandle(string query)
+        {
+            if (!Keywords.Any(k => query.Contains(k)))
+                return null;
+
+            var allSubstances = ChemicalSubstanceDatabase.GetAll();
+            foreach (var sub in allSubstances)
+            {
+                if (query.Contains(sub.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    var hazardInfo = sub.HazardCategories.FirstOrDefault()?.Category ?? "未知";
+                    var gbStandard = sub.HazardCategories.FirstOrDefault()?.GbStandard ?? "";
+                    var answer = $"【危险类别】{sub.Name}: {hazardInfo}";
+                    if (!string.IsNullOrEmpty(gbStandard))
+                        answer += $"（{gbStandard}）";
+                    if (sub.FlashPointC.HasValue)
+                        answer += $"\n闪点: {sub.FlashPointC}°C";
+                    if (sub.BoilingPointC.HasValue)
+                        answer += $"\n沸点: {sub.BoilingPointC}°C";
+
+                    var refs = new List<string>();
+                    if (!string.IsNullOrEmpty(gbStandard))
+                        refs.Add(gbStandard);
+                    foreach (var hc in sub.HazardCategories)
+                    {
+                        if (!string.IsNullOrEmpty(hc.GbStandard) && !refs.Contains(hc.GbStandard))
+                            refs.Add(hc.GbStandard);
+                    }
+
+                    return new ComplianceFallbackResult
+                    {
+                        Answer = answer,
+                        RegulationRefs = refs,
+                        Quality = "DATABASE_HIT"
+                    };
+                }
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>安全距离查询处理器</summary>
+    internal class SafetyDistanceHandler : IComplianceQueryHandler
+    {
+        private static readonly string[] Keywords =
+            { "安全距离", "间距", "消防通道", "防火间距", "储罐间距" };
+
+        public ComplianceFallbackResult? TryHandle(string query)
+        {
+            if (!Keywords.Any(k => query.Contains(k)))
+                return null;
+
+            var distances = ChemicalSubstanceDatabase.GetAllSafetyDistances();
+            foreach (var sd in distances)
+            {
+                if (query.Contains(sd.FacilityPair, StringComparison.OrdinalIgnoreCase) ||
+                    sd.FacilityPair.Split(new[] { '-' }, StringSplitOptions.RemoveEmptyEntries)
+                        .All(part => query.Contains(part.Trim(), StringComparison.OrdinalIgnoreCase)))
+                {
+                    return new ComplianceFallbackResult
+                    {
+                        Answer = $"【安全距离】{sd.FacilityPair}: 最小安全距离 {sd.MinDistanceMeters}m",
+                        RegulationRefs = new List<string> { sd.RegulationRef ?? "GB 50016" },
+                        Quality = "DATABASE_HIT"
+                    };
+                }
+            }
+
+            return null;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // 确定性规则引擎
+    // ═══════════════════════════════════════════════════════
+
     /// <summary>
     /// 确定性规则引擎 — 传统化工安全系统的核心范式。
     /// 
@@ -21,7 +216,7 @@ namespace Agent1.Services.Orchestration
     public class DeterministicRuleEngine
     {
         // 内置储存禁忌配对表（来自 ChemicalSubstanceDatabase）
-        private static readonly Dictionary<(string, string), string> StorageCompatibilityRules = new()
+        internal static readonly Dictionary<(string, string), string> StorageCompatibilityRules = new()
         {
             // 这些规则来自 GB 15603，100% 确定，不需要 LLM 推理
             [("苯", "丙酮")] = "禁止同库储存 | GB 15603-2022 §4.2.2",
@@ -30,6 +225,14 @@ namespace Agent1.Services.Orchestration
             [("硝酸", "甲醇")] = "禁止同库储存 | GB 15603-2022 §4.2.3",
             [("硫酸", "氢氧化钠")] = "禁止同库储存（酸碱反应）| GB 15603-2022 §4.2.3",
             [("氢氧化钠", "硫酸")] = "禁止同库储存（酸碱反应）| GB 15603-2022 §4.2.3",
+        };
+
+        /// <summary>LLM 降级查询责任链 — 新增场景在此添加 handler 即可</summary>
+        private readonly List<IComplianceQueryHandler> _handlers = new()
+        {
+            new StorageCompatibilityHandler(),
+            new HazardCategoryHandler(),
+            new SafetyDistanceHandler(),
         };
 
         /// <summary>
@@ -159,191 +362,33 @@ namespace Agent1.Services.Orchestration
 
         /// <summary>
         /// 尝试用确定性规则回答合规查询（不依赖 LLM）。
+        /// 使用责任链模式：信号词门卫 → handler 链 → 首个命中返回。
         /// 覆盖场景：储存兼容性、危化品危险类别、安全距离。
+        /// 新增场景只需在 _handlers 列表中添加新的 IComplianceQueryHandler 实现。
         /// </summary>
-        /// <param name="userQuery">用户查询文本</param>
-        /// <returns>确定性回答；null 表示无法处理，需 LLM</returns>
+        /// <returns>确定性回答；null 表示超出规则引擎能力范围</returns>
         public ComplianceFallbackResult? TryHandleComplianceQuery(string userQuery)
         {
             if (string.IsNullOrWhiteSpace(userQuery))
                 return null;
 
-            // 1. 尝试储存兼容性查询（两个化学品）
-            var storageResult = TryHandleStorageQuery(userQuery);
-            if (storageResult != null)
-                return storageResult;
-
-            // 2. 尝试危险类别查询（单个化学品 + 类别/分类关键词）
-            var hazardResult = TryHandleHazardQuery(userQuery);
-            if (hazardResult != null)
-                return hazardResult;
-
-            // 3. 尝试安全距离查询
-            var distanceResult = TryHandleSafetyDistanceQuery(userQuery);
-            if (distanceResult != null)
-                return distanceResult;
-
-            return null;
-        }
-
-        /// <summary>处理储存兼容性查询</summary>
-        private ComplianceFallbackResult? TryHandleStorageQuery(string query)
-        {
-            // 检测是否为储存兼容性查询
-            var storageKeywords = new[] { "同库", "共存", "混合", "禁忌", "配伍", "储存", "一起存放", "放在一起",
-                                          "同库存放", "兼容", "能否", "可以", "不可" };
-            if (!storageKeywords.Any(k => query.Contains(k)))
+            // ── 信号词门卫：拦截完全不相关的输入 ──
+            if (!ChemicalSignalGate.Pass(userQuery))
                 return null;
 
-            // 从 ChemicalSubstanceDatabase 获取所有已知化学品名称
-            var allSubstances = ChemicalSubstanceDatabase.GetAll();
-            var mentioned = allSubstances
-                .Where(s => query.Contains(s.Name, StringComparison.OrdinalIgnoreCase))
-                .Select(s => s.Name)
-                .ToList();
-
-            // 也检查别名
-            foreach (var sub in allSubstances)
+            // ── 责任链：按注册顺序依次尝试 handler ──
+            foreach (var handler in _handlers)
             {
-                if (!mentioned.Contains(sub.Name))
-                {
-                    foreach (var alias in sub.Aliases)
-                    {
-                        if (query.Contains(alias, StringComparison.OrdinalIgnoreCase))
-                        {
-                            mentioned.Add(sub.Name);
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (mentioned.Count < 2)
-            {
-                // 也尝试从内置规则表中匹配
-                foreach (var rule in StorageCompatibilityRules)
-                {
-                    var (a, b) = rule.Key;
-                    if (query.Contains(a) && query.Contains(b))
-                    {
-                        return new ComplianceFallbackResult
-                        {
-                            Answer = $"【储存兼容性】{a}与{b}禁止同库储存",
-                            RegulationRefs = new List<string> { ExtractRegulationRef(rule.Value) },
-                            Quality = "DICTIONARY_HIT"
-                        };
-                    }
-                }
-                return null;
-            }
-
-            // 取前两个提到的化学品
-            var subA = mentioned[0];
-            var subB = mentioned[1];
-
-            // 先用内置规则表检查
-            foreach (var rule in StorageCompatibilityRules)
-            {
-                var (a, b) = rule.Key;
-                if ((string.Equals(a, subA, StringComparison.OrdinalIgnoreCase) && string.Equals(b, subB, StringComparison.OrdinalIgnoreCase)) ||
-                    (string.Equals(a, subB, StringComparison.OrdinalIgnoreCase) && string.Equals(b, subA, StringComparison.OrdinalIgnoreCase)))
-                {
-                    return new ComplianceFallbackResult
-                    {
-                        Answer = $"【储存兼容性】{subA}与{subB}禁止同库储存",
-                        RegulationRefs = new List<string> { ExtractRegulationRef(rule.Value) },
-                        Quality = "DICTIONARY_HIT"
-                    };
-                }
-            }
-
-            // 再用 ChemicalSubstanceDatabase 检查
-            var compat = ChemicalSubstanceDatabase.CheckCompatibility(subA, subB);
-            if (compat != null)
-            {
-                var verdict = compat.IsCompatible ? "可同库储存" : "不得同库储存";
-                return new ComplianceFallbackResult
-                {
-                    Answer = $"【储存兼容性】{subA}与{subB}: {verdict}\n原因: {compat.Reason}",
-                    RegulationRefs = new List<string> { compat.RegulationRef ?? "GB 15603" },
-                    Quality = "DATABASE_HIT"
-                };
-            }
-
-            return null;
-        }
-
-        /// <summary>处理危险类别查询</summary>
-        private ComplianceFallbackResult? TryHandleHazardQuery(string query)
-        {
-            var hazardKeywords = new[] { "类别", "分类", "属于", "危险", "危害", "特性", "性质", "闪点", "沸点" };
-            if (!hazardKeywords.Any(k => query.Contains(k)))
-                return null;
-
-            var allSubstances = ChemicalSubstanceDatabase.GetAll();
-            foreach (var sub in allSubstances)
-            {
-                if (query.Contains(sub.Name, StringComparison.OrdinalIgnoreCase))
-                {
-                    var hazardInfo = sub.HazardCategories.FirstOrDefault()?.Category ?? "未知";
-                    var gbStandard = sub.HazardCategories.FirstOrDefault()?.GbStandard ?? "";
-                    var answer = $"【危险类别】{sub.Name}: {hazardInfo}";
-                    if (!string.IsNullOrEmpty(gbStandard))
-                        answer += $"（{gbStandard}）";
-                    if (sub.FlashPointC.HasValue)
-                        answer += $"\n闪点: {sub.FlashPointC}°C";
-                    if (sub.BoilingPointC.HasValue)
-                        answer += $"\n沸点: {sub.BoilingPointC}°C";
-
-                    var refs = new List<string>();
-                    if (!string.IsNullOrEmpty(gbStandard))
-                        refs.Add(gbStandard);
-                    foreach (var hc in sub.HazardCategories)
-                    {
-                        if (!string.IsNullOrEmpty(hc.GbStandard) && !refs.Contains(hc.GbStandard))
-                            refs.Add(hc.GbStandard);
-                    }
-
-                    return new ComplianceFallbackResult
-                    {
-                        Answer = answer,
-                        RegulationRefs = refs,
-                        Quality = "DATABASE_HIT"
-                    };
-                }
-            }
-
-            return null;
-        }
-
-        /// <summary>处理安全距离查询</summary>
-        private ComplianceFallbackResult? TryHandleSafetyDistanceQuery(string query)
-        {
-            var distanceKeywords = new[] { "安全距离", "间距", "消防通道", "防火间距", "储罐间距" };
-            if (!distanceKeywords.Any(k => query.Contains(k)))
-                return null;
-
-            var distances = ChemicalSubstanceDatabase.GetAllSafetyDistances();
-            foreach (var sd in distances)
-            {
-                if (query.Contains(sd.FacilityPair, StringComparison.OrdinalIgnoreCase) ||
-                    sd.FacilityPair.Split(new[] { '-' }, StringSplitOptions.RemoveEmptyEntries)
-                        .All(part => query.Contains(part.Trim(), StringComparison.OrdinalIgnoreCase)))
-                {
-                    return new ComplianceFallbackResult
-                    {
-                        Answer = $"【安全距离】{sd.FacilityPair}: 最小安全距离 {sd.MinDistanceMeters}m",
-                        RegulationRefs = new List<string> { sd.RegulationRef ?? "GB 50016" },
-                        Quality = "DATABASE_HIT"
-                    };
-                }
+                var result = handler.TryHandle(userQuery);
+                if (result != null)
+                    return result;
             }
 
             return null;
         }
 
         /// <summary>从规则文本中提取法规引用</summary>
-        private static string ExtractRegulationRef(string ruleText)
+        internal static string ExtractRegulationRef(string ruleText)
         {
             var match = System.Text.RegularExpressions.Regex.Match(ruleText, @"GB\s*\d{4,5}[^|]*");
             return match.Success ? match.Value.Trim() : "GB 15603";

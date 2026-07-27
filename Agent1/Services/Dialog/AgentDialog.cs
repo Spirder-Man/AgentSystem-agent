@@ -430,9 +430,16 @@ namespace Agent1.Services
                     ToolNames = _llmService.LastFunctionCalls.Select(fc => fc.FunctionName).ToList()
                 };
             }
-            // 如果没有工具调用，则初始化工具调用结果和计划
+            // 如果没有工具调用，尝试规则引擎确定性降级
             else
             {
+                // ── 规则引擎兜底：LLM 零工具调用时尝试确定性降级 ──
+                var fallbackAnswer = TryFallbackToRuleEngine(input);
+                if (!string.IsNullOrEmpty(fallbackAnswer))
+                {
+                    _memoryService.ExtractAndStoreKeyFacts(input, fallbackAnswer);
+                    return (fallbackAnswer, new List<FunctionCallRecord>(), new List<string> { "LLM未调工具，规则引擎接管" });
+                }
                 LastToolResults = new Dictionary<string, string>();
                 LastToolPlan = new ToolPlan { NeedsTools = false };
             }
@@ -631,25 +638,14 @@ namespace Agent1.Services
 
             Console.WriteLine("完成");
 
-            // ── [E1 修复] FC 关键字兜底：当 LLM 未调用任何工具时，
-            // 根据用户查询中的关键字直接调用 ChemicalComplianceTools。
-            // 解决 qwen3:8b 对"同库储存""安全距离"等模式零触发 FC 的问题。
+            // ── 规则引擎兜底：LLM 零工具调用时尝试确定性降级 ──
             if (llmService != null && llmService.LastFunctionCalls.Count == 0 && !string.IsNullOrWhiteSpace(userInput))
             {
-                var fallbackCalls = await llmService.TryKeywordToolFallbackAsync(userInput);
-                if (fallbackCalls != null && fallbackCalls.Count > 0)
+                var fallbackAnswer = TryFallbackToRuleEngine(userInput);
+                if (!string.IsNullOrEmpty(fallbackAnswer))
                 {
-                    // 将关键字兜底产生的工具结果注入 LastFunctionCalls
-                    llmService.LastFunctionCalls.AddRange(fallbackCalls);
-                    LastToolResults = new Dictionary<string, string>();
-                    foreach (var fc in fallbackCalls)
-                        LastToolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
-                    LastToolPlan = new ToolPlan
-                    {
-                        NeedsTools = true,
-                        ToolNames = fallbackCalls.Select(fc => fc.FunctionName).ToList()
-                    };
-                    Console.WriteLine($"   [E1兜底] 已通过关键字匹配调用 {fallbackCalls.Count} 个工具，绕过 LLM 工具选择");
+                    Console.WriteLine($"   [规则引擎兜底] 确定性降级成功，跳过 DecoupledPipeline");
+                    return fallbackAnswer;
                 }
             }
 
@@ -716,31 +712,17 @@ namespace Agent1.Services
                             ToolNames = llmService.LastFunctionCalls.Select(fc => fc.FunctionName).ToList()
                         };
                     }
-                    // ── [Bug-033 v1] E1 兜底接入 T13 Per-Case 评测路径 ──
-                    // 当 LLM 未调用任何工具时，按关键词正则直接触发 ChemicalComplianceTools，
-                    // 解决 qwen3:8b 零触发 FC 导致 FC=Required 违约丢弃输出的问题。
-                    // 覆盖：同库储存 / 安全距离 / 危险类别 三类场景。
+                    // ── 规则引擎兜底：LLM 零工具调用时尝试确定性降级 ──
                     else if (!string.IsNullOrWhiteSpace(userInput))
                     {
-                        var fallbackCalls = await llmService.TryKeywordToolFallbackAsync(userInput);
-                        if (fallbackCalls != null && fallbackCalls.Count > 0)
+                        var fallbackAnswer = TryFallbackToRuleEngine(userInput);
+                        if (!string.IsNullOrEmpty(fallbackAnswer))
                         {
-                            llmService.LastFunctionCalls.AddRange(fallbackCalls);
-                            LastToolResults = new Dictionary<string, string>();
-                            foreach (var fc in fallbackCalls)
-                                LastToolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
-                            LastToolPlan = new ToolPlan
-                            {
-                                NeedsTools = true,
-                                ToolNames = fallbackCalls.Select(fc => fc.FunctionName).ToList()
-                            };
-                            Console.WriteLine($"   [E1兜底] 已通过关键字匹配调用 {fallbackCalls.Count} 个工具，绕过 LLM 工具选择");
+                            Console.WriteLine($"   [规则引擎兜底] 确定性降级成功，跳过 DecoupledPipeline");
+                            return fallbackAnswer;
                         }
-                        else
-                        {
-                            LastToolResults = new Dictionary<string, string>();
-                            LastToolPlan = new ToolPlan { NeedsTools = false };
-                        }
+                        LastToolResults = new Dictionary<string, string>();
+                        LastToolPlan = new ToolPlan { NeedsTools = false };
                     }
                     else
                     {
