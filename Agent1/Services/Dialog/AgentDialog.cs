@@ -716,6 +716,32 @@ namespace Agent1.Services
                             ToolNames = llmService.LastFunctionCalls.Select(fc => fc.FunctionName).ToList()
                         };
                     }
+                    // ── [Bug-033 v1] E1 兜底接入 T13 Per-Case 评测路径 ──
+                    // 当 LLM 未调用任何工具时，按关键词正则直接触发 ChemicalComplianceTools，
+                    // 解决 qwen3:8b 零触发 FC 导致 FC=Required 违约丢弃输出的问题。
+                    // 覆盖：同库储存 / 安全距离 / 危险类别 三类场景。
+                    else if (!string.IsNullOrWhiteSpace(userInput))
+                    {
+                        var fallbackCalls = await llmService.TryKeywordToolFallbackAsync(userInput);
+                        if (fallbackCalls != null && fallbackCalls.Count > 0)
+                        {
+                            llmService.LastFunctionCalls.AddRange(fallbackCalls);
+                            LastToolResults = new Dictionary<string, string>();
+                            foreach (var fc in fallbackCalls)
+                                LastToolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
+                            LastToolPlan = new ToolPlan
+                            {
+                                NeedsTools = true,
+                                ToolNames = fallbackCalls.Select(fc => fc.FunctionName).ToList()
+                            };
+                            Console.WriteLine($"   [E1兜底] 已通过关键字匹配调用 {fallbackCalls.Count} 个工具，绕过 LLM 工具选择");
+                        }
+                        else
+                        {
+                            LastToolResults = new Dictionary<string, string>();
+                            LastToolPlan = new ToolPlan { NeedsTools = false };
+                        }
+                    }
                     else
                     {
                         LastToolResults = new Dictionary<string, string>();

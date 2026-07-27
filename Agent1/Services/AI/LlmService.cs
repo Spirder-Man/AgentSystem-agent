@@ -1291,8 +1291,8 @@ namespace Agent1.Services
                 return results;
             }
 
-            // 模式3: "{X}的危险类别"
-            var hazardMatch = Regex.Match(userInput, @"([\u4e00-\u9fa5a-zA-Z0-9]+)\s*(?:的|属于)?\s*(?:危险类别|危险特性|GHS分类|什么危险)");
+            // 模式3: "{X}的危险类别" — [Bug-033] 扩充覆盖 "属于危险化学品" 类措辞
+            var hazardMatch = Regex.Match(userInput, @"([\u4e00-\u9fa5a-zA-Z0-9]+)\s*(?:的|属于|是)?\s*(?:危险类别|危险特性|危险化学品|GHS分类|什么危险)");
             if (hazardMatch.Success)
             {
                 var sn = hazardMatch.Groups[1].Value.Trim();
