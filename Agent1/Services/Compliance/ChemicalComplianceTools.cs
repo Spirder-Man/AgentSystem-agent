@@ -189,50 +189,30 @@ namespace Agent1.Services
             ["甲类仓库-明火点"] = 30,
         };
 
-        // [P2-1] 化学品别名映射表：评测中常见的非标准名称归一化
-        private static readonly Dictionary<string, string> SubstanceAliasMap = new(StringComparer.OrdinalIgnoreCase)
-        {
-            ["液氯"] = "氯",
-            ["氨水"] = "氨溶液",
-            ["烧碱"] = "氢氧化钠",
-            ["盐酸"] = "氯化氢",
-            ["双氧水"] = "过氧化氢",
-            ["火碱"] = "氢氧化钠",
-            ["苛性钠"] = "氢氧化钠",
-            ["苛性钾"] = "氢氧化钾",
-            ["酒精"] = "乙醇",
-            ["甘油"] = "丙三醇",
-            ["醋酸"] = "乙酸",
-            ["丙酮"] = "丙酮",  // 保留标准名
-            ["甲醛溶液"] = "甲醛",
-            ["福尔马林"] = "甲醛",
-        };
+        // [E7 DELETED] 冗余的 SubstanceAliasMap —— ChemicalSubstanceDatabase.Aliases 已完整覆盖，
+        // 且此处的"盐酸 → 氯化氢"映射是错误的（盐酸是液体腐蚀品，氯化氢是毒性气体）
 
-        /// <summary>[P2-1] 将化学品别名归一化为标准名称</summary>
+        /// <summary>[E7] 将化学品别名归一化为标准名称，仅依赖 ChemicalSubstanceDatabase</summary>
         private static string NormalizeSubstanceName(string name)
         {
             if (string.IsNullOrWhiteSpace(name))
                 return name;
-            var trimmed = name.Trim();
 
-            // Step 1: 硬编码别名映射（向后兼容）
-            if (SubstanceAliasMap.TryGetValue(trimmed, out var normalized))
-                return normalized;
-
-            // Step 2: [Task 10] 查询结构化化学品数据库（别名 → 标准名）
-            var substance = ChemicalSubstanceDatabase.Lookup(trimmed);
+            // 唯一归一化源：ChemicalSubstanceDatabase，内部已含别名解析（如"烧碱"→"氢氧化钠"）
+            var substance = ChemicalSubstanceDatabase.Lookup(name.Trim());
             if (substance != null)
                 return substance.Name;
 
-            return trimmed;
+            // 数据库未命中 → 不做归一化，保留原名让后续链路处理
+            return name.Trim();
         }
 
         // ════════════════════════════════════════
         // 主力：[KernelFunction] RAG 检索版（SK Auto Function Calling 入口）
         // 工具返回知识库原文，不依赖 LLM 流式生成
         // ════════════════════════════════════════
-
         [KernelFunction, Description("查询指定危化品的危险类别、危险特性、GHS分类及适用国标（GB 30000 系列）。适用于「XX属于什么危险类别」「XX的危险特性」「XX的GHS分类」等问题。输入参数 substanceName: 危化品名称，如\"苯\"、\"硫酸\"。")]
+
         public async Task<string> CheckHazardCategory(string substanceName)
         //substanceName 物质名称
         //CheckHazardCategory检查危险类别
