@@ -1,6 +1,6 @@
 # Agent1 — 化工园区危化品合规审查 AI Agent
 
-> **版本**：v4.4 | **编译**：0 错误 | **测试**：152 通过 | **分支**：`linux原生编译模型llama.cpp`
+> **版本**：v4.6 | **编译**：0 错误 | **测试**：1500 通过 | **分支**：`linux原生编译模型llama.cpp`
 
 基于 .NET 8 + Semantic Kernel + **llama.cpp 原生编译**构建的企业级化工园区危化品合规审查 AI Agent。支持 REST API、JWT 认证、PostgreSQL+pgvector 混合检索、OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对 NVIDIA GPU (RTX 3090/3080 Ti) Linux 环境 RAG 全链路 GPU 加速**。
 
@@ -158,6 +158,16 @@ docs/
 
 ## 📋 近期更新
 
+### v4.6 — 工程侧7项缺陷修复：幻觉防护 + 别名归一化 + 评测准确性（2026-07-25）
+
+- **E1 FC关键字兜底机制**：LLM零工具调用时按关键词正则自动触发 ChemicalComplianceTools，覆盖同库储存/安全距离/危险类别三类场景
+- **E2 Prompt反幻觉指令强化**：将 `[REGULATIONS:]` 标签引用改为自然语言「所见即所得」式指令，明确GB编号相似≠相同规则
+- **E3 法规编号精确匹配**：`IsRegulationAllowed` 删除 Contains 模糊匹配，仅保留 Equals；`NormalizeRegNumber` 新增年份后缀剥离
+- **E4 RAG检索来源去重**：重排序后增加来源去重——每源文档最多2条，至少3个不同来源，防止单一文档垄断 topK
+- **E5 Level4幻觉检测漏报修复**：检测到幻觉后更新 `ConclusionReasons[0].Passed=false`，消除 41 条漏报
+- **E6 白名单双路径不一致修复**：`ExtractGbNumbers` 降级为 else 兜底，仅无 `[REGULATIONS:]` 标签时使用
+- **E7 化学品名称归一化重构**：删除冗余的 `SubstanceAliasMap` 硬编码字典（14条映射：13条冗余 + 1条错误「盐酸→氯化氢」），统一归一化至 `ChemicalSubstanceDatabase.Lookup`——新增别名只需在数据类 `Aliases` 字段加一行，自动注册
+
 ### v4.5 — E2E 三层契约架构落地 + 提交钩子环境修复（2026-07-21）
 
 - **E2E 三层契约架构**：Test-ID 契约（`test-ids.ts` 单一真值源 + CI 校验）/ 数据契约（`data-manifest.ts` 声明式依赖 + 自动补种）/ 质量基线契约（`baseline.json` + `llm-assertions.ts` 可演进断言）
@@ -188,4 +198,4 @@ docs/
 
 ---
 
-**文档版本**：v4.18 | **最后更新**：2026-07-21 | **许可证**：MIT
+**文档版本**：v4.19 | **最后更新**：2026-07-25 | **许可证**：MIT
