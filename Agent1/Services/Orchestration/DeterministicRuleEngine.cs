@@ -17,8 +17,14 @@ namespace Agent1.Services.Orchestration
     }
 
     /// <summary>
-    /// 化工信号词门卫 — 查询必须包含至少一个化工相关信号词才进入责任链。
-    /// 拦截"蜘蛛侠""今天天气"等完全无关的输入，防止无效查询浪费 handler 计算。
+    /// 化工双层门卫 — 正向闭环设计，不再依赖硬编码信号词白名单。
+    ///
+    /// Tier 1 (物质名门卫): 查询中包含 ChemicalSubstanceDatabase 中任一化学品名/别名 → 直接放行。
+    ///   覆盖 50+ 化学品 + 别名，新增物质到数据库即自动获得 Gate 覆盖，无需手动维护。
+    ///   "苯和乙醇能搁一块儿吗？" → 含"苯" → 放行 ✅
+    /// Tier 2 (信号词门卫): 查询中包含化工领域通用信号词 → 放行。
+    ///   覆盖不提名具体物质的化工通用查询，如"危化品储存规范有哪些要求？"。
+    /// 两层均不满足 → 拦截"蜘蛛侠""今天天气"等完全无关的输入。
     /// </summary>
     internal static class ChemicalSignalGate
     {
@@ -29,7 +35,38 @@ namespace Agent1.Services.Orchestration
             "同库", "共存", "混合", "配伍", "闪点", "沸点", "危害", "储罐"
         };
 
-        public static bool Pass(string query) => Signals.Any(s => query.Contains(s));
+        /// <summary>双层门卫：物质名 Tier 1 → 信号词 Tier 2 → 拦截</summary>
+        public static bool Pass(string query)
+        {
+            if (string.IsNullOrWhiteSpace(query))
+                return false;
+
+            // Tier 1: 化学物质名匹配（正向闭环：数据库增长自动覆盖）
+            if (MentionsChemicalSubstance(query))
+                return true;
+
+            // Tier 2: 信号词匹配（覆盖不提名具体物质的化工通用查询）
+            if (Signals.Any(s => query.Contains(s)))
+                return true;
+
+            return false;
+        }
+
+        /// <summary>检查查询中是否包含 ChemicalSubstanceDatabase 中任一化学品名或别名</summary>
+        private static bool MentionsChemicalSubstance(string query)
+        {
+            foreach (var sub in ChemicalSubstanceDatabase.GetAll())
+            {
+                if (query.Contains(sub.Name, StringComparison.OrdinalIgnoreCase))
+                    return true;
+                foreach (var alias in sub.Aliases)
+                {
+                    if (query.Contains(alias, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+            return false;
+        }
     }
 
     /// <summary>储存兼容性查询处理器</summary>
