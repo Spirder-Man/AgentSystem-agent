@@ -69,18 +69,24 @@ namespace Agent1.Services.Orchestration
         }
     }
 
-    /// <summary>储存兼容性查询处理器</summary>
+    /// <summary>
+    /// 储存兼容性查询处理器。
+    /// 
+    /// 双层匹配策略（正向闭环）：
+    ///   1. 关键词匹配 → 常规路径，精确识别兼容性意图
+    ///   2. 物质名降级 → 关键词未匹配但识别到 2+ 化学品时，仍尝试兼容性查询
+    ///      （覆盖"搁一块儿""放一个仓库"等陌生动词场景）
+    /// </summary>
     internal class StorageCompatibilityHandler : IComplianceQueryHandler
     {
         private static readonly string[] Keywords =
-            { "同库", "共存", "混合", "禁忌", "配伍", "储存", "一起存放", "放在一起",
-              "同库存放", "兼容", "能否", "可以", "不可" };
+            { "同库", "共存", "混合", "禁忌", "配伍", "储存", "存放", "放", "搁",
+              "一起存放", "放在一起", "同库存放", "兼容", "能否", "能和", "可以", "不可",
+              "一块", "一起", "仓库", "库房", "存", "装", "堆", "摆" };
 
         public ComplianceFallbackResult? TryHandle(string query)
         {
-            if (!Keywords.Any(k => query.Contains(k)))
-                return null;
-
+            // 先提取提到的化学品（无论关键词是否匹配）
             var allSubstances = ChemicalSubstanceDatabase.GetAll();
             var mentioned = allSubstances
                 .Where(s => query.Contains(s.Name, StringComparison.OrdinalIgnoreCase))
@@ -102,8 +108,13 @@ namespace Agent1.Services.Orchestration
                 }
             }
 
-            if (mentioned.Count < 2)
+            // 关键词匹配 OR 识别到2+化学品 → 进入兼容性判断
+            bool keywordMatch = Keywords.Any(k => query.Contains(k));
+            bool hasMultipleSubstances = mentioned.Count >= 2;
+
+            if (!keywordMatch && !hasMultipleSubstances)
             {
+                // 关键词不匹配且物质不足2个 → 尝试硬编码规则
                 foreach (var rule in DeterministicRuleEngine.StorageCompatibilityRules)
                 {
                     var (a, b) = rule.Key;
@@ -120,36 +131,43 @@ namespace Agent1.Services.Orchestration
                 return null;
             }
 
-            var subA = mentioned[0];
-            var subB = mentioned[1];
-
-            foreach (var rule in DeterministicRuleEngine.StorageCompatibilityRules)
+            // 有 2+ 化学品 → 查询兼容性
+            if (hasMultipleSubstances)
             {
-                var (a, b) = rule.Key;
-                if ((string.Equals(a, subA, StringComparison.OrdinalIgnoreCase) && string.Equals(b, subB, StringComparison.OrdinalIgnoreCase)) ||
-                    (string.Equals(a, subB, StringComparison.OrdinalIgnoreCase) && string.Equals(b, subA, StringComparison.OrdinalIgnoreCase)))
+                var subA = mentioned[0];
+                var subB = mentioned[1];
+
+                foreach (var rule in DeterministicRuleEngine.StorageCompatibilityRules)
                 {
+                    var (a, b) = rule.Key;
+                    if ((string.Equals(a, subA, StringComparison.OrdinalIgnoreCase) && string.Equals(b, subB, StringComparison.OrdinalIgnoreCase)) ||
+                        (string.Equals(a, subB, StringComparison.OrdinalIgnoreCase) && string.Equals(b, subA, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        return new ComplianceFallbackResult
+                        {
+                            Answer = $"【储存兼容性】{subA}与{subB}禁止同库储存",
+                            RegulationRefs = new List<string> { DeterministicRuleEngine.ExtractRegulationRef(rule.Value) },
+                            Quality = "DICTIONARY_HIT"
+                        };
+                    }
+                }
+
+                var compat = ChemicalSubstanceDatabase.CheckCompatibility(subA, subB);
+                if (compat != null)
+                {
+                    var verdict = compat.IsCompatible ? "可同库储存" : "不得同库储存";
                     return new ComplianceFallbackResult
                     {
-                        Answer = $"【储存兼容性】{subA}与{subB}禁止同库储存",
-                        RegulationRefs = new List<string> { DeterministicRuleEngine.ExtractRegulationRef(rule.Value) },
-                        Quality = "DICTIONARY_HIT"
+                        Answer = $"【储存兼容性】{subA}与{subB}: {verdict}\n原因: {compat.Reason}",
+                        RegulationRefs = new List<string> { compat.RegulationRef ?? "GB 15603" },
+                        Quality = "DATABASE_HIT"
                     };
                 }
+
+                return null;
             }
 
-            var compat = ChemicalSubstanceDatabase.CheckCompatibility(subA, subB);
-            if (compat != null)
-            {
-                var verdict = compat.IsCompatible ? "可同库储存" : "不得同库储存";
-                return new ComplianceFallbackResult
-                {
-                    Answer = $"【储存兼容性】{subA}与{subB}: {verdict}\n原因: {compat.Reason}",
-                    RegulationRefs = new List<string> { compat.RegulationRef ?? "GB 15603" },
-                    Quality = "DATABASE_HIT"
-                };
-            }
-
+            // 关键词匹配但物质不足2个 → 返回 null（让其他 handler 处理）
             return null;
         }
     }
