@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>E2E 远程测试关注点全景图</title>
+<style>
+:root {
+  --c-bg: #f8fafc;
+  --c-canvas: #ffffff;
+  --c-border: #cbd5e1;
+  --c-text-main: #0f172a;
+  --c-text-sub: #64748b;
+  --c-accent: #2563eb;
+  --c-pass: #16a34a;
+  --c-warn: #d97706;
+  --c-fail: #dc2626;
+  --c-dim: #94a3b8;
+  --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Cascadia Code', 'SF Mono', Monaco, Consolas, monospace;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: var(--c-bg);
+  font-family: var(--font-ui);
+  color: var(--c-text-main);
+  padding: 32px 40px 60px;
+  display:flex; flex-direction:column; gap:24px;
+  align-items:center;
+}
+.diagram-canvas {
+  background: var(--c-canvas);
+  border: 2px solid var(--c-border);
+  padding: 28px 32px 24px;
+  width: 100%;
+  max-width: 1240px;
+}
+.diagram-header {
+  border-bottom: 1px solid var(--c-border);
+  padding-bottom: 14px;
+  margin-bottom: 20px;
+  display:flex; justify-content:space-between; align-items:baseline;
+}
+.diagram-title { font-size: 20px; font-weight: 600; }
+.diagram-subtitle { font-size: 11px; font-weight: 500; color: var(--c-text-sub); text-transform: uppercase; letter-spacing: .5px; }
+.badge { display:inline-block; font-size:10px; font-family:var(--font-mono); padding:2px 7px; border:1px solid var(--c-text-main); text-transform:uppercase; line-height:1.5; }
+.badge--fill { background:var(--c-text-main); color:var(--c-canvas); }
+.badge--pass { border-color:var(--c-pass); color:var(--c-pass); }
+.badge--warn { border-color:var(--c-warn); color:var(--c-warn); }
+.badge--fail { border-color:var(--c-fail); color:var(--c-fail); }
+.badge--new  { border-color:var(--c-accent); color:var(--c-accent); }
+.mono { font-family:var(--font-mono); font-size:13px; }
+.mono-xs { font-family:var(--font-mono); font-size:10px; }
+.label { font-size:10px; color:var(--c-text-sub); text-transform:uppercase; letter-spacing:.3px; }
+.hr { border-top:1px solid var(--c-border); margin:16px 0; }
+.hr--dash { border-top-style:dashed; }
+
+/* Phase flow */
+.phase-flow { display:flex; gap:0; align-items:flex-start; }
+.phase-node { flex:1; border:1px solid var(--c-border); min-width:0; }
+.phase-arrow { display:flex; align-items:center; justify-content:center; width:32px; min-width:32px; color:var(--c-dim); font-size:16px; }
+.phase-head { padding:8px 12px; font-size:12px; font-weight:600; border-bottom:1px solid var(--c-border); }
+.phase-body { padding:10px 12px; }
+.phase-body .item { font-size:10px; padding:3px 0; border-bottom:1px solid #f1f5f9; display:flex; gap:6px; }
+.phase-body .item:last-child { border-bottom:none; }
+.phase-body .item .dot { color:var(--c-fail); font-weight:700; flex-shrink:0; }
+.phase-body .item .txt { color:var(--c-text-main); }
+.phase-body .item .why { color:var(--c-text-sub); font-size:9px; display:block; }
+
+/* Spec grid */
+.spec-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+.spec-card { border:1px solid var(--c-border); padding:10px 12px; }
+.spec-card .name { font-family:var(--font-mono); font-size:11px; font-weight:600; }
+.spec-card .meta { font-size:10px; color:var(--c-text-sub); margin:4px 0; }
+.spec-card .focus { font-size:10px; color:var(--c-text-main); line-height:1.5; }
+
+/* Failure table */
+.fail-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.fail-item { border:1px solid var(--c-border); padding:8px 12px; display:flex; gap:10px; align-items:flex-start; }
+.fail-item .sym { font-size:10px; color:var(--c-fail); flex:1; }
+.fail-item .cause { font-size:10px; color:var(--c-text-main); flex:1; font-weight:500; }
+.fail-item .sep { color:var(--c-dim); font-size:12px; line-height:1; }
+
+/* Cmd block */
+.cmd-block {
+  background:#f8fafc; border:1px solid var(--c-border);
+  padding:14px 18px; font-family:var(--font-mono); font-size:11px;
+  line-height:1.7; white-space:pre-wrap; overflow-x:auto;
+}
+.cmd-block .c { color:var(--c-text-sub); }
+
+/* Signal row */
+.signal-row { display:flex; gap:14px; }
+.signal-card { flex:1; border:2px solid var(--c-text-main); padding:12px 16px; text-align:center; }
+.signal-card .num { font-size:28px; font-weight:700; font-family:var(--font-mono); }
+.signal-card .desc { font-size:11px; color:var(--c-text-sub); margin-top:2px; }
+</style>
+</head>
+<body>
+
+<!-- ═══════ DIAGRAM 1: Phase Flow ═══════ -->
+<div class="diagram-canvas">
+  <div class="diagram-header">
+    <div>
+      <h1 class="diagram-title">远程 E2E 测试 · 五阶段关注点全景</h1>
+      <p class="diagram-subtitle">Browser → Vite → SSH Tunnel → .NET API → Semantic Kernel → llama.cpp GPU (Qwen3-8B, RTX 3090)</p>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <span class="badge badge--new">9 SPECS</span>
+      <span class="badge badge--new">44 CASES</span>
+      <span class="badge badge--pass">PRETEST 4/4</span>
+    </div>
+  </div>
+
+  <div class="phase-flow">
+    <!-- Phase 0 -->
+    <div class="phase-node">
+      <div class="phase-head">P0 · 代码同步</div>
+      <div class="phase-body">
+        <div class="item"><span class="dot">●</span><span class="txt">远程分支与本地对齐<span class="why">缺本次提交 → getByTestId() 找不到元素</span></span></div>
+        <div class="item"><span class="dot">●</span><span class="txt">git reset --hard origin/master<span class="why">确保远程工作区干净无残留</span></span></div>
+      </div>
+    </div>
+    <div class="phase-arrow">→</div>
+    <!-- Phase 1 -->
+    <div class="phase-node">
+      <div class="phase-head">P1 · 环境就绪</div>
+      <div class="phase-body">
+        <div class="item"><span class="dot">●</span><span class="txt">SSH 凭证确认 (铁律)<span class="why">AutoDL 重启后密码端口变更</span></span></div>
+        <div class="item"><span class="dot">●</span><span class="txt">global.json SDK 版本匹配<span class="why">不匹配 → API 无法启动 🔴</span></span></div>
+        <div class="item"><span class="dot">●</span><span class="txt">四服务全部健康<span class="why">PG/LLM/Embed/API 缺一不可</span></span></div>
+        <div class="item"><span class="dot">●</span><span class="txt">AUTH_ACCOUNTS_JSON 环境变量<span class="why">缺失 → 登录 500</span></span></div>
+      </div>
+    </div>
+    <div class="phase-arrow">→</div>
+    <!-- Phase 2 -->
+    <div class="phase-node">
+      <div class="phase-head">P2 · 后端 API 验证</div>
+      <div class="phase-body">
+        <div class="item"><span class="dot">●</span><span class="txt">CheckStorageCompatibility 出现在 toolsUsed<span class="why">Layer 2 工具调用链核心信号</span></span></div>
+        <div class="item"><span class="dot">●</span><span class="txt">verifiedRegulations 含真实 GB 编号<span class="why">法规引用可追溯</span></span></div>
+        <div class="item"><span class="dot">●</span><span class="txt">hallucinatedRegulations 为空<span class="why">Layer 3 幻觉检测 — 基线断言</span></span></div>
+        <div class="item"><span class="dot">●</span><span class="txt">响应时间 15-60s<span class="why">过短=缓存降级 · 过长=超时</span></span></div>
+      </div>
+    </div>
+    <div class="phase-arrow">→</div>
+    <!-- Phase 3 -->
+    <div class="phase-node">
+      <div class="phase-head">P3 · SSH 隧道 + 代理</div>
+      <div class="phase-body">
+        <div class="item"><span class="dot">●</span><span class="txt">VITE_ENABLE_MOCK=false<span class="why">否则 MSW 拦截，走不到后端</span></span></div>
+        <div class="item"><span class="dot">●</span><span class="txt">不设 VITE_API_BASE_URL<span class="why">设了绕开 proxy → CORS</span></span></div>
+        <div class="item"><span class="dot">●</span><span class="txt">Vite proxy target = 隧道端口<span class="why">不一致 → Connection Refused</span></span></div>
+        <div class="item"><span class="dot">●</span><span class="txt">Forwarding active 日志确认<span class="why">隧道静默失败无提示</span></span></div>
+      </div>
+    </div>
+    <div class="phase-arrow">→</div>
+    <!-- Phase 4 -->
+    <div class="phase-node">
+      <div class="phase-head">P4 · Playwright E2E</div>
+      <div class="phase-body">
+        <div class="item"><span class="dot">●</span><span class="txt">工具调用链真实性 (Layer 2)<span class="why">CheckStorageCompatibility 在 toolsUsed</span></span></div>
+        <div class="item"><span class="dot">●</span><span class="txt">GB 编号非幻觉 (Layer 3)<span class="why">hallucinatedRegulations = 空</span></span></div>
+        <div class="item"><span class="dot">●</span><span class="txt">getByTestId() 全部命中 (Layer 1)<span class="why">三层契约消费端验证</span></span></div>
+        <div class="item"><span class="dot">●</span><span class="txt">SHA256 哈希链完整性<span class="why">审计日志可信性</span></span></div>
+      </div>
+    </div>
+    <div class="phase-arrow">→</div>
+    <!-- Phase 5 -->
+    <div class="phase-node">
+      <div class="phase-head">P5 · 失败分析</div>
+      <div class="phase-body">
+        <div class="item"><span class="dot">●</span><span class="txt">getByTestId 找不到 → 代码未同步</span></div>
+        <div class="item"><span class="dot">●</span><span class="txt">超时 >120s → GPU 推理卡住</span></div>
+        <div class="item"><span class="dot">●</span><span class="txt">响应 <1s → 缓存/降级到规则引擎</span></div>
+        <div class="item"><span class="dot">●</span><span class="txt">hallucinatedRegs 非空 → 记录幻觉编号</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ DIAGRAM 2: Spec Detail ═══════ -->
+<div class="diagram-canvas">
+  <div class="diagram-header">
+    <div>
+      <h1 class="diagram-title">9 Spec × 44 用例 · 逐个关注点</h1>
+      <p class="diagram-subtitle">e2e-real/ · playwright.real.config.ts · timeout=120s · retries=1 · workers=1</p>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <span class="badge badge--pass">5 移植自 Mock</span>
+      <span class="badge badge--new">4 新增专项</span>
+    </div>
+  </div>
+
+  <div class="spec-grid">
+    <div class="spec-card" style="border-left:3px solid var(--c-fail);">
+      <div class="name">compliance-check.spec.ts</div>
+      <div class="meta">P1 · 4 用例 · 核心优先级</div>
+      <div class="focus"><b>工具调用链真实性</b>：CheckStorageCompatibility 出现在 toolsUsed<br><b>GB 编号非幻觉</b>：verifiedRegulations 含 GB15603 等<br><b>响应时间 >3s</b>：确认走了 GPU 推理<br><b>双通道可见</b>：法规引用面板 + LLM 解释面板</div>
+    </div>
+    <div class="spec-card">
+      <div class="name">llm-quality.spec.ts</div>
+      <div class="meta">🆕 · 8 用例 · 质量专项</div>
+      <div class="focus"><b>七大评测类目全覆盖</b>：危险类别/储存兼容性/安全距离/综合审核/化学品属性/重大危险源/法规版本<br><b>无幻觉 GB</b>：全部 GB 编号可追溯<br><b>忠实度</b>：结论可追溯到工具数据</div>
+    </div>
+    <div class="spec-card">
+      <div class="name">audit-log.spec.ts</div>
+      <div class="meta">P5 · 5 用例</div>
+      <div class="focus"><b>SHA256 哈希链完整性</b>：真实后端校验<br><b>操作日志可追溯</b>：每条记录含操作人+时间<br>auditor / viewer 权限拦截</div>
+    </div>
+    <div class="spec-card">
+      <div class="name">inspection-flow.spec.ts</div>
+      <div class="meta">P2 · 5 用例</div>
+      <div class="focus"><b>巡检计划从真实 DB 加载</b><br><b>执行巡检触发 LLM 推理</b><br>轮次结果含评估<br>viewer 权限只读</div>
+    </div>
+    <div class="spec-card">
+      <div class="name">knowledge-base.spec.ts</div>
+      <div class="meta">🆕 · 5 用例</div>
+      <div class="focus"><b>GB 编号精确查询</b>：BM25 / Vector / Hybrid 三种检索模式<br><b>检索结果含真实文档</b>：1160 条知识库记录<br>自然语言查询验证</div>
+    </div>
+    <div class="spec-card">
+      <div class="name">emergency-response.spec.ts</div>
+      <div class="meta">🆕 · 4 用例</div>
+      <div class="focus"><b>事故上报 → 分级 → 预案匹配</b><br>处置措施含具体关键词<br>响应时间合理<br>全流程链路验证</div>
+    </div>
+    <div class="spec-card">
+      <div class="name">eval-flow.spec.ts</div>
+      <div class="meta">🆕 · 4 用例</div>
+      <div class="focus"><b>单个评测含 GB 编号 + 结论</b><br><b>多场景覆盖</b>：危险类别/安全距离/重大危险源<br>合规评测流程完整性</div>
+    </div>
+    <div class="spec-card">
+      <div class="name">dashboard.spec.ts</div>
+      <div class="meta">P3 · 3 用例</div>
+      <div class="focus"><b>资产总数来自真实 DB</b>（非 MSW mock 写死数字）<br>扫描按钮触发 LLM<br>viewer 用户只读验证</div>
+    </div>
+    <div class="spec-card">
+      <div class="name">assets.spec.ts</div>
+      <div class="meta">P4 · 4 用例</div>
+      <div class="focus"><b>8 种化学品含 CAS 号</b><br>苯(71-43-2) · 丙酮(67-64-1) · 甲醇 · 硝酸 · 硫酸 · 甲苯 · 盐酸 · 氢氧化钠<br>详情页含储存条件</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ DIAGRAM 3: Failure Guide + Commands ═══════ -->
+<div class="diagram-canvas">
+  <div class="diagram-header">
+    <div>
+      <h1 class="diagram-title">失败分析矩阵 & 执行命令</h1>
+      <p class="diagram-subtitle">Troubleshooting Priority · Quick Command Reference</p>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:16px;">
+    <!-- Failure Matrix -->
+    <div style="flex:1.2;">
+      <p class="label" style="margin-bottom:8px;">失败现象 → 最可能原因</p>
+      <div class="fail-grid">
+        <div class="fail-item">
+          <div class="sym">getByTestId() 找不到元素</div>
+          <div class="sep">→</div>
+          <div class="cause">远程代码未同步，缺少本次 test-id 提交</div>
+        </div>
+        <div class="fail-item">
+          <div class="sym">合规检查超时 >120s</div>
+          <div class="sep">→</div>
+          <div class="cause">GPU 推理卡住 — SSH 查看 llama-server 进程</div>
+        </div>
+        <div class="fail-item">
+          <div class="sym">响应时间过短 <1s</div>
+          <div class="sep">→</div>
+          <div class="cause">缓存命中或 API 降级到规则引擎，检查 toolsUsed</div>
+        </div>
+        <div class="fail-item">
+          <div class="sym">hallucinatedRegulations 非空</div>
+          <div class="sep">→</div>
+          <div class="cause">模型幻觉 — 记录法规编号，更新 baseline.json</div>
+        </div>
+        <div class="fail-item">
+          <div class="sym">CORS 报错</div>
+          <div class="sep">→</div>
+          <div class="cause">VITE_API_BASE_URL 未清空，绕过了 Vite proxy</div>
+        </div>
+        <div class="fail-item">
+          <div class="sym">Connection refused</div>
+          <div class="sep">→</div>
+          <div class="cause">SSH 隧道未启动或端口不一致</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Commands -->
+    <div style="flex:1;">
+      <p class="label" style="margin-bottom:8px;">执行命令速查</p>
+      <div class="cmd-block"><span class="c"># 0. 确认本地已推送</span>
+cd d:\桌面\agent\项目\Agent1
+git push origin master
+
+<span class="c"># 1. SSH 登录远程 → 代码同步 + 启动四服务</span>
+<span class="c">#    (按 PRECHECK.md 逐项确认)</span>
+
+<span class="c"># 2. 构建并启动 SSH 隧道</span>
+dotnet build ssh-tunnel/SshTunnel.csproj -c Release
+$sshHost = "connect.nmb2.seetacloud.com"
+$sshPort = "37103"
+Start-Process -NoNewWindow -FilePath `
+  "ssh-tunnel\bin\Release\net8.0\SshTunnel.exe" `
+  -ArgumentList $sshHost,$sshPort,"root",$sshPassword,"15001","localhost","5001"
+
+<span class="c"># 3. 验证隧道</span>
+Invoke-RestMethod -Uri http://localhost:15001/health
+
+<span class="c"># 4. 执行 E2E</span>
+cd agent1-web
+npx playwright test --config=playwright.real.config.ts</div>
+    </div>
+  </div>
+
+  <!-- Core Signals -->
+  <div class="hr"></div>
+  <p class="label" style="margin-bottom:8px;">三个核心信号 — 必须全部命中</p>
+  <div class="signal-row">
+    <div class="signal-card">
+      <div class="num">01</div>
+      <div class="desc">工具调用链真实走 GPU<br>CheckStorageCompatibility ∈ toolsUsed</div>
+    </div>
+    <div class="signal-card">
+      <div class="num">02</div>
+      <div class="desc">GB 编号零幻觉<br>hallucinatedRegulations = [ ]</div>
+    </div>
+    <div class="signal-card">
+      <div class="num">03</div>
+      <div class="desc">三层契约 getByTestId() 全部命中<br>Layer 1 契约消费端 100% 通过</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
