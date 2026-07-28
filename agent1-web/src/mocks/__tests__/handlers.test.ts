@@ -11,25 +11,20 @@
  *   - handlers 数组 — 49 条路由的 method/path 完整性
  */
 import { describe, it, expect, vi } from 'vitest';
-import {
-  handlers,
-  parseAuth,
-  readAuthGuard,
-  writeAuthGuard,
-  adminAuthGuard,
-  checkSimulatedError,
-} from '../handlers';
+import { handlers, parseAuth, readAuthGuard, writeAuthGuard, adminAuthGuard, checkSimulatedError } from '../handlers';
 
 // ═══════════════════════════════════════
 // Helpers: 构造 mock Request
 // ═══════════════════════════════════════
 
-function mockRequest(opts: {
-  method?: string;
-  url?: string;
-  headers?: Record<string, string>;
-  body?: unknown;
-} = {}): Request {
+function mockRequest(
+  opts: {
+    method?: string;
+    url?: string;
+    headers?: Record<string, string>;
+    body?: unknown;
+  } = {},
+): Request {
   const { method = 'GET', url = 'http://localhost/api/test', headers = {}, body } = opts;
   return new Request(url, {
     method,
@@ -369,7 +364,7 @@ describe('handlers 数组 — 路由配置完整性', () => {
     // Emergency
     { method: 'POST', path: '/api/emergency/response' },
     // Knowledge Graph
-    { method: 'POST', path: '/api/knowledgegraph/query' },
+    { method: 'POST', path: '/api/KnowledgeGraph/query' },
     // Multimodal
     { method: 'POST', path: '/api/multimodal/analyze' },
     // Eval

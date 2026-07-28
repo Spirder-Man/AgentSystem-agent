@@ -38,7 +38,7 @@ describe('KnowledgeGraphPage', () => {
 
   function mountPage() {
     return mount(KnowledgeGraphPage, {
-      global: { stubs: { 'EmptyState': true } },
+      global: { stubs: { EmptyState: true } },
     });
   }
 
@@ -50,7 +50,7 @@ describe('KnowledgeGraphPage', () => {
   it('空查询不应调用 API', async () => {
     const wrapper = mountPage();
     const buttons = wrapper.findAll('button');
-    const queryBtn = buttons.find(b => b.text().includes('查询'));
+    const queryBtn = buttons.find((b) => b.text().includes('查询'));
     if (queryBtn) {
       await queryBtn.trigger('click');
       await flushPromises();
@@ -58,7 +58,7 @@ describe('KnowledgeGraphPage', () => {
     }
   });
 
-  it('查询应调用 POST /api/knowledgegraph/query', async () => {
+  it('查询应调用 POST /api/KnowledgeGraph/query', async () => {
     mockPost.mockResolvedValue({
       data: { query: '苯的关联法规和事故案例', output: '查询结果...' },
     });
@@ -68,12 +68,12 @@ describe('KnowledgeGraphPage', () => {
     await input.setValue('苯的关联法规和事故案例');
 
     const buttons = wrapper.findAll('button');
-    const queryBtn = buttons.find(b => b.text().includes('查询'));
+    const queryBtn = buttons.find((b) => b.text().includes('查询'));
     if (queryBtn) {
       await queryBtn.trigger('click');
       await flushPromises();
 
-      expect(mockPost).toHaveBeenCalledWith('/api/knowledgegraph/query', {
+      expect(mockPost).toHaveBeenCalledWith('/api/KnowledgeGraph/query', {
         query: '苯的关联法规和事故案例',
       });
     }
@@ -92,7 +92,7 @@ describe('KnowledgeGraphPage', () => {
     await input.setValue('苯的关联法规和事故案例');
 
     const buttons = wrapper.findAll('button');
-    const queryBtn = buttons.find(b => b.text().includes('查询'));
+    const queryBtn = buttons.find((b) => b.text().includes('查询'));
     if (queryBtn) {
       await queryBtn.trigger('click');
       await flushPromises();
@@ -112,7 +112,7 @@ describe('KnowledgeGraphPage', () => {
     await input.setValue('测试');
 
     const buttons = wrapper.findAll('button');
-    const queryBtn = buttons.find(b => b.text().includes('查询'));
+    const queryBtn = buttons.find((b) => b.text().includes('查询'));
     if (queryBtn) {
       await queryBtn.trigger('click');
       await flushPromises();

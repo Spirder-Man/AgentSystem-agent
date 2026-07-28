@@ -726,21 +726,49 @@ export const handlers = [
   // Knowledge Graph (Auth)
   // ═══════════════════════════════════════
 
-  http.post('/api/knowledgegraph/query', async ({ request }) => {
+  http.post('/api/KnowledgeGraph/query', async ({ request }) => {
     const g = readAuthGuard(request);
     if (g) return g;
     const e = checkSimulatedError(request);
     if (e) return e;
     await simulateLlmDelay(request);
     const body = (await request.json()) as KnowledgeGraphRequest;
+    const isBenzene = body.query.includes('苯');
     return HttpResponse.json<KnowledgeGraphResult>({
       query: body.query,
       success: true,
-      warnings: [],
-      intent: '知识图谱查询',
-      elapsedMs: 3800,
-      output: `══════════ 知识图谱查询: ${body.query} ══════════\n实体: ${body.query.includes('苯') ? '苯 (CAS 71-43-2)' : '甲类仓库'} | 关联关系: 8条 | 关联事故: 2起\n\n关联实体:\n├─ 法规: GB 30000.7-2013 (易燃液体)\n├─ 法规: GB 15603-2022 (储存通则)\n├─ 事故: 2019年某化工厂苯泄漏事故 (等级: 较大)\n├─ 事故: 2021年储罐区火灾事故 (等级: 一般)\n├─ 园区: 甲类仓库A区 (风险等级: 高)\n├─ 园区: 储罐区 (风险等级: 高)\n├─ 化学品: 丙酮 (CAS 67-64-1, 储存禁忌)\n└─ 化学品: 甲醇 (CAS 67-56-1, 共储许可)\n\nRAG知识库补充:\nGB 30000.7-2013 将苯列为易燃液体类别2，其蒸气与空气可形成爆炸性混合物。`,
-      auditRecord: { regulationRefs: ['GB 30000.7-2013', 'GB 15603-2022'] },
+      elapsedMs: 247,
+      entityCount: isBenzene ? 147 : 38,
+      relationCount: isBenzene ? 428 : 112,
+      output: `══════════ 知识图谱查询: ${body.query} ══════════
+  实体: ${isBenzene ? 119 : 28} | 关系: ${isBenzene ? 20 : 8} | 事故: ${isBenzene ? 1 : 0}
+
+━━━ 关联实体 (3跳遍历) ━━━
+  [Chemical] ${body.query.includes('苯') ? '苯 CAS:71-43-2' : '甲类仓库'}
+  [HazardCategory] 易燃液体 
+  [HazardCategory] 致癌性 
+  [HazardCategory] 严重眼损伤/刺激 
+  [HazardCategory] 特异性靶器官毒性 反复接触 
+  [HazardCategory] 吸入危害 
+  [Incident] 2019江苏响水爆炸 
+  [Regulation] GB 30000.7
+  [Chemical] 甲苯 CAS:108-88-3
+  [Chemical] 二甲苯 CAS:1330-20-7
+  [Chemical] 甲醇 CAS:67-56-1
+
+━━━ 引用法规 ━━━
+  GB 30000.7 (References)
+  GB 30000.23 (References)
+  GB 30000.20 (References)
+
+━━━ 历史事故 ━━━
+  ⚠️ 2019江苏响水爆炸: 78人死亡, 617人受伤
+
+【RAG 知识库补充】
+  · GB 30000.7-2013 将苯列为易燃液体类别2
+
+═══════════════════════════════════
+`,
     });
   }),
 

@@ -262,14 +262,7 @@ export interface QuickCheckResult {
 // ── Tickets 工单 ──
 
 /** 工单状态 — 对齐后端 TicketFollowupModule.TicketStatus 枚举 */
-export type TicketStatus =
-  | 'New'
-  | 'Accepted'
-  | 'InProgress'
-  | 'Completed'
-  | 'Verified'
-  | 'Closed'
-  | 'Rejected';
+export type TicketStatus = 'New' | 'Accepted' | 'InProgress' | 'Completed' | 'Verified' | 'Closed' | 'Rejected';
 
 export interface TicketItem {
   id: number;
@@ -493,11 +486,10 @@ export interface KnowledgeGraphRequest {
 export interface KnowledgeGraphResult {
   query: string;
   success: boolean;
-  warnings: string[];
-  intent: string;
   elapsedMs: number;
+  entityCount: number;
+  relationCount: number;
   output: string;
-  auditRecord: unknown;
 }
 
 // ── Alerts 告警 ──
