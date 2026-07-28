@@ -11,7 +11,7 @@ import { test as base, expect, type Page } from '@playwright/test';
 export const ACCOUNTS = {
   admin: { username: 'admin', password: '7758521' },
   auditor: { username: 'auditor', password: '7758521' },
-  viewer: { username: 'viewer', password: 'viewer123' },
+  viewer: { username: 'viewer', password: '7758521' },
 } as const;
 
 export type Role = keyof typeof ACCOUNTS;

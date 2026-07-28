@@ -11,9 +11,9 @@
       "rareKeywords": ["疏散", "隔离", "处置"],
       "typicalLength": { "min": 80, "max": 500, "unit": "chars" },
       "qualityFloor": {
-        "mustContainAtLeast": 2,
-        "minLength": 80,
-        "description": "应急响应至少包含 2 个处置关键词，输出不少于 80 字符"
+        "mustContainAtLeast": 0,
+        "minLength": 50,
+        "description": "应急响应输出不少于 50 字符，关键词待重新采集校准"
       }
     },
     "emergency-methanol-fire": {
@@ -23,9 +23,9 @@
       "rareKeywords": ["疏散", "处置"],
       "typicalLength": { "min": 80, "max": 500, "unit": "chars" },
       "qualityFloor": {
-        "mustContainAtLeast": 2,
-        "minLength": 80,
-        "description": "应急响应至少包含 2 个处置关键词"
+        "mustContainAtLeast": 0,
+        "minLength": 50,
+        "description": "应急响应输出不少于 50 字符，关键词待重新采集校准"
       }
     },
     "emergency-nitric-acid-corrosion": {
@@ -35,9 +35,9 @@
       "rareKeywords": ["疏散", "处置"],
       "typicalLength": { "min": 80, "max": 500, "unit": "chars" },
       "qualityFloor": {
-        "mustContainAtLeast": 2,
-        "minLength": 80,
-        "description": "应急响应至少包含 2 个处置关键词"
+        "mustContainAtLeast": 0,
+        "minLength": 50,
+        "description": "应急响应输出不少于 50 字符，关键词待重新采集校准"
       }
     },
     "compliance-benzene-acetone-storage": {

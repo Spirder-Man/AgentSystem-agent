@@ -17,50 +17,42 @@ test.describe('P5-Real: 审计日志 — 列表 + 完整性校验 (真实后端)
 
   // ── 审计日志列表加载 ──
   test('admin 应能看到审计日志列表', async ({ page }) => {
-    const navAudit = page.locator('text=审计日志').or(
-      page.locator('text=审计管理').or(page.locator('text=Audit')),
-    );
+    const navAudit = page.locator('text=审计日志').or(page.locator('text=审计管理').or(page.locator('text=Audit')));
     await navAudit.first().click();
     await expect(page).toHaveURL(/\/audit/, { timeout: 10_000 });
 
     // 验证日志列表渲染（来自真实 DB）
-    const logEntry = page.locator('text=合规审核').or(
-      page.locator('text=危化品查询').or(page.locator('text=巡检执行')),
-    );
+    const logEntry = page
+      .locator('text=合规审核')
+      .or(page.locator('text=危化品查询').or(page.locator('text=巡检执行')));
     await expect(logEntry.first()).toBeVisible({ timeout: 15_000 });
   });
 
   // ── 完整性校验 — 核心价值：验证真实哈希链 ──
   test('admin 应能执行哈希链完整性校验并验证结果', async ({ page }) => {
-    const navAudit = page.locator('text=审计日志').or(
-      page.locator('text=审计管理').or(page.locator('text=Audit')),
-    );
+    const navAudit = page.locator('text=审计日志').or(page.locator('text=审计管理').or(page.locator('text=Audit')));
     await navAudit.first().click();
     await expect(page).toHaveURL(/\/audit/, { timeout: 10_000 });
 
     // 查找完整性校验按钮
-    const integrityBtn = page.locator('button:has-text("完整性")').or(
-      page.locator('button:has-text("校验")').or(
-        page.locator('button:has-text("Integrity")'),
-      ),
-    );
+    const integrityBtn = page
+      .locator('button:has-text("完整性")')
+      .or(page.locator('button:has-text("校验")').or(page.locator('button:has-text("Integrity")')));
 
     if (await integrityBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
       await integrityBtn.click();
 
       // 验证校验结果（真实后端 SHA256 哈希链验证）
-      const checkResult = page.locator('text=完整').or(
-        page.locator('text=未检测到篡改').or(page.locator('text=intact')),
-      );
+      const checkResult = page
+        .locator('text=完整')
+        .or(page.locator('text=未检测到篡改').or(page.locator('text=intact')));
       await expect(checkResult.first()).toBeVisible({ timeout: 15_000 });
     }
   });
 
   // ── 审计统计 ──
   test('admin 应能看到审计统计概览（来自真实 DB）', async ({ page }) => {
-    const navAudit = page.locator('text=审计日志').or(
-      page.locator('text=审计管理').or(page.locator('text=Audit')),
-    );
+    const navAudit = page.locator('text=审计日志').or(page.locator('text=审计管理').or(page.locator('text=Audit')));
     await navAudit.first().click();
     await expect(page).toHaveURL(/\/audit/, { timeout: 10_000 });
 
@@ -70,8 +62,8 @@ test.describe('P5-Real: 审计日志 — 列表 + 完整性校验 (真实后端)
 
   // ── auditor 无权限 ──
   test('auditor 访问 /audit 应被拦截', async ({ page }) => {
-    await page.goto('/login');
     await page.context().clearCookies();
+    await page.goto('/login');
     await page.fill('input[autocomplete="username"]', ACCOUNTS.auditor.username);
     await page.fill('input[autocomplete="current-password"]', ACCOUNTS.auditor.password);
     await page.click('button[type="submit"]');
@@ -85,8 +77,8 @@ test.describe('P5-Real: 审计日志 — 列表 + 完整性校验 (真实后端)
 
   // ── viewer 无权限 ──
   test('viewer 访问 /audit 应被拦截', async ({ page }) => {
-    await page.goto('/login');
     await page.context().clearCookies();
+    await page.goto('/login');
     await page.fill('input[autocomplete="username"]', ACCOUNTS.viewer.username);
     await page.fill('input[autocomplete="current-password"]', ACCOUNTS.viewer.password);
     await page.click('button[type="submit"]');

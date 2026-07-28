@@ -76,12 +76,19 @@ test.describe('EvalFlow-Real: 合规评测流程 (真实 GPU)', () => {
       const sendBtn = page.locator('button:has-text("提交审核")');
       await sendBtn.click();
 
-      // 等待 LLM 响应
-      const llmPanel = page.locator(`[data-testid="${COMPLIANCE_CHECK.llmPanel}"]`).or(page.locator('text=分析结果'));
-      await expect(llmPanel.first()).toBeVisible({ timeout: 90_000 });
+      // 等待 LLM 响应（轮询等待内容加载完成，不只是元素可见）
+      const llmPanel = page.locator(`[data-testid="${COMPLIANCE_CHECK.llmPanel}"]`);
+      await expect(llmPanel).toBeVisible({ timeout: 90_000 });
+
+      // 轮询等待实际内容（非加载态）
+      let text = '';
+      for (let i = 0; i < 15; i++) {
+        text = (await llmPanel.textContent()) ?? '';
+        if (text.length > 20) break;
+        await page.waitForTimeout(2000);
+      }
 
       // 验证非空响应
-      const text = await llmPanel.first().textContent();
       expect(text?.length ?? 0, `${category} 应返回非空响应`).toBeGreaterThan(10);
     });
   }

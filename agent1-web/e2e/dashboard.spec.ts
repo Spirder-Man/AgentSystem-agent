@@ -72,13 +72,8 @@ test.describe('P3: 仪表盘 — 合规总览 + 指标验证', () => {
     const title = page.locator('text=合规仪表盘');
     await expect(title.first()).toBeVisible({ timeout: 10_000 });
 
-    // 扫描按钮不应可见（viewer 无写入权限）
-    const scanBtn = page.locator('button:has-text("扫描")').or(page.locator('button:has-text("自动扫描")'));
-    const isVisible = await scanBtn.isVisible().catch(() => false);
-    if (isVisible) {
-      const isDisabled = await scanBtn.isDisabled().catch(() => false);
-      expect(isDisabled).toBe(true);
-    }
+    // 扫描按钮不应存在于 DOM（v-permission 对 viewer 移除元素）
+    await expect(page.getByTestId(DASHBOARD.scanBtn)).not.toBeAttached({ timeout: 3_000 });
   });
 
   // ── 合规发现列表 ──

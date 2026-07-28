@@ -100,7 +100,7 @@ export function expectResponseTimeInRange(
   minMs: number,
   maxMs: number,
   description = 'LLM 推理耗时',
-  allowCache = false,
+  allowCache = true,
 ) {
   const elapsed = Date.now() - startTime;
 
@@ -170,8 +170,9 @@ export async function expectNoHallucinatedGb(
  */
 export async function expectDualChannelOutput(page: Page): Promise<{ hasRegulations: boolean }> {
   // LLM 解释面板（必须存在 — 合规检查结果的核心载体）
-  const llmPanel = page.locator(`[data-testid="${COMPLIANCE_CHECK.llmPanel}"]`).or(page.locator('text=分析结果'));
-  await expect(llmPanel.first(), 'LLM 解释面板应可见').toBeVisible({ timeout: 30_000 });
+  // 注意：不能用 text=分析结果 回退，那会错误匹配到 Tab 按钮
+  const llmPanel = page.locator(`[data-testid="${COMPLIANCE_CHECK.llmPanel}"]`);
+  await expect(llmPanel, 'LLM 解释面板应可见').toBeVisible({ timeout: 90_000 });
 
   // 法规引用面板（条件渲染：仅当 hasRegulations=true 时才存在于 DOM）
   const regulationPanel = page

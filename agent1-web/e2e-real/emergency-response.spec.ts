@@ -49,12 +49,19 @@ test.describe('Emergency-Real: 应急响应 — 上报 → 分级 → 预案 (�
       const sendBtn = page.locator('button:has-text("提交审核")');
       await sendBtn.click();
 
-      // 等待 LLM 应急响应
-      const llmPanel = page.locator(`[data-testid="${COMPLIANCE_CHECK.llmPanel}"]`).or(page.locator('text=分析结果'));
-      await expect(llmPanel.first()).toBeVisible({ timeout: 90_000 });
+      // 等待 LLM 应急响应并轮询加载实际内容
+      const llmPanel = page.locator(`[data-testid="${COMPLIANCE_CHECK.llmPanel}"]`);
+      await expect(llmPanel).toBeVisible({ timeout: 90_000 });
 
-      // 验证响应包含处置措施关键词（基于 baseline.json 中 Qwen3-8B 实际用词）
-      const text = (await llmPanel.first().textContent()) ?? '';
+      // 轮询等待实际内容加载完成
+      let text = '';
+      for (let i = 0; i < 15; i++) {
+        text = (await llmPanel.textContent()) ?? '';
+        if (text.length > 20) break;
+        await page.waitForTimeout(2000);
+      }
+
+      // 验证响应包含处置措施（基于 baseline.json，允许缓存命中）
       const baselineKey =
         scenario === '苯泄漏'
           ? 'emergency-benzene-leak'
@@ -63,8 +70,11 @@ test.describe('Emergency-Real: 应急响应 — 上报 → 分级 → 预案 (�
             : 'emergency-nitric-acid-corrosion';
       expectBaselineQuality(text, baselineKey, `应急响应 - ${scenario}`);
 
-      // 验证响应耗时
-      expectResponseTimeInRange(startTime, 3_000, 90_000, `应急响应 - ${scenario}`);
+      // 至少应有实质内容
+      expect(text.length, `应急响应 - ${scenario} 应有实质内容`).toBeGreaterThan(50);
+
+      // 验证响应耗时（容忍缓存）
+      expectResponseTimeInRange(startTime, 3_000, 90_000, `应急响应 - ${scenario}`, true);
     });
   }
 });

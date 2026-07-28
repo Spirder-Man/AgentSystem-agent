@@ -46,13 +46,10 @@ test.describe('KnowledgeBase-Real: 知识库查询 + 增量更新 (真实后端)
       // 等待结果（真实 RAG 检索需要时间）
       const { hasRegulations } = await expectDualChannelOutput(page);
 
-      // 验证法规引用包含 GB 编号（仅当 LLM 提取到法规编号时）
+      // 验证 GB 编号（从 LLM 解释面板提取）
       if (hasRegulations) {
-        const regulationPanel = page
-          .locator(`[data-testid="${COMPLIANCE_CHECK.regulationPanel}"]`)
-          .or(page.locator('text=法规引用'))
-          .first();
-        await expectGbNumberPresent(regulationPanel, `知识库检索 - ${query}`);
+        const llmPanel = page.locator(`[data-testid="${COMPLIANCE_CHECK.llmPanel}"]`);
+        await expectGbNumberPresent(llmPanel, `知识库检索 - ${query}`);
       } else {
         console.warn(`[KNOWLEDGE-BASE] 法规面板不可见 — 查询 "${query}" 未触发法规提取`);
       }
@@ -85,15 +82,19 @@ test.describe('KnowledgeBase-Real: 知识库查询 + 增量更新 (真实后端)
     const sendBtn = page.locator('button:has-text("提交审核")');
     await sendBtn.click();
 
-    // 等待 LLM 响应
-    const llmPanel = page
-      .locator(`[data-testid="${COMPLIANCE_CHECK.llmPanel}"]`)
-      .or(page.locator('text=分析结果'))
-      .first();
-    await expect(llmPanel.first()).toBeVisible({ timeout: 90_000 });
+    // 等待 LLM 响应（轮询等待内容加载完成）
+    const llmPanel = page.locator(`[data-testid="${COMPLIANCE_CHECK.llmPanel}"]`);
+    await expect(llmPanel).toBeVisible({ timeout: 90_000 });
+
+    // 轮询等待实际内容
+    let text = '';
+    for (let i = 0; i < 15; i++) {
+      text = (await llmPanel.textContent()) ?? '';
+      if (text.length > 20) break;
+      await page.waitForTimeout(2000);
+    }
 
     // 至少应有响应内容
-    const text = await llmPanel.first().textContent();
     expect(text?.length ?? 0, 'LLM 应返回非空响应').toBeGreaterThan(10);
   });
 });

@@ -16,9 +16,7 @@ test.describe('P4-Real: 资产台账 — 列表 → 详情 (真实数据)', () =
 
   // ── 资产列表 ──
   test('应展示资产台账列表（化学品名称 + CAS号 + 位置）', async ({ page }) => {
-    const navAssets = page.locator('text=资产台账').or(
-      page.locator('text=资产管理').or(page.locator('text=Assets')),
-    );
+    const navAssets = page.locator('text=资产台账').or(page.locator('text=资产管理').or(page.locator('text=Assets')));
     await navAssets.first().click();
     await expect(page).toHaveURL(/\/assets/, { timeout: 10_000 });
 
@@ -32,9 +30,7 @@ test.describe('P4-Real: 资产台账 — 列表 → 详情 (真实数据)', () =
 
   // ── 资产详情 ──
   test('点击资产应进入详情页，展示完整信息', async ({ page }) => {
-    const navAssets = page.locator('text=资产台账').or(
-      page.locator('text=资产管理').or(page.locator('text=Assets')),
-    );
+    const navAssets = page.locator('text=资产台账').or(page.locator('text=资产管理').or(page.locator('text=Assets')));
     await navAssets.first().click();
     await expect(page).toHaveURL(/\/assets/, { timeout: 10_000 });
 
@@ -52,16 +48,14 @@ test.describe('P4-Real: 资产台账 — 列表 → 详情 (真实数据)', () =
 
   // ── viewer 只读 ──
   test('viewer 可查看资产详情但无编辑删除按钮', async ({ page }) => {
-    await page.goto('/login');
     await page.context().clearCookies();
+    await page.goto('/login');
     await page.fill('input[autocomplete="username"]', ACCOUNTS.viewer.username);
     await page.fill('input[autocomplete="current-password"]', ACCOUNTS.viewer.password);
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
 
-    const navAssets = page.locator('text=资产台账').or(
-      page.locator('text=资产管理').or(page.locator('text=Assets')),
-    );
+    const navAssets = page.locator('text=资产台账').or(page.locator('text=资产管理').or(page.locator('text=Assets')));
     await navAssets.first().click();
     await expect(page).toHaveURL(/\/assets/, { timeout: 10_000 });
 
@@ -70,9 +64,9 @@ test.describe('P4-Real: 资产台账 — 列表 → 详情 (真实数据)', () =
     await firstAsset.click();
     await expect(page).toHaveURL(/\/assets\//, { timeout: 10_000 });
 
-    const editBtn = page.locator('button:has-text("编辑")').or(
-      page.locator('button:has-text("删除")').or(page.locator('button:has-text("修改")')),
-    );
+    const editBtn = page
+      .locator('button:has-text("编辑")')
+      .or(page.locator('button:has-text("删除")').or(page.locator('button:has-text("修改")')));
     const isVisible = await editBtn.isVisible().catch(() => false);
     if (isVisible) {
       const isDisabled = await editBtn.isDisabled().catch(() => false);

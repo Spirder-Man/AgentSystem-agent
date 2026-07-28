@@ -11,10 +11,10 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
-  timeout: 60_000,               // LLM 推理场景下 E2E 超时设高
+  timeout: 60_000, // LLM 推理场景下 E2E 超时设高
   expect: { timeout: 15_000 },
-  retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  retries: process.env.CI ? 2 : 1,
+  workers: process.env.CI ? 1 : 2,
 
   reporter: [
     ['html', { outputFolder: 'playwright-report' }],
@@ -40,10 +40,12 @@ export default defineConfig({
   ],
 
   // CI 中启动 Vite dev server (MSW Mock 模式)
-  webServer: process.env.CI ? {
-    command: 'npm run dev:mock',
-    port: 5173,
-    reuseExistingServer: false,
-    timeout: 30_000,
-  } : undefined,
+  webServer: process.env.CI
+    ? {
+        command: 'npm run dev:mock',
+        port: 5173,
+        reuseExistingServer: false,
+        timeout: 30_000,
+      }
+    : undefined,
 });

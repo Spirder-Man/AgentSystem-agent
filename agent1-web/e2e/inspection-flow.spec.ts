@@ -25,9 +25,11 @@ test.describe('P2: 巡检流程 — 计划列表 → 详情 → 执行', () => {
 
   // ── 巡检计划列表 ──
   test('应展示巡检计划列表（计划名称 + 状态 + 巡检人）', async ({ page }) => {
-    // 导航到巡检计划页
+    // 导航到巡检计划页（先等待侧边栏导航可见再点击）
     const navInspection = page.locator('text=巡检计划');
+    await expect(navInspection.first()).toBeVisible({ timeout: 5_000 });
     await navInspection.first().click();
+    await page.waitForURL(/\/inspection\/plans/, { timeout: 10_000 });
     await expect(page).toHaveURL(/\/inspection\/plans/, { timeout: 5_000 });
 
     // 验证至少有一行计划数据（MSW Mock 返回 3 个计划）
@@ -42,7 +44,9 @@ test.describe('P2: 巡检流程 — 计划列表 → 详情 → 执行', () => {
   // ── 计划详情 → 检查项 ──
   test('点击计划应进入详情页，展示检查项列表', async ({ page }) => {
     const navInspection = page.locator('text=巡检计划');
+    await expect(navInspection.first()).toBeVisible({ timeout: 5_000 });
     await navInspection.first().click();
+    await page.waitForURL(/\/inspection\/plans/, { timeout: 10_000 });
     await expect(page).toHaveURL(/\/inspection\/plans/, { timeout: 5_000 });
 
     // 点击第一个计划

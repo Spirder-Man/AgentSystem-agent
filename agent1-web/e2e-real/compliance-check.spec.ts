@@ -51,13 +51,10 @@ test.describe('P1-Real: 登录 → 合规自查 → 真实 GPU 推理', () => {
     // 5. 真实 GPU 推理时间应在 3s-90s 之间
     expectResponseTimeInRange(startTime, 3_000, 90_000);
 
-    // 6. 验证 GB 编号非幻觉（仅当 LLM 提取到法规编号时）
+    // 6. 验证 GB 编号非幻觉（从 LLM 解释面板提取，法规引用嵌在 LLM 输出中）
     if (hasRegulations) {
-      const regulationPanel = page
-        .locator(`[data-testid="${COMPLIANCE_CHECK.regulationPanel}"]`)
-        .or(page.locator('text=法规引用'))
-        .first();
-      await expectGbNumberPresent(regulationPanel, '合规自查法规引用');
+      const llmPanel = page.locator(`[data-testid="${COMPLIANCE_CHECK.llmPanel}"]`);
+      await expectGbNumberPresent(llmPanel, '合规自查法规引用');
     }
 
     // 7. 验证工具调用链（真实 GPU 才会产生工具调用）
@@ -96,17 +93,19 @@ test.describe('P1-Real: 登录 → 合规自查 → 真实 GPU 推理', () => {
     await expect(page).toHaveURL(/\/login/, { timeout: 10_000 });
   });
 
-  // ── 权限：viewer 访问业务页面应被拦截 ──
-  test('viewer 角色访问 /compliance 应显示 403 或受限', async ({ page }) => {
+  // ── 权限：viewer 可访问合规检查页但功能受限 ──
+  test('viewer 角色可访问 /compliance 页面', async ({ page }) => {
     await page.goto('/login');
+    await page.context().clearCookies();
     await page.fill('input[autocomplete="username"]', ACCOUNTS.viewer.username);
     await page.fill('input[autocomplete="current-password"]', ACCOUNTS.viewer.password);
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
 
     await page.goto('/compliance');
-    await expect(
-      page.locator('text=无权限').or(page.locator('text=403')).or(page.locator('text=暂无可用功能')),
-    ).toBeVisible({ timeout: 15_000 });
+    // viewer 可访问合规检查页（后端 Policy="Viewer" 允许读取）
+    await expect(page).toHaveURL(/\/compliance/, { timeout: 15_000 });
+    // 验证页面有基本内容
+    await expect(page.locator('h1, h2').first()).toBeVisible({ timeout: 10_000 });
   });
 });

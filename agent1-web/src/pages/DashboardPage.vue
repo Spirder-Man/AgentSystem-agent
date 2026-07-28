@@ -254,6 +254,7 @@ async function runAutoScan() {
           <h3 class="text-sm font-semibold text-slate-700 mb-3">🔄 自动合规扫描</h3>
           <p class="text-xs text-slate-500 mb-3">对全部化学资产执行 AI 合规规则扫描，生成最新发现报告</p>
           <button
+            v-permission="['admin', 'auditor']"
             @click="runAutoScan"
             :disabled="scanLoading"
             data-testid="dashboard-scan-btn"

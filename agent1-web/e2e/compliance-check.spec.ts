@@ -103,19 +103,26 @@ test.describe('P1: 登录 → 合规自查 → 查看结果', () => {
     await expect(page).toHaveURL(/\/login/, { timeout: 5_000 });
   });
 
-  // ── 权限：viewer 访问业务页面应被拦截 ──
-  test('viewer 角色访问 /compliance 应显示 403', async ({ page }) => {
+  // ── 权限：viewer 可查看合规检查页但不能提交 ──
+  test('viewer 角色可访问 /compliance 但提交按钮应为禁用', async ({ page }) => {
     // viewer 角色登录
     await page.goto('/login');
     await page.fill('input[autocomplete="username"]', 'viewer');
     await page.fill('input[autocomplete="current-password"]', 'viewer123');
     await page.click('button[type="submit"]');
 
-    // viewer 登陆后访问业务页面
+    // viewer 登陆后访问合规检查页（按设计 viewer 可查看只读页面）
     await page.goto('/compliance');
-    // 应被重定向到 403 或留在登录页
-    await expect(
-      page.locator('text=无权限').or(page.locator('text=403')).or(page.locator('text=暂无可用功能')),
-    ).toBeVisible({ timeout: 10_000 });
+
+    // viewer 应能看到合规检查页面
+    await expect(page.locator('h1:has-text("合规检查")')).toBeVisible({ timeout: 10_000 });
+
+    // 提交按钮对 viewer 应不可见或被禁用
+    const submitBtn = page.getByTestId(COMPLIANCE_CHECK.submitBtn);
+    const isVisible = await submitBtn.isVisible().catch(() => false);
+    if (isVisible) {
+      const isDisabled = await submitBtn.isDisabled().catch(() => false);
+      expect(isDisabled, 'viewer 角色的提交按钮应为禁用状态').toBe(true);
+    }
   });
 });
