@@ -424,10 +424,17 @@ namespace Agent1
                 return new MemoryCoordinator(shortMem, longMem, cache, audit);
             });
 
+            // [知识图谱] 化工知识图谱服务 — 替代硬编码 ChemicalSubstanceDatabase
+            services.AddSingleton<IChemicalKnowledgeGraph, ChemicalKnowledgeGraph>();
+            services.AddSingleton<ChemicalNamingInference>();
+
             // 【框架】BuildServiceProvider() 是 DI 容器的"编译"步骤：
             //   验证所有依赖关系——如果有无法解析的依赖，这里会抛异常。
             //   这提供了编译期（启动时）的安全网，而不是运行到一半才崩溃。
             var serviceProvider = services.BuildServiceProvider();
+
+            // [知识图谱] 初始化门面类 — 将图服务注入到 ChemicalSubstanceDatabase 静态门面
+            ChemicalSubstanceDatabase.SetGraph(serviceProvider.GetRequiredService<IChemicalKnowledgeGraph>());
 
             // ================================================================
             // Phase 1: 从 DI 容器解析服务

@@ -312,6 +312,10 @@ builder.Logging.AddOpenTelemetry(o =>
 
 builder.Services.AddControllers();
 
+// [知识图谱] 化工知识图谱服务 — 替代硬编码 ChemicalSubstanceDatabase
+builder.Services.AddSingleton<IChemicalKnowledgeGraph, ChemicalKnowledgeGraph>();
+builder.Services.AddSingleton<ChemicalNamingInference>();
+
 var app = builder.Build();
 
 // ═══════════════════════════════════════════════════
@@ -320,6 +324,10 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var sp = scope.ServiceProvider;
+
+    // [知识图谱] 初始化门面类 — 将图服务注入到 ChemicalSubstanceDatabase 静态门面
+    ChemicalSubstanceDatabase.SetGraph(sp.GetRequiredService<IChemicalKnowledgeGraph>());
+
     var databaseService = sp.GetRequiredService<IDatabaseService>();
     var knowledgeBaseService = sp.GetRequiredService<IKnowledgeBaseService>();
 

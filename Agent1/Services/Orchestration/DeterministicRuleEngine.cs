@@ -19,15 +19,17 @@ namespace Agent1.Services.Orchestration
     /// <summary>
     /// 化工双层门卫 — 正向闭环设计，不再依赖硬编码信号词白名单。
     ///
-    /// Tier 1 (物质名门卫): 查询中包含 ChemicalSubstanceDatabase 中任一化学品名/别名 → 直接放行。
+    /// Tier 1 (物质名门卫): 查询中包含 ChemicalKnowledgeGraph 中任一化学品名/别名 → 直接放行。
     ///   覆盖 50+ 化学品 + 别名，新增物质到数据库即自动获得 Gate 覆盖，无需手动维护。
-    ///   "苯和乙醇能搁一块儿吗？" → 含"苯" → 放行 ✅
+    /// Tier 1b (命名推断): 未收录但符合化学命名模式的物质 → 放行。
     /// Tier 2 (信号词门卫): 查询中包含化工领域通用信号词 → 放行。
-    ///   覆盖不提名具体物质的化工通用查询，如"危化品储存规范有哪些要求？"。
     /// 两层均不满足 → 拦截"蜘蛛侠""今天天气"等完全无关的输入。
     /// </summary>
-    internal static class ChemicalSignalGate
+    internal class ChemicalSignalGate
     {
+        private readonly IChemicalKnowledgeGraph _graph;
+        private readonly ChemicalNamingInference _naming;
+
         private static readonly string[] Signals =
         {
             "危险", "安全", "储存", "存放", "化学品", "库房", "仓库", "合规", "法规", "GB", "禁忌",
@@ -35,14 +37,24 @@ namespace Agent1.Services.Orchestration
             "同库", "共存", "混合", "配伍", "闪点", "沸点", "危害", "储罐"
         };
 
-        /// <summary>双层门卫：物质名 Tier 1 → 信号词 Tier 2 → 拦截</summary>
-        public static bool Pass(string query)
+        public ChemicalSignalGate(IChemicalKnowledgeGraph graph, ChemicalNamingInference naming)
+        {
+            _graph = graph;
+            _naming = naming;
+        }
+
+        /// <summary>双层门卫：Tier 1 (图查询) → Tier 1b (命名推断) → Tier 2 (信号词) → 拦截</summary>
+        public bool Pass(string query)
         {
             if (string.IsNullOrWhiteSpace(query))
                 return false;
 
             // Tier 1: 化学物质名匹配（正向闭环：数据库增长自动覆盖）
             if (MentionsChemicalSubstance(query))
+                return true;
+
+            // Tier 1b: 命名推断 — 未收录但符合化学命名模式
+            if (_naming.InferSubstanceType(query).Confidence >= 0.5)
                 return true;
 
             // Tier 2: 信号词匹配（覆盖不提名具体物质的化工通用查询）
@@ -52,10 +64,10 @@ namespace Agent1.Services.Orchestration
             return false;
         }
 
-        /// <summary>检查查询中是否包含 ChemicalSubstanceDatabase 中任一化学品名或别名</summary>
-        private static bool MentionsChemicalSubstance(string query)
+        /// <summary>检查查询中是否包含 ChemicalKnowledgeGraph 中任一化学品名或别名</summary>
+        private bool MentionsChemicalSubstance(string query)
         {
-            foreach (var sub in ChemicalSubstanceDatabase.GetAll())
+            foreach (var sub in _graph.GetAll())
             {
                 if (query.Contains(sub.Name, StringComparison.OrdinalIgnoreCase))
                     return true;
@@ -79,15 +91,24 @@ namespace Agent1.Services.Orchestration
     /// </summary>
     internal class StorageCompatibilityHandler : IComplianceQueryHandler
     {
+        private readonly IChemicalKnowledgeGraph _graph;
+        private readonly ChemicalNamingInference _naming;
+
         private static readonly string[] Keywords =
             { "同库", "共存", "混合", "禁忌", "配伍", "储存", "存放", "放", "搁",
               "一起存放", "放在一起", "同库存放", "兼容", "能否", "能和", "可以", "不可",
               "一块", "一起", "仓库", "库房", "存", "装", "堆", "摆" };
 
+        public StorageCompatibilityHandler(IChemicalKnowledgeGraph graph, ChemicalNamingInference naming)
+        {
+            _graph = graph;
+            _naming = naming;
+        }
+
         public ComplianceFallbackResult? TryHandle(string query)
         {
             // 先提取提到的化学品（无论关键词是否匹配）
-            var allSubstances = ChemicalSubstanceDatabase.GetAll();
+            var allSubstances = _graph.GetAll();
             var mentioned = allSubstances
                 .Where(s => query.Contains(s.Name, StringComparison.OrdinalIgnoreCase))
                 .Select(s => s.Name)
@@ -107,6 +128,13 @@ namespace Agent1.Services.Orchestration
                     }
                 }
             }
+
+            // Tier 1b: 命名推断 — 未收录但符合化学命名模式的物质也算入
+            var inferredTerms = ChemicalNamingInference.SplitChemicalTerms(query)
+                .Where(t => _naming.InferSubstanceType(t).Confidence >= 0.5
+                            && !mentioned.Contains(t))
+                .ToList();
+            mentioned.AddRange(inferredTerms);
 
             // 关键词匹配 OR 识别到2+化学品 → 进入兼容性判断
             bool keywordMatch = Keywords.Any(k => query.Contains(k));
@@ -152,7 +180,7 @@ namespace Agent1.Services.Orchestration
                     }
                 }
 
-                var compat = ChemicalSubstanceDatabase.CheckCompatibility(subA, subB);
+                var compat = _graph.CheckCompatibility(subA, subB);
                 if (compat != null)
                 {
                     var verdict = compat.IsCompatible ? "可同库储存" : "不得同库储存";
@@ -175,15 +203,22 @@ namespace Agent1.Services.Orchestration
     /// <summary>危险类别查询处理器</summary>
     internal class HazardCategoryHandler : IComplianceQueryHandler
     {
+        private readonly IChemicalKnowledgeGraph _graph;
+
         private static readonly string[] Keywords =
             { "类别", "分类", "属于", "危险", "危害", "特性", "性质", "闪点", "沸点" };
+
+        public HazardCategoryHandler(IChemicalKnowledgeGraph graph)
+        {
+            _graph = graph;
+        }
 
         public ComplianceFallbackResult? TryHandle(string query)
         {
             if (!Keywords.Any(k => query.Contains(k)))
                 return null;
 
-            var allSubstances = ChemicalSubstanceDatabase.GetAll();
+            var allSubstances = _graph.GetAll();
             foreach (var sub in allSubstances)
             {
                 if (query.Contains(sub.Name, StringComparison.OrdinalIgnoreCase))
@@ -223,15 +258,22 @@ namespace Agent1.Services.Orchestration
     /// <summary>安全距离查询处理器</summary>
     internal class SafetyDistanceHandler : IComplianceQueryHandler
     {
+        private readonly IChemicalKnowledgeGraph _graph;
+
         private static readonly string[] Keywords =
             { "安全距离", "间距", "消防通道", "防火间距", "储罐间距" };
+
+        public SafetyDistanceHandler(IChemicalKnowledgeGraph graph)
+        {
+            _graph = graph;
+        }
 
         public ComplianceFallbackResult? TryHandle(string query)
         {
             if (!Keywords.Any(k => query.Contains(k)))
                 return null;
 
-            var distances = ChemicalSubstanceDatabase.GetAllSafetyDistances();
+            var distances = _graph.GetAllSafetyDistances();
             foreach (var sd in distances)
             {
                 if (query.Contains(sd.FacilityPair, StringComparison.OrdinalIgnoreCase) ||
@@ -270,6 +312,10 @@ namespace Agent1.Services.Orchestration
     /// </summary>
     public class DeterministicRuleEngine
     {
+        private readonly IChemicalKnowledgeGraph _graph;
+        private readonly ChemicalNamingInference _naming;
+        private readonly ChemicalSignalGate _gate;
+
         // 内置储存禁忌配对表（来自 ChemicalSubstanceDatabase）
         internal static readonly Dictionary<(string, string), string> StorageCompatibilityRules = new()
         {
@@ -282,13 +328,21 @@ namespace Agent1.Services.Orchestration
             [("氢氧化钠", "硫酸")] = "禁止同库储存（酸碱反应）| GB 15603-2022 §4.2.3",
         };
 
-        /// <summary>LLM 降级查询责任链 — 新增场景在此添加 handler 即可</summary>
-        private readonly List<IComplianceQueryHandler> _handlers = new()
+        public DeterministicRuleEngine(IChemicalKnowledgeGraph graph, ChemicalNamingInference naming)
         {
-            new StorageCompatibilityHandler(),
-            new HazardCategoryHandler(),
-            new SafetyDistanceHandler(),
-        };
+            _graph = graph;
+            _naming = naming;
+            _gate = new ChemicalSignalGate(graph, naming);
+            _handlers = new List<IComplianceQueryHandler>
+            {
+                new StorageCompatibilityHandler(_graph, _naming),
+                new HazardCategoryHandler(_graph),
+                new SafetyDistanceHandler(_graph),
+            };
+        }
+
+        /// <summary>LLM 降级查询责任链 — 新增场景在此添加 handler 即可</summary>
+        private readonly List<IComplianceQueryHandler> _handlers;
 
         /// <summary>
         /// 按检查类型分派：规则引擎优先，LLM兜底。
@@ -428,7 +482,7 @@ namespace Agent1.Services.Orchestration
                 return null;
 
             // ── 信号词门卫：拦截完全不相关的输入 ──
-            if (!ChemicalSignalGate.Pass(userQuery))
+            if (!_gate.Pass(userQuery))
                 return null;
 
             // ── 责任链：按注册顺序依次尝试 handler ──
