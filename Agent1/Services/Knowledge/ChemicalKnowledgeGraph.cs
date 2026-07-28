@@ -61,11 +61,21 @@ public class ChemicalKnowledgeGraph : IChemicalKnowledgeGraph
     }
 
     public ChemicalKnowledgeGraph(
-        string connectionString,
+        Config.AppConfig config,
         ChemicalNamingInference naming,
         ILogger<ChemicalKnowledgeGraph>? logger = null)
     {
-        _connectionString = connectionString;
+        var db = config.Database;
+        var csb = new Npgsql.NpgsqlConnectionStringBuilder
+        {
+            Host = db.Host,
+            Port = db.Port,
+            Database = db.DatabaseName,
+            Username = db.Username
+        };
+        if (!string.IsNullOrEmpty(db.Password))
+            csb.Password = db.Password;
+        _connectionString = csb.ToString();
         _naming = naming;
         _logger = logger;
     }
