@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Agent1 测试总纲 — 工程蓝图</title>
+<title>Agent1 测试体系全景蓝图</title>
 <style>
 :root {
   --c-bg: #f8fafc;
@@ -11,639 +11,627 @@
   --c-border: #cbd5e1;
   --c-text-main: #0f172a;
   --c-text-sub: #64748b;
-  --c-accent: #0f172a;
-  --c-red: #dc2626;
-  --c-amber: #d97706;
-  --c-green: #16a34a;
-  --c-green-bg: #f0fdf4;
-  --c-red-bg: #fef2f2;
-  --c-amber-bg: #fffbeb;
+  --c-accent: #2563eb;
+  --c-pass: #16a34a;
+  --c-warn: #d97706;
+  --c-fail: #dc2626;
+  --c-dim: #94a3b8;
   --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'SF Mono', Monaco, Consolas, monospace;
+  --font-mono: 'SF Mono', 'Cascadia Code', Monaco, Consolas, monospace;
 }
-* { margin: 0; padding: 0; box-sizing: border-box; }
+* { margin:0; padding:0; box-sizing:border-box; }
 body {
   background: var(--c-bg);
   font-family: var(--font-ui);
   color: var(--c-text-main);
-  padding: 40px;
+  padding: 32px 40px 60px;
+  display:flex; flex-direction:column; gap:28px;
+  align-items:center;
 }
 .diagram-canvas {
   background: var(--c-canvas);
   border: 2px solid var(--c-border);
-  max-width: 1400px;
-  margin: 0 auto;
+  padding: 28px 32px 24px;
+  width: 100%;
+  max-width: 1240px;
 }
 .diagram-header {
   border-bottom: 1px solid var(--c-border);
-  padding: 24px 32px;
+  padding-bottom: 14px;
+  margin-bottom: 20px;
+  display:flex; justify-content:space-between; align-items:baseline;
 }
-.diagram-title { font-size: 22px; font-weight: 700; }
-.diagram-subtitle { font-size: 11px; font-weight: 600; color: var(--c-text-sub); text-transform: uppercase; letter-spacing: 0.8px; margin-top: 4px; }
-.diagram-body { padding: 28px 32px; }
-
-/* SECTION */
-.section { margin-bottom: 28px; }
-.section-title {
-  font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
-  border-bottom: 1px solid var(--c-border); padding-bottom: 6px; margin-bottom: 16px;
-  display: flex; align-items: center; gap: 8px;
+.diagram-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--c-text-main);
 }
-.section-dot { width: 8px; height: 8px; background: var(--c-accent); display: inline-block; }
-
-/* GRID */
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
-.grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 14px; }
-
-/* CARD */
-.card {
-  border: 1px solid var(--c-border); padding: 16px;
+.diagram-subtitle {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--c-text-sub);
+  text-transform: uppercase;
+  letter-spacing: .5px;
 }
-.card-header {
-  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
-  color: var(--c-text-sub); margin-bottom: 10px;
-  display: flex; justify-content: space-between; align-items: center;
-}
-.card-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
-.card-meta { font-size: 11px; color: var(--c-text-sub); line-height: 1.6; }
-
-/* BADGE */
 .badge {
-  display: inline-block; font-size: 10px; font-family: var(--font-mono);
-  padding: 2px 7px; border: 1px solid var(--c-text-main);
-  text-transform: uppercase; font-weight: 600; letter-spacing: 0.3px;
+  display:inline-block; font-size:10px; font-family:var(--font-mono);
+  padding:2px 7px; border:1px solid var(--c-text-main);
+  text-transform:uppercase; line-height:1.5;
 }
-.badge--filled { background: var(--c-text-main); color: var(--c-canvas); }
-.badge--red { border-color: var(--c-red); color: var(--c-red); }
-.badge--amber { border-color: var(--c-amber); color: var(--c-amber); }
-.badge--green { border-color: var(--c-green); color: var(--c-green); }
-.badge--green-filled { background: var(--c-green); color: #fff; border-color: var(--c-green); }
-.badge--red-filled { background: var(--c-red); color: #fff; border-color: var(--c-red); }
+.badge--fill { background:var(--c-text-main); color:var(--c-canvas); }
+.badge--pass { border-color: var(--c-pass); color: var(--c-pass); }
+.badge--warn { border-color: var(--c-warn); color: var(--c-warn); }
+.badge--new  { border-color: var(--c-accent); color: var(--c-accent); }
+.mono { font-family:var(--font-mono); font-size:13px; }
+.mono-xs { font-family:var(--font-mono); font-size:11px; }
+.label { font-size:11px; color:var(--c-text-sub); text-transform:uppercase; letter-spacing:.3px; }
+.hr { border-top:1px solid var(--c-border); margin:16px 0; }
+.hr--dash { border-top-style:dashed; }
 
-/* PROGRESS BAR */
-.progress-wrap { margin-bottom: 8px; }
-.progress-label { font-size: 11px; font-family: var(--font-mono); display: flex; justify-content: space-between; margin-bottom: 3px; }
-.progress-bar { height: 6px; background: #f1f5f9; }
-.progress-fill { height: 6px; }
-.progress-fill--red { background: var(--c-red); }
-.progress-fill--amber { background: var(--c-amber); }
-.progress-fill--green { background: var(--c-green); }
-
-/* PYRAMID */
-.pyramid { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.pyramid-row { display: flex; gap: 4px; }
-.pyramid-block {
-  border: 1px solid var(--c-border); padding: 8px 12px;
-  font-size: 10px; font-family: var(--font-mono); text-align: center;
-  white-space: nowrap;
+/* ── Pyramid ── */
+.pyramid { display:flex; flex-direction:column; align-items:center; gap:0; }
+.py-layer {
+  display:flex; align-items:center; justify-content:center;
+  border:1px solid var(--c-border);
+  background: var(--c-canvas);
+  padding:10px 20px;
+  text-align:center;
+  position:relative;
 }
-.pyramid-block--filled { background: var(--c-accent); color: #fff; border-color: var(--c-accent); }
+.py-layer .inner { display:flex; flex-direction:column; align-items:center; gap:2px; }
+.py-layer .name  { font-size:13px; font-weight:600; }
+.py-layer .stat  { font-size:11px; color:var(--c-text-sub); }
+.py-layer .cases { font-family:var(--font-mono); font-size:12px; margin-top:2px; }
 
-/* TABLE */
-.tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
-.tbl th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--c-text-sub); border-bottom: 2px solid var(--c-border); padding: 6px 10px; }
-.tbl td { border-bottom: 1px solid var(--c-border); padding: 7px 10px; font-family: var(--font-mono); font-size: 11px; }
-.tbl .name { font-family: var(--font-ui); font-size: 12px; }
+/* ── Contract Layers ── */
+.contract-row {
+  display:flex; align-items:stretch; gap:0; margin-bottom:10px;
+  border:1px solid var(--c-border);
+}
+.contract-num {
+  width:48px; min-width:48px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:20px; font-weight:700;
+  border-right:2px solid var(--c-border);
+  background:#f1f5f9;
+}
+.contract-body { flex:1; padding:14px 18px; display:flex; gap:24px; align-items:center; }
+.contract-title { font-size:14px; font-weight:600; min-width:120px; }
+.contract-files { display:flex; gap:8px; flex-wrap:wrap; flex:1; }
+.contract-file {
+  font-family:var(--font-mono); font-size:11px;
+  padding:3px 8px; border:1px solid var(--c-border);
+  white-space:nowrap;
+}
+.contract-arrow {
+  display:flex; align-items:center; justify-content:center;
+  padding:0 12px;
+  font-size:11px; color:var(--c-text-sub);
+}
 
-/* ROADMAP */
-.roadmap { display: flex; gap: 0; border: 1px solid var(--c-border); }
-.roadmap-phase { flex: 1; padding: 16px; border-right: 1px solid var(--c-border); }
-.roadmap-phase:last-child { border-right: none; }
-.roadmap-phase-title { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
-.roadmap-phase-sub { font-size: 10px; color: var(--c-text-sub); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 10px; }
-.roadmap-item { font-size: 10px; font-family: var(--font-mono); padding: 3px 0; border-bottom: 1px dotted var(--c-border); }
+/* ── Dual E2E ── */
+.dual-col { display:flex; gap:20px; }
+.dual-col > div { flex:1; }
+.col-header {
+  font-size:13px; font-weight:600; padding:8px 12px;
+  border:1px solid var(--c-border); margin-bottom:10px;
+  text-align:center;
+}
+.node-row {
+  display:flex; align-items:center; gap:0; margin-bottom:6px;
+  font-size:12px;
+}
+.node-box {
+  border:1px solid var(--c-border); padding:6px 12px;
+  flex:1; text-align:center;
+  font-family:var(--font-mono); font-size:11px;
+}
+.node-arrow {
+  width:28px; text-align:center; color:var(--c-dim); font-size:14px;
+}
 
-/* METRIC */
-.metric { text-align: center; padding: 14px; border: 1px solid var(--c-border); }
-.metric-value { font-size: 28px; font-weight: 700; font-family: var(--font-mono); }
-.metric-label { font-size: 10px; color: var(--c-text-sub); text-transform: uppercase; letter-spacing: 0.4px; margin-top: 2px; }
+/* ── Roadmap Timeline ── */
+.timeline { display:flex; gap:0; margin-top:8px; }
+.tl-phase {
+  flex:1; border:1px solid var(--c-border); min-height:180px;
+  display:flex; flex-direction:column;
+}
+.tl-phase-header {
+  padding:10px 14px; font-size:13px; font-weight:600;
+  border-bottom:1px solid var(--c-border);
+  display:flex; justify-content:space-between; align-items:center;
+}
+.tl-phase-body { padding:12px 14px; flex:1; }
+.tl-item { font-size:11px; padding:3px 0; display:flex; justify-content:space-between; }
+.tl-item .mod { color:var(--c-text-main); }
+.tl-item .est { color:var(--c-text-sub); font-family:var(--font-mono); }
+.tl-target {
+  text-align:center; padding:8px;
+  border-top:1px solid var(--c-border);
+  font-size:12px; font-weight:600;
+  font-family:var(--font-mono);
+}
 
-/* CONNECTOR */
-.hr { border: none; border-top: 1px solid var(--c-border); margin: 20px 0; }
-.hr--dashed { border-top-style: dashed; }
+/* ── Coverage bar ── */
+.cov-bar-bg { background:#f1f5f9; height:8px; border-radius:0; margin-top:4px; }
+.cov-bar-fg { height:100%; }
+.cov-pass { background: var(--c-pass); }
+.cov-warn { background: var(--c-warn); }
+.cov-fail { background: var(--c-fail); }
 
-/* TAG */
-.tag { font-size: 10px; padding: 1px 6px; border: 1px solid var(--c-border); }
-.tag--p0 { border-color: var(--c-red); color: var(--c-red); background: var(--c-red-bg); }
-.tag--p1 { border-color: var(--c-amber); color: var(--c-amber); background: var(--c-amber-bg); }
-.tag--p2 { border-color: var(--c-text-sub); color: var(--c-text-sub); }
-.tag--done { border-color: var(--c-green); color: var(--c-green); background: var(--c-green-bg); }
+/* ── Grid ── */
+.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+.stat-card {
+  border:1px solid var(--c-border); padding:14px 16px;
+  display:flex; flex-direction:column; gap:4px;
+}
+.stat-card .num { font-size:28px; font-weight:700; font-family:var(--font-mono); }
+.stat-card .desc { font-size:11px; color:var(--c-text-sub); }
+
+/* ── Top summary strip ── */
+.top-strip {
+  display:flex; gap:0; margin-bottom:18px;
+  border:1px solid var(--c-border);
+}
+.strip-item {
+  flex:1; text-align:center; padding:12px 8px;
+  border-right:1px solid var(--c-border);
+}
+.strip-item:last-child { border-right:none; }
+.strip-item .sn  { font-size:24px; font-weight:700; font-family:var(--font-mono); }
+.strip-item .sl  { font-size:10px; color:var(--c-text-sub); margin-top:2px; }
 </style>
 </head>
 <body>
-<div class="diagram-canvas">
 
-  <!-- HEADER -->
+<!-- ════════════════════════════════════════════  DIAGRAM 1: 测试金字塔  ════ -->
+<div class="diagram-canvas">
   <div class="diagram-header">
-    <h1 class="diagram-title">Agent1 测试体系总纲</h1>
-    <p class="diagram-subtitle">TEST ARCHITECTURE BLUEPRINT · 企业级生产上线评估 · 2026-06-29</p>
+    <div>
+      <h1 class="diagram-title">测试金字塔全景</h1>
+      <p class="diagram-subtitle">Agent1 Test Pyramid · v2.2 · 2026-07-21</p>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <span class="badge badge--pass">19/21 MOCK E2E</span>
+      <span class="badge badge--new">44 REAL E2E PENDING</span>
+      <span class="badge">行覆盖 51.02%</span>
+    </div>
   </div>
 
-  <div class="diagram-body">
+  <!-- Key metrics -->
+  <div class="top-strip">
+    <div class="strip-item"><div class="sn">1,068</div><div class="sl">单元测试 (后端712+前端356)</div></div>
+    <div class="strip-item"><div class="sn">63</div><div class="sl">集成测试 (xUnit+CLI+API)</div></div>
+    <div class="strip-item"><div class="sn">21</div><div class="sl">Mock E2E 用例 (5 specs)</div></div>
+    <div class="strip-item"><div class="sn">44</div><div class="sl">Real GPU E2E 用例 (9 specs)</div></div>
+    <div class="strip-item"><div class="sn">51%</div><div class="sl">行覆盖率 → 目标 80%</div></div>
+    <div class="strip-item"><div class="sn">99</div><div class="sl">可测模块 (40已测/59未测)</div></div>
+  </div>
 
-    <!-- TOP METRICS -->
-    <div class="grid-4" style="margin-bottom: 16px;">
-      <div class="metric">
-        <div class="metric-value" style="color: var(--c-amber);">~40%</div>
-        <div class="metric-label">当前覆盖率 (估)</div>
-      </div>
-      <div class="metric">
-        <div class="metric-value">12</div>
-        <div class="metric-label">已测文件 / 99</div>
-      </div>
-      <div class="metric">
-        <div class="metric-value">87</div>
-        <div class="metric-label">未测文件</div>
-      </div>
-      <div class="metric">
-        <div class="metric-value">80%</div>
-        <div class="metric-label">目标覆盖率</div>
+  <!-- Pyramid visual -->
+  <div class="pyramid">
+    <!-- L4 -->
+    <div class="py-layer" style="width:180px;">
+      <div class="inner">
+        <span class="name">L4 性能测试</span>
+        <span class="stat">Benchmark · 可变时长</span>
+        <span class="cases"><span class="badge badge--pass">已有</span></span>
       </div>
     </div>
-
-    <!-- TASK 11 + V2 CLI STATUS BAR -->
-    <div style="display: flex; gap: 14px; margin-bottom: 12px; border: 1px solid var(--c-green); background: var(--c-green-bg); padding: 12px 16px;">
-      <div style="font-size: 11px; font-weight: 700; color: var(--c-green); display: flex; align-items: center; gap: 6px;">
-        <span style="font-size: 14px;">✅</span> Task 11 + v2 CLI 集成测试已执行
-      </div>
-      <div style="font-size: 11px; font-family: var(--font-mono); color: var(--c-text-sub);">
-        24 PASS / 0 FAIL / 1 SKIP · 809s · RTX 3090
-      </div>
-      <div style="font-size: 11px; font-family: var(--font-mono); color: var(--c-text-sub);">
-        工具触发 85.7% · 结论准确 65.1% · RAG P@5=50.5%
+    <!-- L3 Remote Post -->
+    <div class="py-layer" style="width:290px; border-top:none;">
+      <div class="inner">
+        <span class="name">L3-Remote Post · 远程部署后评测</span>
+        <span class="stat">post-deploy-eval.sh · 30min · 64条评测集每日跑分</span>
+        <span class="cases"><span class="badge badge--new">PHASE 1 已创建</span></span>
       </div>
     </div>
-    <div style="display: flex; gap: 14px; margin-bottom: 24px; border: 1px solid var(--c-green); background: var(--c-green-bg); padding: 12px 16px;">
-      <div style="font-size: 11px; font-weight: 700; color: var(--c-green); display: flex; align-items: center; gap: 6px;">
-        <span style="font-size: 14px;">🔑</span> v2 CLI 菜单导航修复
+    <!-- L3 Real E2E + Mock E2E -->
+    <div class="py-layer" style="width:400px; border-top:none; display:flex; gap:0;">
+      <div style="flex:1; padding:10px 16px; border-right:1px dashed var(--c-border);">
+        <div class="inner">
+          <span class="name">L3-Real E2E · 真实GPU主力</span>
+          <span class="stat">9 specs / 44用例 · 15-30min · SSH隧道</span>
+          <span class="cases"><span class="badge badge--new">已创建 待GPU</span></span>
+        </div>
       </div>
-      <div style="font-size: 11px; font-family: var(--font-mono); color: var(--c-text-sub);">
-        T13 ✅ · T18 ✅ · T19 ✅ (旧脚本 ❌→✅)
-      </div>
-      <div style="font-size: 11px; font-family: var(--font-mono); color: var(--c-text-sub);">
-        菜单路径 5→5→0→0 完整导航
-      </div>
-    </div>
-
-    <!-- 1. TEST PYRAMID -->
-    <div class="section">
-      <div class="section-title"><span class="section-dot"></span> 1. 测试金字塔（五层架构）</div>
-      <div style="display: flex; align-items: flex-end; justify-content: center; gap: 20px; padding: 16px 0;">
-        <!-- L4 -->
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
-          <div style="width: 100px; border: 1px solid var(--c-border); padding: 8px; text-align: center; font-size: 10px;">
-            <div style="font-weight: 600;">L4 性能</div>
-            <div style="font-family: var(--font-mono); font-size: 9px; color: var(--c-green);">✅ Benchmark</div>
-          </div>
-        </div>
-        <!-- L3 -->
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
-          <div style="width: 160px; border: 1px solid var(--c-border); padding: 8px; text-align: center; font-size: 10px;">
-            <div style="font-weight: 600;">L3 E2E 端到端</div>
-            <div style="font-family: var(--font-mono); font-size: 9px; color: var(--c-red);">❌ 0 条</div>
-          </div>
-        </div>
-        <!-- L2 -->
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
-          <div style="width: 220px; border: 1px solid var(--c-green); background: var(--c-green-bg); padding: 8px; text-align: center; font-size: 10px;">
-            <div style="font-weight: 600;">L2 集成测试</div>
-            <div style="font-family: var(--font-mono); font-size: 9px; color: var(--c-green);">✅ 63 条 (25自动+25 CLI+13 API)</div>
-            <div style="font-size: 9px; color: var(--c-green); margin-top: 2px;">64条合规评测 + RAG召回 + CLI菜单 · Task11+v2 ✅</div>
-          </div>
-        </div>
-        <!-- L1 -->
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
-          <div style="width: 260px; border: 1px solid var(--c-border); padding: 8px; text-align: center; font-size: 10px;">
-            <div style="font-weight: 600;">L1 单元测试</div>
-            <div style="font-family: var(--font-mono); font-size: 9px; color: var(--c-green);">✅ 665 条 · 63 类</div>
-            <div style="font-size: 9px; color: var(--c-text-sub); margin-top: 2px;">RAG · 推理 · 安全 · 记忆 · API · 模型全覆盖</div>
-          </div>
-        </div>
-        <!-- L0 -->
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
-          <div style="width: 300px; border: 1px solid var(--c-border); padding: 8px; text-align: center; font-size: 10px;">
-            <div style="font-weight: 600;">L0 静态分析 / 架构收敛</div>
-            <div style="font-family: var(--font-mono); font-size: 9px; color: var(--c-green);">✅ ArchitectureTest</div>
-            <div style="font-size: 9px; color: var(--c-text-sub); margin-top: 2px;">命名空间 · 分层 · 循环引用</div>
-          </div>
+      <div style="flex:1; padding:10px 16px;">
+        <div class="inner">
+          <span class="name">L3-Mock E2E · CI快速门禁</span>
+          <span class="stat">5 specs / 21用例 · 2-5min · MSW</span>
+          <span class="cases"><span class="badge badge--pass">19/21 PASS</span></span>
         </div>
       </div>
     </div>
-
-    <div class="hr"></div>
-
-    <!-- 2. MODULE COVERAGE -->
-    <div class="section">
-      <div class="section-title"><span class="section-dot"></span> 2. 模块覆盖率进度</div>
-
-      <table class="tbl">
-        <thead>
-          <tr><th>模块分组</th><th>文件数</th><th>已测</th><th>未测</th><th>覆盖率</th><th>优先级</th><th>状态</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td class="name">RAG 检索层</td><td>9</td><td>7</td><td>2</td>
-            <td><span class="badge badge--amber">78%</span></td>
-            <td><span class="tag tag--p0">P0</span></td>
-            <td style="color: var(--c-amber);">⚠️ PdfExtractor 待测</td>
-          </tr>
-          <tr>
-            <td class="name">推理引擎层</td><td>6</td><td>4</td><td>2</td>
-            <td><span class="badge badge--amber">67%</span></td>
-            <td><span class="tag tag--p0">P0</span></td>
-            <td style="color: var(--c-amber);">⚠️ CoT/Multimodal 待测</td>
-          </tr>
-          <tr>
-            <td class="name">安全与合规层</td><td>4</td><td>4</td><td>0</td>
-            <td><span class="badge badge--green">100%</span></td>
-            <td><span class="tag tag--p0">P0</span></td>
-            <td style="color: var(--c-green);">✅ 注入拦截+规则引擎全覆盖</td>
-          </tr>
-          <tr>
-            <td class="name">工单与编排层</td><td>4</td><td>2</td><td>2</td>
-            <td><span class="badge badge--amber">50%</span></td>
-            <td><span class="tag tag--p0">P0</span></td>
-            <td style="color: var(--c-amber);">⚠️ 编排器待补</td>
-          </tr>
-          <tr>
-            <td class="name">记忆系统层</td><td>5</td><td>4</td><td>1</td>
-            <td><span class="badge badge--amber">80%</span></td>
-            <td><span class="tag tag--p1">P1</span></td>
-            <td style="color: var(--c-green);">✅ 短期/长期记忆已覆盖</td>
-          </tr>
-          <tr>
-            <td class="name">API Controllers</td><td>4</td><td>2</td><td>2</td>
-            <td><span class="badge badge--amber">50%</span></td>
-            <td><span class="tag tag--p1">P1</span></td>
-            <td style="color: var(--c-amber);">⚠️ 集成测试部分覆盖</td>
-          </tr>
-          <tr>
-            <td class="name">API Middleware</td><td>5</td><td>1</td><td>4</td>
-            <td><span class="badge badge--red">20%</span></td>
-            <td><span class="tag tag--p1">P1</span></td>
-            <td style="color: var(--c-amber);">⚠️ TokenBlacklist 已测,限流等待补</td>
-          </tr>
-          <tr>
-            <td class="name">其他服务(Dialog+Infra)</td><td>6</td><td>4</td><td>2</td>
-            <td><span class="badge badge--amber">67%</span></td>
-            <td><span class="tag tag--p1">P1</span></td>
-            <td style="color: var(--c-amber);">⚠️ Session/缓存已覆盖</td>
-          </tr>
-          <tr>
-            <td class="name">CLI Commands</td><td>4</td><td>0</td><td>4</td>
-            <td><span class="badge badge--red">0%</span></td>
-            <td><span class="tag tag--p2">P2</span></td>
-            <td style="color: var(--c-text-sub);">○ Menu/Admin/Dashboard/Inspection</td>
-          </tr>
-          <tr>
-            <td class="name">Config</td><td>2</td><td>2</td><td>0</td>
-            <td><span class="badge badge--green">100%</span></td>
-            <td><span class="tag tag--p2">P2</span></td>
-            <td style="color: var(--c-green);">✅ 配置加载/绑定/校验</td>
-          </tr>
-          <tr>
-            <td class="name">可观测性层</td><td>12</td><td>2</td><td>10</td>
-            <td><span class="badge badge--red">17%</span></td>
-            <td><span class="tag tag--p2">P2</span></td>
-            <td style="color: var(--c-amber);">⚠️ 指标/RunId 已测,其他待补</td>
-          </tr>
-          <tr>
-            <td class="name">知识图谱与应急</td><td>4</td><td>2</td><td>2</td>
-            <td><span class="badge badge--amber">50%</span></td>
-            <td><span class="tag tag--p2">P2</span></td>
-            <td style="color: var(--c-amber);">⚠️ KG/Emergency 部分覆盖</td>
-          </tr>
-          <tr>
-            <td class="name">基础设施</td><td>15</td><td>6</td><td>9</td>
-            <td><span class="badge badge--red">40%</span></td>
-            <td><span class="tag tag--p2">P2</span></td>
-            <td style="color: var(--c-amber);">⚠️ 部分Module壳/基础设施已测</td>
-          </tr>
-          <tr>
-            <td class="name">🔵 前端 (TS)</td><td>7</td><td>0</td><td>7</td>
-            <td><span class="badge badge--red">0%</span></td>
-            <td><span class="tag tag--p2">P2</span></td>
-            <td style="color: var(--c-text-sub);">○ MSW + axios + types</td>
-          </tr>
-          <tr style="background: #f8fafc; font-weight: 700;">
-            <td class="name">已测基础（已有）</td><td>27</td><td>—</td><td>—</td>
-            <td><span class="badge badge--green">—</span></td>
-            <td>—</td>
-            <td style="color: var(--c-green);">✅ 665单元+63集成(含25 CLI)</td>
-          </tr>
-          <tr style="background: #f0fdf4;">
-            <td class="name" style="padding-left: 20px;">└ Task 11 自动化集成</td><td>25</td><td>—</td><td>—</td>
-            <td><span class="badge badge--green-filled">PASS</span></td>
-            <td>—</td>
-            <td style="color: var(--c-green);">✅ 24P/0F/1S · 809s</td>
-          </tr>
-          <tr style="border-top: 2px solid var(--c-text-main); font-weight: 700;">
-            <td class="name">合计</td><td>99</td><td>40</td><td>59</td>
-            <td><span class="badge badge--filled">~40%</span></td>
-            <td>—</td>
-            <td>目标 80%</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- 排除说明 -->
-    <div style="margin-bottom: 20px;">
-      <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--c-text-sub); margin-bottom: 8px;">⬦ 不在测试范围的文件夹</div>
-      <table class="tbl">
-        <thead><tr><th>文件夹</th><th>说明</th><th>为什么不需要测</th></tr></thead>
-        <tbody>
-          <tr><td class="name">Agent1.Tests/</td><td>xUnit 测试项目</td><td>它本身就是测试代码</td></tr>
-          <tr><td class="name">ArchitectureTest/</td><td>架构收敛测试</td><td>它本身就是测试代码</td></tr>
-          <tr><td class="name">Benchmark/</td><td>性能压测工具</td><td>它是测试工具，不是生产代码</td></tr>
-          <tr><td class="name">cache-monitor/</td><td>Node.js MCP 服务器</td><td>独立基础设施，监控 DeepSeek 缓存</td></tr>
-          <tr><td class="name">agent1-web/</td><td>前端项目（TS）</td><td>独立前端体系，需 Vitest 单独测</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="hr"></div>
-
-    <!-- 3. P0 GAPS -->
-    <div class="section">
-      <div class="section-title"><span class="section-dot"></span> 3. P0 缺口详情（生产不可上线）</div>
-
-      <div class="grid-2">
-        <!-- RAG -->
-        <div class="card">
-          <div class="card-header"><span>RAG 检索全链路</span><span class="tag tag--p0">P0 · 78%</span></div>
-          <div class="card-meta">
-            <div style="margin-bottom: 4px; font-family: var(--font-mono); font-size: 10px;">
-              ChemicalRAG · RAG · HybridKB · SemanticChunker<br>
-              TextCleaner · DocExtractor · PdfExtractor · Reranker<br>
-              QueryCache
-            </div>
-            <div style="font-size: 10px; color: var(--c-amber);">风险: PdfExtractor/Reranker 待补测</div>
-          </div>
+    <!-- L2 -->
+    <div class="py-layer" style="width:520px; border-top:none; display:flex; gap:0;">
+      <div style="flex:1; padding:10px 16px; border-right:1px dashed var(--c-border);">
+        <div class="inner">
+          <span class="name">L2-Remote Pre · 部署前预检</span>
+          <span class="stat">pre-deploy-check.sh · 5min · 基础设施+安全</span>
+          <span class="cases"><span class="badge badge--new">已创建</span></span>
         </div>
-
-        <!-- 推理引擎 -->
-        <div class="card">
-          <div class="card-header"><span>推理引擎层</span><span class="tag tag--p0">P0 · 67%</span></div>
-          <div class="card-meta">
-            <div style="margin-bottom: 4px; font-family: var(--font-mono); font-size: 10px;">
-              CoT · AgentDialog · ReflectionVerifier<br>
-              RunReflectionStreamTools · IntegrationService · MultimodalService
-            </div>
-            <div style="font-size: 10px; color: var(--c-amber);">风险: CoT/Stream 推理链待补测</div>
-          </div>
-        </div>
-
-        <!-- 安全审核 -->
-        <div class="card">
-          <div class="card-header"><span>安全与合规引擎</span><span class="tag tag--p0">P0 · 100%</span></div>
-          <div class="card-meta">
-            <div style="margin-bottom: 4px; font-family: var(--font-mono); font-size: 10px;">
-              SafetyGuardService · ComplianceRuleEngine<br>
-              DeterministicRuleEngine · EmergencyResponse
-            </div>
-            <div style="font-size: 10px; color: var(--c-green);">✅ 全部覆盖，0 风险缺口</div>
-          </div>
-        </div>
-
-        <!-- 工单 -->
-        <div class="card">
-          <div class="card-header"><span>工单状态机</span><span class="tag tag--p0">P0 · 50%</span></div>
-          <div class="card-meta">
-            <div style="margin-bottom: 4px; font-family: var(--font-mono); font-size: 10px;">
-              TicketFollowupModule · InspectionOrchestrator<br>
-              InspectionRepository · ScheduledScanService
-            </div>
-            <div style="font-size: 10px; color: var(--c-amber);">风险: 编排器/ScheduledScan 待补</div>
-          </div>
+      </div>
+      <div style="flex:1; padding:10px 16px;">
+        <div class="inner">
+          <span class="name">L2 集成测试</span>
+          <span class="stat">63条 · 5-15min · API+DB+LLM真实调用</span>
+          <span class="cases"><span class="badge badge--pass">TASK 11 + V2 CLI 已执行</span></span>
         </div>
       </div>
     </div>
-
-    <div class="hr"></div>
-
-    <!-- 3.5. TASK 11 RESULTS -->
-    <div class="section">
-      <div class="section-title"><span class="section-dot"></span> 3.5. Task 11 集成测试执行结果 🆕</div>
-      <div style="display: flex; gap: 16px;">
-        <div style="flex: 1;">
-          <table class="tbl">
-            <thead><tr><th>测试阶段</th><th>用例</th><th>状态</th><th>说明</th></tr></thead>
-            <tbody>
-              <tr><td class="name">Part A · 环境健康</td><td>6</td><td><span class="badge badge--green">4P/0F/2S</span></td><td style="font-size: 10px;">PG✅ LLM✅ Embed✅ API✅</td></tr>
-              <tr><td class="name">Part B · API 全链路</td><td>8</td><td><span class="badge badge--amber">2P/0F/6S</span></td><td style="font-size: 10px;">登录✅ 拦截✅ Token提取延迟</td></tr>
-              <tr><td class="name">Part C · 64条合规评测</td><td>1</td><td><span class="badge badge--green">✅ PASS</span></td><td style="font-size: 10px;">7大类目全量执行</td></tr>
-              <tr><td class="name">Part D · RAG 召回评估</td><td>2</td><td><span class="badge badge--green">✅ PASS</span></td><td style="font-size: 10px;">Top5/Top10 全量评估</td></tr>
-            </tbody>
-          </table>
+    <!-- L1 -->
+    <div class="py-layer" style="width:640px; border-top:none; display:flex; gap:0;">
+      <div style="flex:1; padding:10px 16px; border-right:1px dashed var(--c-border);">
+        <div class="inner">
+          <span class="name">L1 前端单元测试 · Vitest</span>
+          <span class="stat">356条 · 27s · Pinia Store + API + MSW</span>
+          <span class="cases"><span class="badge badge--pass">356 PASS</span></span>
         </div>
-        <div style="flex: 1;">
-          <table class="tbl">
-            <thead><tr><th>核心业务指标</th><th>数值</th><th>评级</th></tr></thead>
-            <tbody>
-              <tr><td class="name">工具触发率</td><td style="font-family: var(--font-mono);">85.7% (54/63)</td><td><span class="badge badge--green">✅ 良好</span></td></tr>
-              <tr><td class="name">参数准确率</td><td style="font-family: var(--font-mono);">82.5% (52/63)</td><td><span class="badge badge--green">✅ 良好</span></td></tr>
-              <tr><td class="name">结论准确率</td><td style="font-family: var(--font-mono);">65.1% (41/63)</td><td><span class="badge badge--amber">⚠️ 需改进</span></td></tr>
-              <tr><td class="name">RAG P@5 / P@10</td><td style="font-family: var(--font-mono);">50.5% / 35.9%</td><td><span class="badge badge--amber">⚠️ 噪声大</span></td></tr>
-              <tr><td class="name">RAG R@5 / R@10</td><td style="font-family: var(--font-mono);">112.7% / 162.6%</td><td><span class="badge badge--green">✅ 宽松</span></td></tr>
-              <tr><td class="name">综合评级</td><td style="font-family: var(--font-mono);">★★☆ 77.8%</td><td><span class="badge badge--amber">良好</span></td></tr>
-            </tbody>
-          </table>
+      </div>
+      <div style="flex:1; padding:10px 16px;">
+        <div class="inner">
+          <span class="name">L1 后端单元测试 · xUnit</span>
+          <span class="stat">712条 · &lt;2min · 纯逻辑 + Moq Mock</span>
+          <span class="cases"><span class="badge badge--pass">1376 PASS</span> <span class="badge badge--warn" style="margin-left:4px;">12 DB跳过</span></span>
         </div>
       </div>
     </div>
-
-    <!-- 3.6. V2 CLI 菜单自动化测试结果 🆕 -->
-    <div class="section">
-      <div class="section-title"><span class="section-dot"></span> 3.6. v2 CLI 菜单自动化测试结果 🆕</div>
-      <div style="display: flex; gap: 16px;">
-        <div style="flex: 1;">
-          <table class="tbl">
-            <thead><tr><th>测试</th><th>名称</th><th>初测</th><th>v2重测</th><th>说明</th></tr></thead>
-            <tbody>
-              <tr><td class="name">T1-T7</td><td>LLM推理 (7种模式)</td><td><span class="badge badge--green">✅</span></td><td><span class="badge badge--green">✅</span></td><td style="font-size: 10px;">CoT/ReAct/Reflection/RAG</td></tr>
-              <tr><td class="name">T8-T9</td><td>化工合规自查+RAG</td><td><span class="badge badge--green">✅</span></td><td><span class="badge badge--green">✅</span></td><td style="font-size: 10px;">共存/间距检查</td></tr>
-              <tr><td class="name">T13</td><td>合规评测集</td><td><span class="badge badge--red">❌ 未执行</span></td><td><span class="badge badge--green">✅ PASS</span></td><td style="font-size: 10px;">🔑 v2修复：63条已执行14条</td></tr>
-              <tr><td class="name">T18</td><td>应急响应方案</td><td><span class="badge badge--red">❌ FAIL</span></td><td><span class="badge badge--green">✅ PASS</span></td><td style="font-size: 10px;">🔑 v2修复：主菜单3独立入口</td></tr>
-              <tr><td class="name">T19</td><td>知识图谱查询</td><td><span class="badge badge--red">❌ FAIL</span></td><td><span class="badge badge--green">✅ PASS</span></td><td style="font-size: 10px;">🔑 v2修复</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div style="flex: 1;">
-          <table class="tbl">
-            <thead><tr><th>汇总指标</th><th>数值</th></tr></thead>
-            <tbody>
-              <tr><td class="name">总结果</td><td style="font-family: var(--font-mono);"><span class="badge badge--green-filled">24P/0F/1S</span></td></tr>
-              <tr><td class="name">总耗时</td><td style="font-family: var(--font-mono);">809s</td></tr>
-              <tr><td class="name">超时项</td><td style="font-family: var(--font-mono);">T13 (180s内完成14/63条)</td></tr>
-              <tr><td class="name">关键修复</td><td style="font-size: 10px;">菜单导航 5→5→0→0</td></tr>
-              <tr><td class="name">脚本</td><td style="font-family: var(--font-mono); font-size: 10px;">auto_test_v2.sh</td></tr>
-            </tbody>
-          </table>
-        </div>
+    <!-- L0 -->
+    <div class="py-layer" style="width:740px; border-top:none;">
+      <div class="inner">
+        <span class="name">L0 静态分析 · 架构收敛测试</span>
+        <span class="stat">&lt;10s · 命名空间依赖 · 分层合规 · 循环引用 · 15条架构规则</span>
+        <span class="cases"><span class="badge badge--pass">已有</span></span>
       </div>
     </div>
+  </div>
 
-    <div class="hr"></div>
-
-    <!-- 4. ENTERPRISE CHECKLIST -->
-    <div class="section">
-      <div class="section-title"><span class="section-dot"></span> 4. 企业级上线检查清单</div>
-      <div class="grid-2">
-        <div>
-          <table class="tbl">
-            <thead><tr><th>质量维度</th><th>当前</th><th>目标</th></tr></thead>
-            <tbody>
-              <tr><td class="name">行覆盖率</td><td><span class="badge badge--amber">~21%（需重算）</span></td><td>≥80%</td></tr>
-              <tr><td class="name">分支覆盖率</td><td><span class="badge badge--red">~10%</span></td><td>≥70%</td></tr>
-              <tr><td class="name">P0 模块覆盖率</td><td><span class="badge badge--amber">~65%（估）</span></td><td>≥90%</td></tr>
-              <tr><td class="name">逻辑正确性</td><td><span class="badge badge--amber">~40%</span></td><td>100%</td></tr>
-              <tr><td class="name">边界处理</td><td><span class="badge badge--amber">~20%</span></td><td>90%</td></tr>
-              <tr><td class="name">错误路径</td><td><span class="badge badge--amber">部分</span></td><td>全覆盖</td></tr>
-              <tr><td class="name">并发安全</td><td><span class="badge badge--red">未测</span></td><td>关键路径</td></tr>
-              <tr><td class="name">内存泄漏</td><td><span class="badge badge--red">未测</span></td><td>24h浸泡</td></tr>
-              <tr><td class="name">RAG 召回率</td><td><span class="badge badge--amber">⚠️ P@5=50.5%</span></td><td>Top5≥85%</td></tr>
-              <tr><td class="name">模型准确度</td><td><span class="badge badge--amber">⚠️ 结论=65.1%</span></td><td>≥90%</td></tr>
-              <tr><td class="name">安全防护 OWASP</td><td><span class="badge badge--green">✅ Task11已验证</span></td><td>全覆盖</td></tr>
-              <tr><td class="name">可观测性</td><td><span class="badge badge--green">✅ TraceId已验证</span></td><td>三件套</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div>
-          <table class="tbl">
-            <thead><tr><th>CI/CD 卡口</th><th>状态</th></tr></thead>
-            <tbody>
-              <tr><td class="name">PR → 自动单元测试</td><td><span class="badge badge--green">✅ 已有</span></td></tr>
-              <tr><td class="name">PR → 架构收敛</td><td><span class="badge badge--green">✅ 已有</span></td></tr>
-              <tr><td class="name">合并前覆盖率检查</td><td><span class="badge badge--red">❌ 未设</span></td></tr>
-              <tr><td class="name">每日集成测试 (3090)</td><td><span class="badge badge--green">✅ Task 11 + v2 CLI (809s)</span></td></tr>
-              <tr><td class="name">发版前性能回归</td><td><span class="badge badge--red">❌ 未设</span></td></tr>
-              <tr><td class="name">发版前安全扫描</td><td><span class="badge badge--red">❌ 未设</span></td></tr>
-              <tr><td class="name">数据一致性</td><td><span class="badge badge--red">❌ 未测</span></td></tr>
-              <tr><td class="name">死代码清理</td><td><span class="badge badge--green">✅ 已完成</span></td></tr>
-            </tbody>
-          </table>
-        </div>
+  <!-- Module coverage grid -->
+  <div class="hr"></div>
+  <p class="label" style="margin-bottom:8px;">模块覆盖率进度</p>
+  <div class="grid-3">
+    <div class="stat-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:12px;font-weight:600;">P0 安全与合规层</span>
+        <span class="badge badge--pass">100%</span>
       </div>
+      <div class="cov-bar-bg"><div class="cov-bar-fg cov-pass" style="width:100%;"></div></div>
+      <span class="desc">4/4 文件已测 · SafetyGuard / ComplianceRule / DeterministicRule / Emergency</span>
     </div>
-
-    <div class="hr"></div>
-
-    <!-- 5. ROADMAP -->
-    <div class="section">
-      <div class="section-title"><span class="section-dot"></span> 5. 三阶段补测路线图</div>
-      <div class="roadmap">
-        <div class="roadmap-phase">
-          <div class="roadmap-phase-title">Phase 1</div>
-          <div class="roadmap-phase-sub">P0 安全上线 · Week 1-4</div>
-          <div class="progress-wrap"><div class="progress-label"><span>覆盖率目标</span><span>→ 50%</span></div><div class="progress-bar"><div class="progress-fill progress-fill--red" style="width: 50%;"></div></div></div>
-          <div style="margin-top: 8px;">
-            <div class="roadmap-item">SemanticChunkerTests <span style="color: var(--c-text-sub);">1d</span></div>
-            <div class="roadmap-item">TextCleanerTests <span style="color: var(--c-text-sub);">0.5d</span></div>
-            <div class="roadmap-item">DocExtractor+PdfExtractor <span style="color: var(--c-text-sub);">1.5d</span></div>
-            <div class="roadmap-item">HybridKB+RerankerTests <span style="color: var(--c-text-sub);">1.5d</span></div>
-            <div class="roadmap-item">ChemicalRAGTests <span style="color: var(--c-text-sub);">1d</span></div>
-            <div class="roadmap-item">CoT+ReflectionTests <span style="color: var(--c-text-sub);">2d</span></div>
-            <div class="roadmap-item">AgentDialogTests <span style="color: var(--c-text-sub);">1.5d</span></div>
-            <div class="roadmap-item">SafetyGuardTests <span style="color: var(--c-text-sub);">1d</span></div>
-            <div class="roadmap-item">ComplianceRuleEngineTests <span style="color: var(--c-text-sub);">1d</span></div>
-            <div class="roadmap-item">DeterministicRuleEngineTests <span style="color: var(--c-text-sub);">1d</span></div>
-            <div class="roadmap-item" style="border: none;">TicketFollowupModuleTests <span style="color: var(--c-text-sub);">1d</span></div>
-          </div>
-        </div>
-        <div class="roadmap-phase">
-          <div class="roadmap-phase-title">Phase 2</div>
-          <div class="roadmap-phase-sub">P1 灰度完善 · Week 5-6</div>
-          <div class="progress-wrap"><div class="progress-label"><span>覆盖率目标</span><span>→ 70%</span></div><div class="progress-bar"><div class="progress-fill progress-fill--amber" style="width: 70%;"></div></div></div>
-          <div style="margin-top: 8px;">
-            <div class="roadmap-item">MemoryServiceTests <span style="color: var(--c-text-sub);">1d</span></div>
-            <div class="roadmap-item">LongTermMemoryTests <span style="color: var(--c-text-sub);">1d</span></div>
-            <div class="roadmap-item">MemoryCoordinatorTests <span style="color: var(--c-text-sub);">1d</span></div>
-            <div class="roadmap-item">InspectionOrchTests <span style="color: var(--c-text-sub);">1d</span></div>
-            <div class="roadmap-item">SessionManagerTests <span style="color: var(--c-text-sub);">1d</span></div>
-            <div class="roadmap-item">AuthControllerTests <span style="color: var(--c-text-sub);">1d</span></div>
-            <div class="roadmap-item">ComplianceCtrlTests <span style="color: var(--c-text-sub);">1d</span></div>
-            <div class="roadmap-item">RateLimitMiddlewareTests <span style="color: var(--c-text-sub);">0.5d</span></div>
-            <div class="roadmap-item">TokenBlacklistTests <span style="color: var(--c-text-sub);">0.5d</span></div>
-            <div class="roadmap-item">ExceptionMiddlewareTests <span style="color: var(--c-text-sub);">0.5d</span></div>
-            <div class="roadmap-item" style="border: none;">SessionCleanupTests <span style="color: var(--c-text-sub);">0.5d</span></div>
-          </div>
-        </div>
-        <div class="roadmap-phase">
-          <div class="roadmap-phase-title">Phase 3</div>
-          <div class="roadmap-phase-sub">P2 收尾 · Week 7</div>
-          <div class="progress-wrap"><div class="progress-label"><span>覆盖率目标</span><span>→ 80%</span></div><div class="progress-bar"><div class="progress-fill progress-fill--green" style="width: 80%;"></div></div></div>
-          <div style="margin-top: 8px;">
-            <div class="roadmap-item">Logging Enrichers <span style="color: var(--c-text-sub);">4 files</span></div>
-            <div class="roadmap-item">AlertDispatcherTests <span style="color: var(--c-text-sub);">0.5d</span></div>
-            <div class="roadmap-item">EmailAlertTests <span style="color: var(--c-text-sub);">0.5d</span></div>
-            <div class="roadmap-item">KnowledgeGraphTests <span style="color: var(--c-text-sub);">0.5d</span></div>
-            <div class="roadmap-item">EmergencyResponseTests <span style="color: var(--c-text-sub);">0.5d</span></div>
-            <div class="roadmap-item">EventDispatcherTests <span style="color: var(--c-text-sub);">0.5d</span></div>
-            <div class="roadmap-item">CapabilityRegistryTests <span style="color: var(--c-text-sub);">0.5d</span></div>
-            <div class="roadmap-item">ModuleFactoryTests <span style="color: var(--c-text-sub);">0.5d</span></div>
-            <div class="roadmap-item" style="border: none;">12 Module 壳 <span style="color: var(--c-text-sub);">1d</span></div>
-          </div>
-        </div>
+    <div class="stat-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:12px;font-weight:600;">P0 记忆系统层</span>
+        <span class="badge badge--pass">80%</span>
       </div>
+      <div class="cov-bar-bg"><div class="cov-bar-fg cov-pass" style="width:80%;"></div></div>
+      <span class="desc">4/5 文件已测 · Memory / LongTermMemory / Coordinator / FactExtractor</span>
     </div>
-
-    <div class="hr hr--dashed"></div>
-
-    <!-- 6. DOC INDEX -->
-    <div class="section">
-      <div class="section-title"><span class="section-dot"></span> 6. 相关文档索引</div>
-      <div class="grid-3">
-        <div class="card">
-          <div class="card-title" style="font-size: 12px;">测试总纲</div>
-          <div class="card-meta" style="font-family: var(--font-mono); font-size: 10px;">docs/testing/测试总纲.md</div>
-          <div class="card-meta" style="font-size: 10px; margin-top: 4px;">全局规划 · 企业级标准 · 进度追踪</div>
-        </div>
-        <div class="card">
-          <div class="card-title" style="font-size: 12px;">单元测试方案</div>
-          <div class="card-meta" style="font-family: var(--font-mono); font-size: 10px;">docs/testing/unit/测试方案.md</div>
-          <div class="card-meta" style="font-size: 10px; margin-top: 4px;">模块8/9 · 边界 · 记忆 · 双层评测</div>
-        </div>
-        <div class="card">
-          <div class="card-title" style="font-size: 12px;">真实集成测试方案</div>
-          <div class="card-meta" style="font-family: var(--font-mono); font-size: 10px;">docs/testing/integration/真实集成测试方案.md</div>
-          <div class="card-meta" style="font-size: 10px; margin-top: 4px;">7步全链路 · DB/LLM/API/RAG/日志</div>
-        </div>
-        <div class="card">
-          <div class="card-title" style="font-size: 12px;">RAG 测试案例</div>
-          <div class="card-meta" style="font-family: var(--font-mono); font-size: 10px;">docs/testing/unit/RAG系统测试案例文档.md</div>
-          <div class="card-meta" style="font-size: 10px; margin-top: 4px;">化工合规 RAG 专项测试</div>
-        </div>
-        <div class="card">
-          <div class="card-title" style="font-size: 12px;">FC 评测 BUG</div>
-          <div class="card-meta" style="font-family: var(--font-mono); font-size: 10px;">docs/testing/integration/FunctionCalling模型评测BUG记录.md</div>
-          <div class="card-meta" style="font-size: 10px; margin-top: 4px;">双层评测架构 · 幽灵工具 · 数据错位</div>
-        </div>
-        <div class="card">
-          <div class="card-title" style="font-size: 12px;">P0-P1 修复文档</div>
-          <div class="card-meta" style="font-family: var(--font-mono); font-size: 10px;">docs/troubleshooting/P0-P1修复详细技术文档.md</div>
-          <div class="card-meta" style="font-size: 10px; margin-top: 4px;">历史 P0/P1 Bug 修复全记录</div>
-        </div>
-        <div class="card">
-          <div class="card-title" style="font-size: 12px;">Task 11 部署指南 🆕</div>
-          <div class="card-meta" style="font-family: var(--font-mono); font-size: 10px;">docs/testing/integration/Task11-集成测试部署指南.md</div>
-          <div class="card-meta" style="font-size: 10px; margin-top: 4px;">SSH 远程测试部署与执行</div>
-        </div>
-        <div class="card">
-          <div class="card-title" style="font-size: 12px;">系统日志解读指南 🆕</div>
-          <div class="card-meta" style="font-family: var(--font-mono); font-size: 10px;">docs/testing/系统日志解读与排障实战指南.md</div>
-          <div class="card-meta" style="font-size: 10px; margin-top: 4px;">日志格式解析 + 排障技巧 + 错误速查表</div>
-        </div>
-        <div class="card">
-          <div class="card-title" style="font-size: 12px;">日志实战教学 🆕</div>
-          <div class="card-meta" style="font-family: var(--font-mono); font-size: 10px;">docs/testing/系统日志阅读与分析实战教学.md</div>
-          <div class="card-meta" style="font-size: 10px; margin-top: 4px;">六课实战：从阅读到追踪到排障</div>
-        </div>
+    <div class="stat-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:12px;font-weight:600;">P0 RAG 检索层</span>
+        <span class="badge badge--warn">78%</span>
       </div>
+      <div class="cov-bar-bg"><div class="cov-bar-fg cov-warn" style="width:78%;"></div></div>
+      <span class="desc">7/9 文件已测 · 缺 ChemicalRAG / RAG 主流程</span>
     </div>
-
+    <div class="stat-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:12px;font-weight:600;">P0 推理引擎层</span>
+        <span class="badge badge--warn">67%</span>
+      </div>
+      <div class="cov-bar-bg"><div class="cov-bar-fg cov-warn" style="width:67%;"></div></div>
+      <span class="desc">4/6 文件已测 · 缺 CoT / AgentDialog 编排</span>
+    </div>
+    <div class="stat-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:12px;font-weight:600;">P0 工单与编排层</span>
+        <span class="badge badge--fail">50%</span>
+      </div>
+      <div class="cov-bar-bg"><div class="cov-bar-fg cov-fail" style="width:50%;"></div></div>
+      <span class="desc">2/4 文件已测 · 缺 TicketFollowup / ScheduledScan</span>
+    </div>
+    <div class="stat-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:12px;font-weight:600;">P2 CLI Commands</span>
+        <span class="badge badge--fail">0%</span>
+      </div>
+      <div class="cov-bar-bg"><div class="cov-bar-fg cov-fail" style="width:0%;"></div></div>
+      <span class="desc">0/4 文件已测 · Menu / Dashboard / Inspection / Admin</span>
+    </div>
   </div>
 </div>
+
+<!-- ════════════════════════════════════════════  DIAGRAM 2: 三层契约架构  ════ -->
+<div class="diagram-canvas">
+  <div class="diagram-header">
+    <div>
+      <h1 class="diagram-title">E2E 三层契约架构</h1>
+      <p class="diagram-subtitle">Contract-Driven Testing · 单一真值源 → 声明式依赖 → 基线断言闭环</p>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <span class="badge badge--pass">18 TEST-IDS</span>
+      <span class="badge badge--pass">3 DATA CONTRACTS</span>
+      <span class="badge badge--pass">6 BASELINE SCENARIOS</span>
+    </div>
+  </div>
+
+  <!-- Layer 1 -->
+  <div class="contract-row">
+    <div class="contract-num">L1</div>
+    <div class="contract-body">
+      <div class="contract-title">Test-ID 契约<br><span class="label">单一真值源</span></div>
+      <div class="contract-files">
+        <span class="contract-file">src/test-ids.ts</span>
+        <span class="contract-file">scripts/check-test-ids.mjs</span>
+      </div>
+      <div class="contract-arrow">→</div>
+      <div style="font-size:11px; color:var(--c-text-sub); max-width:260px;">
+        <b>5 模块 · 18 test-id · 100% 注册</b><br>
+        COMPLIANCE_CHECK / DASHBOARD / AUDIT / EMERGENCY / EVAL<br>
+        <span style="color:var(--c-text-main);">Vue data-testid ← const → getByTestId()</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;padding:0 14px;border-left:1px solid var(--c-border);">
+      <span class="badge badge--pass">CI 自动校验</span>
+    </div>
+  </div>
+
+  <!-- Layer 2 -->
+  <div class="contract-row">
+    <div class="contract-num">L2</div>
+    <div class="contract-body">
+      <div class="contract-title">数据契约<br><span class="label">声明式依赖</span></div>
+      <div class="contract-files">
+        <span class="contract-file">e2e-real/fixtures/data-manifest.ts</span>
+        <span class="contract-file">e2e-real/global-setup.ts</span>
+        <span class="contract-file">scripts/seed-test-data.mjs</span>
+      </div>
+      <div class="contract-arrow">→</div>
+      <div style="font-size:11px; color:var(--c-text-sub); max-width:260px;">
+        <b>3 大契约 · verify() → seed() 自动补种</b><br>
+        inspection.plans / knowledge.incremental / dashboard.overview<br>
+        <span style="color:var(--c-text-main);">双重路径: Playwright globalSetup + 独立脚本</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;padding:0 14px;border-left:1px solid var(--c-border);">
+      <span class="badge badge--pass">降级不阻塞</span>
+    </div>
+  </div>
+
+  <!-- Layer 3 -->
+  <div class="contract-row">
+    <div class="contract-num">L3</div>
+    <div class="contract-body">
+      <div class="contract-title">质量基线契约<br><span class="label">可演进断言</span></div>
+      <div class="contract-files">
+        <span class="contract-file">e2e-real/baseline.json</span>
+        <span class="contract-file">e2e-real/utils/llm-assertions.ts</span>
+        <span class="contract-file">scripts/baseline-collector.mjs</span>
+      </div>
+      <div class="contract-arrow">→</div>
+      <div style="font-size:11px; color:var(--c-text-sub); max-width:260px;">
+        <b>6 场景 · 离线采集 → 人工审核 → 基线断言</b><br>
+        commonKeywords / rareKeywords / qualityFloor<br>
+        <span style="color:var(--c-text-main);">6 个断言函数 · 无基线时自动降级</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;padding:0 14px;border-left:1px solid var(--c-border);">
+      <span class="badge badge--new">待GPU采集</span>
+    </div>
+  </div>
+
+  <!-- Flow diagram -->
+  <div class="hr hr--dash"></div>
+  <div style="display:flex;align-items:center;justify-content:center;gap:0;font-size:11px;">
+    <div style="border:1px solid var(--c-border);padding:6px 14px;">test-ids.ts<br><span class="label">契约定义</span></div>
+    <div style="color:var(--c-dim);padding:0 10px;font-size:16px;">→</div>
+    <div style="border:1px solid var(--c-border);padding:6px 14px;">Vue data-testid<br><span class="label">契约实现</span></div>
+    <div style="color:var(--c-dim);padding:0 10px;font-size:16px;">→</div>
+    <div style="border:1px solid var(--c-border);padding:6px 14px;">getByTestId()<br><span class="label">契约消费</span></div>
+    <div style="color:var(--c-dim);padding:0 10px;font-size:16px;">→</div>
+    <div style="border:1px solid var(--c-border);padding:6px 14px;">check-test-ids.mjs<br><span class="label">CI 校验</span></div>
+    <div style="color:var(--c-dim);padding:0 10px;font-size:16px;">→</div>
+    <div style="border:1px solid var(--c-border);padding:6px 14px;background:#f0fdf4;">基线数据 → 断言 → 质量报告<br><span class="label" style="color:var(--c-pass);">闭环反馈</span></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════  DIAGRAM 3: 双E2E拓扑  ════ -->
+<div class="diagram-canvas">
+  <div class="diagram-header">
+    <div>
+      <h1 class="diagram-title">双 E2E 分层拓扑</h1>
+      <p class="diagram-subtitle">MSW Mock CI 快速门禁 ←→ 真实 GPU 主力测试层 · SSH 隧道全链路</p>
+    </div>
+  </div>
+
+  <div class="dual-col">
+    <!-- Left: Mock E2E -->
+    <div>
+      <div class="col-header" style="background:#f8fafc;">L3-Mock E2E · CI 快速门禁</div>
+      <div style="display:flex;flex-direction:column;gap:0;">
+        <div class="node-row">
+          <div class="node-box" style="background:#f1f5f9;">Playwright Chromium</div>
+        </div>
+        <div class="node-row" style="justify-content:center;">
+          <div class="node-arrow">↓</div>
+        </div>
+        <div class="node-row">
+          <div class="node-box" style="background:#f1f5f9;">Vite :5173 (dev:mock)</div>
+        </div>
+        <div class="node-row" style="justify-content:center;">
+          <div class="node-arrow">↓</div>
+        </div>
+        <div class="node-row">
+          <div class="node-box" style="border-style:dashed;">MSW Service Worker</div>
+        </div>
+        <div class="node-row" style="justify-content:center;padding:6px 0;">
+          <span class="mono-xs" style="color:var(--c-text-sub);">X-Mock-Enabled: true</span>
+        </div>
+      </div>
+      <div style="margin-top:12px; border:1px solid var(--c-border); padding:10px 14px; font-size:11px;">
+        <div style="display:flex;justify-content:space-between;"><span>配置</span><span class="mono-xs">playwright.config.ts</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>超时</span><span class="mono-xs">60s</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>用例</span><span class="mono-xs">5 specs · 21 条</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>耗时</span><span class="mono-xs">2-5min</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>通过率</span><span class="badge badge--pass">19/21</span></div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;"><span>定位</span><span style="font-size:10px;color:var(--c-text-sub);">UI 渲染 · 路由守卫 · 权限拦截</span></div>
+      </div>
+    </div>
+
+    <!-- Right: Real GPU E2E -->
+    <div>
+      <div class="col-header" style="background:#fefce8;">L3-Real E2E · 真实 GPU 主力</div>
+      <div style="display:flex;flex-direction:column;gap:0;">
+        <div class="node-row">
+          <div class="node-box" style="background:#fefce8;">Playwright Chromium</div>
+        </div>
+        <div class="node-row" style="justify-content:center;">
+          <div class="node-arrow">↓ HTTP</div>
+        </div>
+        <div class="node-row">
+          <div class="node-box" style="background:#fefce8;">Vite :5173 (real)</div>
+        </div>
+        <div class="node-row" style="justify-content:center;">
+          <div class="node-arrow">↓ VITE_PROXY_TARGET</div>
+        </div>
+        <div class="node-row">
+          <div class="node-box" style="border:2px solid var(--c-accent);">SSH Tunnel :15001</div>
+        </div>
+        <div class="node-row" style="justify-content:center;">
+          <div class="node-arrow" style="color:var(--c-accent);">↓ SSH encrypted</div>
+        </div>
+        <div class="node-row">
+          <div class="node-box" style="background:#fefce8;">.NET API :5000</div>
+        </div>
+        <div class="node-row" style="justify-content:center;">
+          <div class="node-arrow">↓ SK</div>
+        </div>
+        <div class="node-row">
+          <div class="node-box" style="background:#fefce8;">llama.cpp GPU :8080</div>
+        </div>
+      </div>
+      <div style="margin-top:12px; border:1px solid var(--c-border); padding:10px 14px; font-size:11px;">
+        <div style="display:flex;justify-content:space-between;"><span>配置</span><span class="mono-xs">playwright.real.config.ts</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>超时</span><span class="mono-xs">120s</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>用例</span><span class="mono-xs">9 specs · 44 条</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>耗时</span><span class="mono-xs">15-30min</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>状态</span><span class="badge badge--new">待GPU</span></div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;"><span>定位</span><span style="font-size:10px;color:var(--c-text-sub);">LLM质量 · 工具调用 · 数据一致性</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom: file structure -->
+  <div class="hr hr--dash"></div>
+  <p class="label" style="margin-bottom:8px;">核心文件索引</p>
+  <div style="display:flex;gap:20px;font-size:11px;">
+    <div style="flex:1;">
+      <div style="font-weight:600;margin-bottom:4px;">Mock E2E (e2e/)</div>
+      <div class="mono-xs" style="color:var(--c-text-sub);">compliance-check.spec.ts · inspection-flow.spec.ts</div>
+      <div class="mono-xs" style="color:var(--c-text-sub);">dashboard.spec.ts · assets.spec.ts · audit-log.spec.ts</div>
+    </div>
+    <div style="flex:1;">
+      <div style="font-weight:600;margin-bottom:4px;">Real GPU E2E (e2e-real/)</div>
+      <div class="mono-xs" style="color:var(--c-text-sub);">+ 移植5 · knowledge-base · emergency-response</div>
+      <div class="mono-xs" style="color:var(--c-text-sub);">eval-flow · llm-quality · data-manifest · baseline.json</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════  DIAGRAM 4: 三阶段路线图  ════ -->
+<div class="diagram-canvas">
+  <div class="diagram-header">
+    <div>
+      <h1 class="diagram-title">三阶段补测路线图</h1>
+      <p class="diagram-subtitle">P0 安全上线 (50%) → P1 灰度完善 (70%) → P2 收尾 (80%) · 基于 99 个可测模块 / 40 已测</p>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <span class="badge badge--pass">40 已测</span>
+      <span class="badge badge--warn">59 未测</span>
+      <span class="badge">目标 80%</span>
+    </div>
+  </div>
+
+  <div class="timeline">
+    <!-- Phase 1 -->
+    <div class="tl-phase">
+      <div class="tl-phase-header" style="background:#fef2f2;">
+        <span>第一阶段 · P0 安全上线</span>
+        <span class="badge badge--fail">目标 50%</span>
+      </div>
+      <div class="tl-phase-body">
+        <div style="font-size:10px;color:var(--c-text-sub);margin-bottom:6px;">Week 1-4 · 23个P0文件 → 补充核心业务测试</div>
+        <div class="tl-item"><span class="mod">RAG 检索层 (2个待补)</span><span class="est">5.5天</span></div>
+        <div class="tl-item"><span class="mod">推理引擎层 (2个待补)</span><span class="est">3.5天</span></div>
+        <div class="tl-item"><span class="mod">安全与合规层</span><span class="est" style="color:var(--c-pass);">✅ 100%</span></div>
+        <div class="tl-item"><span class="mod">工单与编排层 (2个待补)</span><span class="est">3天</span></div>
+      </div>
+      <div class="tl-target" style="background:#fef2f2;">
+        当前: 行覆盖 51.02% · 分支 41.73%
+      </div>
+    </div>
+
+    <!-- Phase 2 -->
+    <div class="tl-phase">
+      <div class="tl-phase-header" style="background:#fffbeb;">
+        <span>第二阶段 · P1 灰度完善</span>
+        <span class="badge badge--warn">目标 70%</span>
+      </div>
+      <div class="tl-phase-body">
+        <div style="font-size:10px;color:var(--c-text-sub);margin-bottom:6px;">Week 5-6 · API控制器 + 中间件 + 记忆系统</div>
+        <div class="tl-item"><span class="mod">API Controllers (2个待补)</span><span class="est">2天</span></div>
+        <div class="tl-item"><span class="mod">API Middleware (4个待补)</span><span class="est">2天</span></div>
+        <div class="tl-item"><span class="mod">记忆系统层 (1个待补)</span><span class="est">2天</span></div>
+        <div class="tl-item"><span class="mod">其他服务层 (2个待补)</span><span class="est">2天</span></div>
+        <div class="tl-item"><span class="mod">前端 E2E-Real 执行验证</span><span class="est">🔑 待GPU</span></div>
+      </div>
+      <div class="tl-target" style="background:#fffbeb;">
+        条件: P0全绿 + 真实GPU已就绪
+      </div>
+    </div>
+
+    <!-- Phase 3 -->
+    <div class="tl-phase">
+      <div class="tl-phase-header" style="background:#f8fafc;">
+        <span>第三阶段 · P2 收尾</span>
+        <span class="badge">目标 80%</span>
+      </div>
+      <div class="tl-phase-body">
+        <div style="font-size:10px;color:var(--c-text-sub);margin-bottom:6px;">Week 7 · 可观测性 + 基础设施 + CLI</div>
+        <div class="tl-item"><span class="mod">CLI Commands (4待补)</span><span class="est">2天</span></div>
+        <div class="tl-item"><span class="mod">可观测性层 (10待补)</span><span class="est">2天</span></div>
+        <div class="tl-item"><span class="mod">知识图谱与应急 (2待补)</span><span class="est">1天</span></div>
+        <div class="tl-item"><span class="mod">基础设施 (9待补)</span><span class="est">2天</span></div>
+      </div>
+      <div class="tl-target" style="background:#f1f5f9;">
+        收尾: 覆盖率爬升至 ≥80%
+      </div>
+    </div>
+  </div>
+
+  <!-- Blockers -->
+  <div class="hr hr--dash"></div>
+  <div style="display:flex;gap:16px;">
+    <div style="flex:1; border:1px solid var(--c-border); padding:12px 16px;">
+      <div style="font-size:12px;font-weight:600;margin-bottom:6px;">🔑 当前阻塞项</div>
+      <div style="font-size:11px;color:var(--c-text-sub);">
+        <div style="margin-bottom:4px;">· 远程 AutoDL GPU 不可用 → 真实 E2E (44用例) 无法执行</div>
+        <div style="margin-bottom:4px;">· baseline-collector.mjs 无法运行 → baseline.json 待更新</div>
+        <div>· AutoDL 非 Pro 实例 → 每日自动化流水线暂停</div>
+      </div>
+    </div>
+    <div style="flex:1; border:1px solid var(--c-border); padding:12px 16px;">
+      <div style="font-size:12px;font-weight:600;margin-bottom:6px;">✅ 无阻塞可并行推进</div>
+      <div style="font-size:11px;color:var(--c-text-sub);">
+        <div style="margin-bottom:4px;">· 修复 MSW Mock 2个失败用例 (viewer按钮+403文案)</div>
+        <div style="margin-bottom:4px;">· P1 API Controllers 单元测试补充</div>
+        <div>· P1 Middleware 测试补充</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
