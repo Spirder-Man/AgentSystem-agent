@@ -108,3 +108,20 @@ eval_reports/
 # 含硬编码 AutoDL API 令牌的本地脚本（禁止提交，令牌应移至 .env）
 scripts/autodl-find-uuid.ps1
 scripts/autodl-poweron.ps1
+
+# === 2026-07-28 新增：十项修复批次测试产物与临时文件 ===
+
+# 测试运行产物（trx/coverage，禁止提交）
+Agent1.Tests/TestResults/
+*.trx
+
+# 评测报告根目录副本（正式报告归 eval_reports/，已忽略）
+/eval_report.json
+
+# 临时调试脚本与待删目录
+temp_*.sh
+_to_delete/
+
+# 测试控制台输出转储
+logs/*.txt
+logs/E2E-*
