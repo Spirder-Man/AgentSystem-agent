@@ -480,18 +480,34 @@ GB 30000.7-2013
         }
 
         [Fact]
-        public void Chunk_SingleLargeParagraph_NotSplitWithoutBreaks()
+        public void Chunk_SingleLargeParagraph_ForceSplitBySize()
         {
-            // ChunkByParagraph 仅按 \n\n 分段，无段落标记的单段长文本不会被强分割
-            // 这是当前实现限制：大段文本若无双换行，会变成一个块
+            // [OCR修复] TextCleaner 以单 \n 重组全文后无空行，旧实现会退化为整篇一块；
+            // 现 ChunkByParagraph 对超过 MaxChunkSize 的单段落按大小强制切分
             var sb = new StringBuilder();
             for (int i = 0; i < 300; i++)
-                sb.Append("这是一个测试句子用于填充大量中文文本内容");
+                sb.Append("这是一个测试句子用于填充大量中文文本内容。");
             var text = sb.ToString();
 
             var chunks = _chunker.Chunk(text, "通用");
             chunks.Should().NotBeNull();
-            chunks.Should().NotBeEmpty("长文本至少产生一个块");
+            chunks.Count.Should().BeGreaterThan(1, "无空行的超长单段落应被强制切分");
+            chunks.All(c => c.Content.Length <= AppConfig.Instance.KnowledgeBase.ChunkSize + 2 * AppConfig.Instance.KnowledgeBase.ChunkOverlap + 2)
+                .Should().BeTrue("每块不应显著超过 MaxChunkSize（允许重叠/合并余量）");
+        }
+
+        [Fact]
+        public void Chunk_ChemicalRegulation_UsesClauseChunking()
+        {
+            // [OCR修复] 化工专业条例本质是 GB 系列标准，应走条款切分而非段落切分
+            var text = @"4 作业安全要求
+4.1 动火作业应办理作业证。
+4.2 受限空间作业前应检测气体。";
+
+            var chunks = _chunker.Chunk(text, "化工专业条例");
+            chunks.Should().NotBeEmpty();
+            chunks.Any(c => !string.IsNullOrEmpty(c.ClauseNumber) || !string.IsNullOrEmpty(c.ChapterTitle))
+                .Should().BeTrue("条款切分应提取条款号/章节标题");
         }
 
         [Fact]

@@ -144,4 +144,36 @@ public class PdfOcrServiceTests : IDisposable
         Assert.Equal("good", PdfOcrService.EvaluateOcrQuality(text, 2));   // 130/页 ≥ 50
         Assert.Equal("partial", PdfOcrService.EvaluateOcrQuality(text, 10)); // 26/页 < 50
     }
+
+    // ═══ NormalizeOcrText：源头消除会被 GarbledTextDetector 规则①误杀的合法重复串 ═══
+
+    [Fact]
+    public void NormalizeOcrText_目录点线归一_不再触发乱码拒收()
+    {
+        var toc = "前言…………………………………………Ⅰ\n1 范围……………………………………1\n4.1.2 动火作业安全要求········12";
+        var normalized = PdfOcrService.NormalizeOcrText(toc);
+
+        Assert.DoesNotContain("……", normalized);
+        Assert.DoesNotContain("··", normalized);
+        Assert.False(GarbledTextDetector.IsGarbled(normalized, out var reason), $"不应被判乱码: {reason}");
+        Assert.Contains("4.1.2 动火作业安全要求", normalized); // 正文内容不受影响
+    }
+
+    [Fact]
+    public void NormalizeOcrText_Markdown表格分隔线_不再触发乱码拒收()
+    {
+        var table = "| 化学品名称 | 闪点温度限制要求 |\n|--------|--------|\n| 甲苯介质 | 四点六摄氏度 |\n危险化学品储存安全管理规范条文要求严格执行分类存放制度并定期检查";
+        var normalized = PdfOcrService.NormalizeOcrText(table);
+
+        Assert.False(GarbledTextDetector.IsGarbled(normalized, out var reason), $"不应被判乱码: {reason}");
+        Assert.Contains("甲苯介质", normalized); // 表格内容保留
+    }
+
+    [Fact]
+    public void NormalizeOcrText_真乱码仍被检测拦截()
+    {
+        // 归一化只处理点线/横线，不应放过“书书书书”类自定义字体真乱码
+        var garbled = PdfOcrService.NormalizeOcrText("书书书书书!!!!!\"#$%&'()书书书书");
+        Assert.True(GarbledTextDetector.IsGarbled(garbled, out _));
+    }
 }

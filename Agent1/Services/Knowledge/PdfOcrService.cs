@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace Agent1.Services
@@ -101,7 +102,7 @@ namespace Agent1.Services
                     if (result.Success && !IsBlankPageMarker(result.Content))
                     {
                         fullText.AppendLine($"【第{i + 1}页】");
-                        fullText.AppendLine(result.Content.Trim());
+                        fullText.AppendLine(NormalizeOcrText(result.Content.Trim()));
                         fullText.AppendLine();
                         outcome.PagesOcred++;
                     }
@@ -145,6 +146,25 @@ namespace Agent1.Services
         /// <summary>模型对空白页的约定输出（见 MultimodalService.PageOcrPrompt）。</summary>
         private static bool IsBlankPageMarker(string content)
             => content.Trim().Length < 5 || content.Contains("【无文字】");
+
+        // 目录点线（“第一章…………1”）与 Markdown 表格分隔线（|----|）的重复字符串，
+        // 会被 GarbledTextDetector 规则①（同字符连续重复≥4）误判为乱码拒收
+        private static readonly Regex DotLeaderRun = new(@"[…·•]{2,}|\.{4,}", RegexOptions.Compiled);
+        private static readonly Regex DashRun = new(@"(?<![|\-])[-—_]{4,}(?![|\-])", RegexOptions.Compiled);
+        private static readonly Regex TableRuleRun = new(@"(?<=\|)\s*:?-{3,}:?\s*(?=\|)", RegexOptions.Compiled);
+
+        /// <summary>
+        /// OCR 转写文本归一化：在源头消除会被乱码检测误杀的合法重复字符串，
+        /// 不放松 GarbledTextDetector 对原生提取文本（“书书书书”类真乱码）的防线。
+        /// </summary>
+        internal static string NormalizeOcrText(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+            text = DotLeaderRun.Replace(text, "…");   // 目录点线→单省略号
+            text = TableRuleRun.Replace(text, " --- "); // Markdown 表格分隔线→合法短线
+            text = DashRun.Replace(text, "—");        // 长横线/下划线串→单破折号
+            return text;
+        }
 
         /// <summary>
         /// 默认渲染实现：PDFium（PDFtoImage 包）将前 maxPages 页渲染为 PNG 临时文件。

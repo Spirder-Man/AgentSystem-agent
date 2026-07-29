@@ -61,6 +61,9 @@ namespace Agent1.Services
             return regulationType switch
             {
                 "国标" => ChunkByClause(cleanText, regulationNumber, pageNumber),
+                // 化工专业条例本质是 GB 系列标准（含 "4.1.2" 式条款号），走条款切分；
+                // 段落切分依赖 \n\n 空行，而 TextCleaner 以单 \n 重组全文，会退化为整篇一块
+                "化工专业条例" => ChunkByClause(cleanText, regulationNumber, pageNumber),
                 "园区规则" => ChunkByArticle(cleanText, regulationNumber, pageNumber),
                 "历史案例" => ChunkByParagraph(cleanText, regulationNumber, pageNumber),
                 _ => ChunkByParagraph(cleanText, regulationNumber, pageNumber)
@@ -241,8 +244,41 @@ namespace Agent1.Services
             var currentContent = new StringBuilder();
             int chunkIndex = 0;
 
-            foreach (var para in paragraphs)
+            foreach (var rawPara in paragraphs)
             {
+                var para = rawPara.Trim();
+
+                // 超长段落防御：清洗后全文可能无空行（如 OCR 全文整篇一段），
+                // 按 MaxChunkSize 强制切分，优先在句末/换行处断开
+                while (para.Length > MaxChunkSize)
+                {
+                    if (currentContent.Length > 0)
+                    {
+                        chunks.Add(new SemanticChunk
+                        {
+                            Content = currentContent.ToString().Trim(),
+                            RegulationNumber = regulationNumber,
+                            PageNumber = pageNumber,
+                            ChunkIndex = chunkIndex++
+                        });
+                        currentContent.Clear();
+                    }
+
+                    int cut = MaxChunkSize;
+                    int boundary = para.LastIndexOfAny(new[] { '\n', '。', '；' }, MaxChunkSize - 1);
+                    if (boundary >= MaxChunkSize / 2) cut = boundary + 1;
+
+                    chunks.Add(new SemanticChunk
+                    {
+                        Content = para.Substring(0, cut).Trim(),
+                        RegulationNumber = regulationNumber,
+                        PageNumber = pageNumber,
+                        ChunkIndex = chunkIndex++
+                    });
+                    para = para.Substring(cut).TrimStart();
+                }
+                if (para.Length == 0) continue;
+
                 if (currentContent.Length + para.Length > MaxChunkSize && currentContent.Length > 0)
                 {
                     chunks.Add(new SemanticChunk
@@ -257,7 +293,7 @@ namespace Agent1.Services
 
                 if (currentContent.Length > 0)
                     currentContent.AppendLine();
-                currentContent.Append(para.Trim());
+                currentContent.Append(para);
             }
 
             if (currentContent.Length > 0)
