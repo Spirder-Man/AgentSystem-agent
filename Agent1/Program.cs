@@ -491,7 +491,12 @@ namespace Agent1
             // 【架构】ChemicalRAG 是一个"聚合根"：
             //   组合了知识库服务（HybridKnowledgeBaseService）和数据库服务，
             //   对外提供统一的 SearchAsync 接口，隐藏内部的 BM25+Vector 混合检索细节。
-            var chemicalRAG = new ChemicalRAG(AppConfig.Instance.KnowledgeBase.BasePath, knowledgeBaseService, databaseService);
+            //   [OCR] 按配置可选挂载视觉 OCR 回退（扫描件 PDF 逐页转写，需 8083 视觉实例）。
+            var kbConfig = AppConfig.Instance.KnowledgeBase;
+            var pdfOcrService = kbConfig.EnableVisionOcr
+                ? new PdfOcrService(kbConfig.OcrMaxPagesPerPdf, kbConfig.OcrRenderDpi)
+                : null;
+            var chemicalRAG = new ChemicalRAG(AppConfig.Instance.KnowledgeBase.BasePath, knowledgeBaseService, databaseService, pdfOcrService);
 
             // 【业务】预加载化工知识库：扫描 knowledgebase/ 目录下所有 .txt 文件，
             //   分块 → 生成向量嵌入 → 存入内存索引 + PostgreSQL pgvector。

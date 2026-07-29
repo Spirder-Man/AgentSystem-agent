@@ -34,6 +34,8 @@ namespace Agent1.Services
         private readonly DocExtractor _docExtractor = new();
         private readonly TextCleaner _textCleaner = new();
         private readonly SemanticChunker _semanticChunker = new();
+        // [OCR] 扫描件 PDF 视觉 OCR 回退服务（可选，null 表示未启用）
+        private readonly PdfOcrService? _pdfOcr;
 
         // K8: 加载统计
         private int _totalFiles;
@@ -50,7 +52,8 @@ namespace Agent1.Services
         /// <param name="knowledgeBasePath">知识库路径，包含国标、园区规则和历史案例目录。</param>
         /// <param name="knowledgeBase">知识库服务实例，用于加载和查询化工知识库。</param>
         /// <param name="databaseService">数据库服务（可选），传入后启用启动加速：DB 有数据则跳过文件扫描和嵌入生成。</param>
-        public ChemicalRAG(string knowledgeBasePath, IKnowledgeBaseService knowledgeBase, IDatabaseService? databaseService = null)
+        /// <param name="pdfOcrService">视觉 OCR 服务（可选），传入后扫描件 PDF（文本层过薄）自动走视觉模型逐页 OCR。</param>
+        public ChemicalRAG(string knowledgeBasePath, IKnowledgeBaseService knowledgeBase, IDatabaseService? databaseService = null, PdfOcrService? pdfOcrService = null)
         {
             // P0修复：知识库路径健壮解析。
             // `dotnet run --project Agent1.Api` 启动的子进程 CWD 是项目目录而非仓库根，
@@ -60,6 +63,7 @@ namespace Agent1.Services
             _knowledgeBasePath = ResolveKnowledgeBasePath(knowledgeBasePath);
             _knowledgeBase = knowledgeBase;
             _databaseService = databaseService;
+            _pdfOcr = pdfOcrService;
         }
 
         // 知识库特征子目录：只要命中其一即认定该目录是真实知识库根。
@@ -634,6 +638,23 @@ namespace Agent1.Services
             try
             {
                 var pdfResult = _pdfExtractor.Extract(filePath);
+                // [OCR] 扫描件回退：文本层过薄（仅封面标题/全空）时用视觉模型逐页转写替换薄文本
+                if (_pdfOcr != null && pdfResult.ExtractionMethod == "OCR_NEEDED")
+                {
+                    Console.WriteLine($"   🔍 [{fileName}]: 文本层过薄，启动视觉 OCR（共{pdfResult.PageCount}页）...");
+                    var ocr = await _pdfOcr.ExtractTextAsync(filePath);
+                    if (ocr.Success)
+                    {
+                        pdfResult.FullText = ocr.FullText;
+                        pdfResult.ExtractionMethod = "OCR";
+                        pdfResult.Quality = PdfOcrService.EvaluateOcrQuality(ocr.FullText, ocr.PagesOcred);
+                        Console.WriteLine($"   ✅ OCR 完成: {ocr.PagesOcred}/{ocr.PagesTotal}页成功 → {ocr.FullText.Length}字 (质量:{pdfResult.Quality})");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"   ⚠️ OCR 未产出有效文本({ocr.ErrorMessage})，沿用原始提取结果");
+                    }
+                }
                 //解析文件
                 if (pdfResult.Quality == "failed")
                 {

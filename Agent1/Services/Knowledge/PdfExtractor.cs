@@ -190,9 +190,12 @@ namespace Agent1.Services
         /// </summary>
         private string EvaluateQuality(PdfResult result)
         {
-            // 规则 1：全文为空 → 失败
+            // 规则 1：全文为空 → 失败（无文本层扫描件，标记可 OCR 回退）
             if (string.IsNullOrWhiteSpace(result.FullText))
+            {
+                result.ExtractionMethod = "OCR_NEEDED";
                 return "failed";
+            }
 
             // 规则 2：中文占比 < 20% → 可能是扫描件（需 OCR）
             int totalChars = result.FullText.Length;
@@ -206,12 +209,16 @@ namespace Agent1.Services
             }
 
             // 规则 3：平均每页中文字符 < 50 → 提取不充分
+            // 典型病理：扫描件仅封面有文本层（中文占比高但总量极薄），同样需要 OCR 回退
             double avgChinesePerPage = result.PageCount > 0
                 ? (double)chineseChars / result.PageCount
                 : 0;
 
             if (avgChinesePerPage < 50)
+            {
+                result.ExtractionMethod = "OCR_NEEDED";
                 return "partial";
+            }
 
             return "good";
         }

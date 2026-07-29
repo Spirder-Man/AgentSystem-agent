@@ -64,7 +64,8 @@ namespace Agent1.Services
         /// </summary>
         /// <param name="imagePath">本地图片文件路径（支持 jpg/png/webp）</param>
         /// <param name="prompt">分析提示词（中文即可）</param>
-        public async Task<MultimodalResult> AnalyzeImageDetailedAsync(string imagePath, string prompt)
+        /// <param name="maxTokens">生成上限：普通分析 500 足够；整页 OCR 转写需 2500+</param>
+        public async Task<MultimodalResult> AnalyzeImageDetailedAsync(string imagePath, string prompt, int maxTokens = 500)
         {
             if (!File.Exists(imagePath))
                 return MultimodalResult.Fail("FileNotFound", $"错误: 图片文件不存在 — {imagePath}");
@@ -79,8 +80,8 @@ namespace Agent1.Services
                 var mimeType = GetMimeType(imagePath);
 
                 // 构建 llama.cpp OpenAI-compatible /v1/chat/completions 请求体
-                // ⚠️ llava-llama-3 是英文模型，必须在 prompt 前附加中文输出指令
-                // ⚠️ int4 量化 + 低温度会导致无限重复循环 → 温度 0.3 + repeat_penalty 1.1 + max_tokens 500
+                // ℹ️ Qwen2.5-VL 中文原生，保留中文输出指令作为双重保险（兼容历史英文视觉模型）
+                // ⚠️ int4 量化 + 低温度会导致无限重复循环 → 温度 0.3 + repeat_penalty 1.1
                 var chinesePrompt = $"【重要：请始终使用中文回复，不要使用英文。】\n\n{prompt}";
                 var request = new
                 {
@@ -104,7 +105,7 @@ namespace Agent1.Services
                     stream = false,
                     temperature = 0.3,
                     repeat_penalty = 1.1,
-                    max_tokens = 500
+                    max_tokens = maxTokens
                 };
 
                 var json = JsonSerializer.Serialize(request);
@@ -179,6 +180,22 @@ namespace Agent1.Services
 5. 周边环境是否存在安全隐患（杂物堆积、消防通道占用等）
 
 请逐项说明检查结果，指出不合规项。如果信息不足，请明确说明需要补充的信息。";
+
+        /// <summary>整页 OCR 转写提示词（扫描件 PDF 回退管线专用）。</summary>
+        private const string PageOcrPrompt = @"你是文档 OCR 助手。请逐字转写图片中的全部文字内容，要求：
+1. 保留原文的章节编号、条款号（如 ""4.1.2""、""第五条""）和段落结构
+2. 表格转写为 Markdown 表格格式
+3. 化学式、数值、单位必须精确转写，不确定的字用【?】标记
+4. 忽略页眉、页脚、水印、页码
+5. 只输出转写结果，不要添加任何解释、评论或总结
+如果图片中没有可识别文字，只输出：【无文字】";
+
+        /// <summary>
+        /// 整页 OCR 转写：将扫描件 PDF 单页图像转写为结构化文本。
+        /// 与普通分析的区别：专用 OCR 提示词 + 大 max_tokens（整页国标条文约 1000-2000 字）。
+        /// </summary>
+        public Task<MultimodalResult> OcrPageAsync(string imagePath)
+            => AnalyzeImageDetailedAsync(imagePath, PageOcrPrompt, maxTokens: 3000);
 
         /// <summary>
         /// GHS 标签识别：分析化学品包装上的 GHS 危险标签图片。

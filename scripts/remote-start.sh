@@ -54,6 +54,8 @@ start_infra() {
   pg_isready -q && echo "  ✅ PostgreSQL 已就绪" || echo "  ❌ PostgreSQL 异常"
   curl -sf http://localhost:8080/v1/models >/dev/null 2>&1 && echo "  ✅ LLM 推理已就绪" || echo "  ❌ LLM 推理异常"
   curl -sf http://localhost:8081/v1/models >/dev/null 2>&1 && echo "  ✅ Embedding 已就绪" || echo "  ❌ Embedding 异常"
+  # 视觉实例(8083)是可选前置依赖：多模态识图与扫描件 OCR 需要，缺失时仅提醒不阻断
+  curl -sf http://localhost:8083/v1/models >/dev/null 2>&1 && echo "  ✅ 视觉模型(8083)已就绪" || echo "  ⚠️ 视觉模型(8083)未在线 — 多模态分析/OCR 不可用（启动方式见部署手册）"
 
   echo "━━━ 基础设施启动完成 ━━━"
 }

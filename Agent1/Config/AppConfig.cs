@@ -102,6 +102,11 @@ namespace Agent1.Config
             if (!string.IsNullOrEmpty(kbPath))
                 config.KnowledgeBase.BasePath = kbPath;
 
+            // [OCR] 扫描件 PDF 视觉 OCR 回退开关 — 需 8083 视觉实例在线时才建议打开
+            var visionOcr = Environment.GetEnvironmentVariable("ENABLE_VISION_OCR");
+            if (!string.IsNullOrEmpty(visionOcr) && bool.TryParse(visionOcr, out var visionOcrEnabled))
+                config.KnowledgeBase.EnableVisionOcr = visionOcrEnabled;
+
             var alertPwd = Environment.GetEnvironmentVariable("ALERT_EMAIL_PASSWORD");
             if (!string.IsNullOrEmpty(alertPwd))
                 config.Alerting.Email.SenderPassword = alertPwd;
@@ -189,7 +194,7 @@ namespace Agent1.Config
     {
         public string ModelId { get; set; } = "deepseek-r1:local7b";
         public string Endpoint { get; set; } = "http://localhost:8080/v1";
-        public string MultimodalModelId { get; set; } = "llava-v1.6-mistral-7b";
+        public string MultimodalModelId { get; set; } = "qwen2.5-vl-7b-instruct";
         // [端口分离] 多模态(视觉)服务独占 8083，与 Reranker(8082) 分开，避免端口冲突
         public string MultimodalEndpoint { get; set; } = "http://localhost:8083/v1";
 
@@ -217,6 +222,16 @@ namespace Agent1.Config
         public int ChunkSize { get; set; } = 500;
         // [P3] RAG 结果截断上限 (字符), 防 LLM 输出全文导致幻觉
         public int ChunkOutputMaxChars { get; set; } = 300;
+
+        // [OCR] 扫描件 PDF 视觉 OCR 回退：文本层过薄时用视觉模型(Qwen2.5-VL)逐页识别
+        // 默认关闭：需 8083 视觉实例在线，且逐页推理会显著拉长全量加载耗时
+        public bool EnableVisionOcr { get; set; } = false;
+
+        // [OCR] 单个 PDF 最多 OCR 页数（防止超长文档拖垮加载）
+        public int OcrMaxPagesPerPdf { get; set; } = 20;
+
+        // [OCR] PDF 页渲染 DPI（150 兼顾清晰度与视觉模型推理速度）
+        public int OcrRenderDpi { get; set; } = 150;
 
         // Sprint 4: 分块重叠窗口（字符数），0 表示禁用
         public int ChunkOverlap { get; set; } = 100;

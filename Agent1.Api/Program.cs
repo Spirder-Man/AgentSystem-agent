@@ -199,7 +199,7 @@ builder.Services.AddSingleton(sp =>
 {
     var db = sp.GetRequiredService<IDatabaseService>();
     var kb = sp.GetRequiredService<IKnowledgeBaseService>();
-    return new ChemicalRAG(AppConfig.Instance.KnowledgeBase.BasePath, kb, db);
+    return new ChemicalRAG(AppConfig.Instance.KnowledgeBase.BasePath, kb, db, CreatePdfOcrService());
 });
 
 // ═══════════════════════════════════════════════════
@@ -349,7 +349,7 @@ using (var scope = app.Services.CreateScope())
     }
 
     // 预加载知识库
-    var chemicalRAG = new ChemicalRAG(AppConfig.Instance.KnowledgeBase.BasePath, knowledgeBaseService, databaseService);
+    var chemicalRAG = new ChemicalRAG(AppConfig.Instance.KnowledgeBase.BasePath, knowledgeBaseService, databaseService, CreatePdfOcrService());
     await chemicalRAG.LoadKnowledgeBaseAsync();
     logger.LogInformation("知识库加载完成 ({Count} 条)", knowledgeBaseService.GetDocumentCount());
 
@@ -630,6 +630,17 @@ catch (Exception ex)
     Console.Error.WriteLine($"致命错误: {ex.Message}");
     return 1;
 }
+    }
+
+    /// <summary>
+    /// [OCR] 按配置构造扫描件 PDF 视觉 OCR 回退服务；开关关闭时返回 null（ChemicalRAG 保持原行为）。
+    /// </summary>
+    private static PdfOcrService? CreatePdfOcrService()
+    {
+        var kb = AppConfig.Instance.KnowledgeBase;
+        return kb.EnableVisionOcr
+            ? new PdfOcrService(kb.OcrMaxPagesPerPdf, kb.OcrRenderDpi)
+            : null;
     }
 }
 

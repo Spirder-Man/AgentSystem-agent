@@ -8,6 +8,7 @@ import { useLoadingBar } from '@/lib/useLoadingBar';
 const analysisType = ref<AnalysisType>('hazard-label');
 const file = ref<File | null>(null);
 const imgPreview = ref('');
+const customPrompt = ref('');
 const result = ref<MultimodalResult | null>(null);
 const loading = ref(false);
 const error = ref('');
@@ -17,10 +18,15 @@ function onFileChange(e: Event) {
   const target = e.target as HTMLInputElement;
   const f = target.files?.[0];
   if (!f) return;
-  if (f.size > 20 * 1024 * 1024) { ElMessage.error('文件不能超过 20MB'); return; }
+  if (f.size > 20 * 1024 * 1024) {
+    ElMessage.error('文件不能超过 20MB');
+    return;
+  }
   file.value = f;
   const reader = new FileReader();
-  reader.onload = () => { imgPreview.value = reader.result as string; };
+  reader.onload = () => {
+    imgPreview.value = reader.result as string;
+  };
   reader.readAsDataURL(f);
 }
 
@@ -34,6 +40,9 @@ async function analyze() {
     const fd = new FormData();
     fd.append('image', file.value);
     fd.append('analysisType', analysisType.value);
+    if (analysisType.value === 'custom' && customPrompt.value.trim()) {
+      fd.append('customPrompt', customPrompt.value.trim());
+    }
     const { data } = await apiClient.post<MultimodalResult>('/api/multimodal/analyze', fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
@@ -42,13 +51,16 @@ async function analyze() {
   } catch (e: unknown) {
     const ae = e as { response?: { data?: { error?: string } } };
     error.value = ae.response?.data?.error || '分析失败';
-  } finally { loading.value = false; stop(); }
+  } finally {
+    loading.value = false;
+    stop();
+  }
 }
 
 const typeLabels: Record<AnalysisType, string> = {
   'hazard-label': '危化品标签识别',
   'storage-scene': '储存场景检测',
-  'custom': '自定义分析',
+  custom: '自定义分析',
 };
 </script>
 
@@ -62,13 +74,29 @@ const typeLabels: Record<AnalysisType, string> = {
       <h3 class="text-sm font-semibold text-slate-700 mb-3">上传图片</h3>
       <div class="flex flex-wrap gap-2 mb-3">
         <button
-          v-for="t in (['hazard-label','storage-scene','custom'] as AnalysisType[])" :key="t"
+          v-for="t in ['hazard-label', 'storage-scene', 'custom'] as AnalysisType[]"
+          :key="t"
           @click="analysisType = t"
           class="text-xs px-3 py-1.5 rounded border transition-colors"
-          :class="analysisType === t ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'"
-        >{{ typeLabels[t] }}</button>
+          :class="
+            analysisType === t
+              ? 'border-blue-300 bg-blue-50 text-blue-700'
+              : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+          "
+        >
+          {{ typeLabels[t] }}
+        </button>
       </div>
-      <label class="block border-2 border-dashed border-slate-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 transition-colors">
+      <textarea
+        v-if="analysisType === 'custom'"
+        v-model="customPrompt"
+        rows="3"
+        placeholder="输入自定义分析要求（留空则使用默认化工安全分析提示词），例如：识别图中的 GHS 象形图并列出对应危险类别"
+        class="w-full text-sm border border-slate-200 rounded p-2 mb-3 focus:outline-none focus:border-blue-400 resize-y"
+      ></textarea>
+      <label
+        class="block border-2 border-dashed border-slate-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 transition-colors"
+      >
         <input type="file" accept="image/*" @change="onFileChange" class="hidden" />
         <div v-if="!imgPreview" class="text-slate-400 text-sm">
           <div class="text-3xl mb-2">📷</div>
@@ -81,7 +109,9 @@ const typeLabels: Record<AnalysisType, string> = {
         @click="analyze"
         :disabled="loading"
         class="mt-3 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50 transition-colors"
-      >{{ loading ? 'AI 分析中…' : '🔍 开始分析' }}</button>
+      >
+        {{ loading ? 'AI 分析中…' : '🔍 开始分析' }}
+      </button>
     </div>
 
     <div v-if="error" class="bg-red-50 border border-red-200 rounded p-4 text-sm text-red-700">{{ error }}</div>
@@ -91,7 +121,9 @@ const typeLabels: Record<AnalysisType, string> = {
         <h3 class="text-sm font-semibold text-slate-700">分析结果</h3>
         <span class="text-xs text-slate-400">{{ typeLabels[result.analysisType] }}</span>
       </div>
-      <div class="text-sm whitespace-pre-wrap leading-relaxed text-slate-700 p-4 bg-slate-50 rounded border border-slate-100">
+      <div
+        class="text-sm whitespace-pre-wrap leading-relaxed text-slate-700 p-4 bg-slate-50 rounded border border-slate-100"
+      >
         {{ result.result }}
       </div>
     </div>
