@@ -1192,6 +1192,25 @@ namespace Agent1.Services
             }
         }
 
+        /// <summary>[增量全格式] 按相对路径删除新表文档记录，knowledge_chunks 经 ON DELETE CASCADE 级联清理</summary>
+        public async Task<int> DeleteKnowledgeDocumentBySourcePathAsync(string sourcePath)
+        {
+            try
+            {
+                using var connection = CreateConnection();
+                await connection.OpenAsync();
+                var sql = "DELETE FROM knowledge_documents WHERE source_path = @sourcePath;";
+                using var cmd = new NpgsqlCommand(sql, connection);
+                cmd.Parameters.AddWithValue("@sourcePath", sourcePath);
+                return await cmd.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ⚠️ 删除知识文档记录失败 [{sourcePath}]: {ex.Message}");
+                return 0;
+            }
+        }
+
         // 解析 pgvector 字符串格式 "[0.1,0.2,0.3]" 为 float[]
         private static float[]? ParsePgVectorString(string vectorStr)
         {

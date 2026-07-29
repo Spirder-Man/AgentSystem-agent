@@ -292,11 +292,14 @@ namespace Agent1.Services
             await _databaseService.ClearChemicalDocumentsAsync();
         }
 
-        /// <summary>[P3 增量更新] 按源文件删除 BM25 内存分块 + DB 分块</summary>
+        /// <summary>[P3 增量更新] 按源文件删除 BM25 内存分块 + DB 分块。
+        /// 旧表 chemical_documents.source_file 存的是无扩展名文件名，
+        /// 这里统一归一化后再下发删除，避免调用方传全路径时 DELETE 匹配 0 行。</summary>
         public async Task RemoveChunksBySourceFileAsync(string sourceFile)
         {
             var bm25Removed = _bm25Service.RemoveBySourceFile(sourceFile);
-            var dbRemoved = await _databaseService.DeleteChemicalDocumentsBySourceAsync(sourceFile);
+            var normalizedName = Path.GetFileNameWithoutExtension(sourceFile);
+            var dbRemoved = await _databaseService.DeleteChemicalDocumentsBySourceAsync(normalizedName);
             if (bm25Removed > 0 || dbRemoved > 0)
                 Console.WriteLine($"   ✅ 已清理源文件分块: BM25-{bm25Removed}, DB-{dbRemoved} ({Path.GetFileName(sourceFile)})");
         }

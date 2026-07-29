@@ -36,6 +36,8 @@ namespace Agent1.Services
         Task<List<ChemicalDocumentRecord>> GetAllChemicalDocumentsWithEmbeddingsAsync();
         // [P3 增量更新] 按源文件删除文档（文件被删除时清理 DB 分块）
         Task<int> DeleteChemicalDocumentsBySourceAsync(string sourceFile);
+        // [增量全格式] 按相对路径删除新表文档记录（knowledge_chunks 经 ON DELETE CASCADE 级联清理）
+        Task<int> DeleteKnowledgeDocumentBySourcePathAsync(string sourcePath);
 
         // ═══════════════════════════════════════════
         // 知识库双层表架构 — 文档级 + 分块级写入

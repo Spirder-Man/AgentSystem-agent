@@ -161,6 +161,9 @@ namespace Agent1.Services
             _garbledChunks = 0;
             _failedFileList.Clear();
 
+            // [增量全格式] 全量加载同样维护 file_tracker，避免“全量后点增量”整库重复入库
+            LoadFileTracker();
+
             var gbDir = Path.Combine(_knowledgeBasePath, "国标");
             if (Directory.Exists(gbDir))
                 await LoadDirectoryAsync(gbDir, "国标", "高");
@@ -184,6 +187,7 @@ namespace Agent1.Services
                 await LoadH166DirectoryAsync(h166Dir);
             }
 
+            SaveFileTracker();
             PrintQualityReport();
         }
         // [P1] 知识库文件追踪器：记录每个文件的上次处理时间
@@ -191,19 +195,55 @@ namespace Agent1.Services
         private string FileTrackerPath => Path.Combine(_knowledgeBasePath, "file_tracker.json");
 
         /// <summary>
-        /// [P1] 增量加载：仅处理自上次加载以来修改过的文件。
-        /// 基于文件最后写入时间 (LastWriteTime) 判断变更，
-        /// 新文件或修改过的文件会被重新分块和索引。
+        /// [P1 增量加载 → 全格式重构] 仅处理自上次加载以来修改过的文件。
+        /// 基于文件最后写入时间 (LastWriteTimeUtc) 判断变更；
+        /// 覆盖 PDF/DOC/DOCX/TXT 全部支持格式，与全量加载共用统一单文件管线
+        /// （提取 → 清洗 → 语义分块 → 双层表 + BM25），并同步覆盖 H166 制度模板目录。
+        /// 更新场景先按相对路径删除旧文档记录（source_path UNIQUE + CASCADE 级联清分块）再重新入库；
+        /// 处理失败的文件不写入追踪器，下次增量自动重试。
         /// </summary>
         public async Task LoadKnowledgeBaseIncrementalAsync()
         {
             LoadFileTracker();
 
-            Console.WriteLine("\n========== 化工知识库增量更新 ==========");
+            Console.WriteLine("\n========== 化工知识库增量更新（全格式） ==========");
             Console.WriteLine($"已追踪文件: {_fileTracker?.Count ?? 0} 个");
-            Console.WriteLine("==========================================");
+            Console.WriteLine("支持格式: PDF / DOC / DOCX / TXT");
+            Console.WriteLine("==================================================");
 
-            int newFiles = 0, updatedFiles = 0, skippedFiles = 0;
+            int newFiles = 0, updatedFiles = 0, skippedFiles = 0, failedIncrFiles = 0;
+
+            // 与全量加载共用统一单文件管线，保证增量入库的表结构和元数据完全一致
+            async Task ProcessChangedFilesAsync(IEnumerable<string> files, Func<string, Task<bool>> processor)
+            {
+                foreach (var file in files)
+                {
+                    var lastWrite = File.GetLastWriteTimeUtc(file);
+                    bool isTracked = _fileTracker!.TryGetValue(file, out var tracked);
+                    if (isTracked && lastWrite <= tracked)
+                    {
+                        skippedFiles++;
+                        continue; // 未修改
+                    }
+
+                    // 更新场景：source_path 有 UNIQUE 约束，必须先删旧记录（CASCADE 清分块）再重插
+                    if (isTracked)
+                        await RemoveFileFromKnowledgeBaseAsync(file);
+
+                    Console.WriteLine($"   {(isTracked ? "[更新]" : "[新增]")} {Path.GetFileName(file)}");
+                    if (await processor(file))
+                    {
+                        _fileTracker![file] = lastWrite;
+                        if (isTracked) updatedFiles++; else newFiles++;
+                    }
+                    else
+                    {
+                        failedIncrFiles++;
+                        _fileTracker!.Remove(file); // 失败不入追踪器，下次增量重试
+                    }
+                }
+            }
+
             var directories = new[]
             {
                 (Path.Combine(_knowledgeBasePath, "国标"), "国标", "高"),
@@ -214,34 +254,19 @@ namespace Agent1.Services
 
             foreach (var (dir, type, priority) in directories)
             {
-                if (!Directory.Exists(dir)) continue;
-
-                var files = Directory.GetFiles(dir, "*.txt", SearchOption.AllDirectories);
-                foreach (var file in files)
-                {
-                    var lastWrite = File.GetLastWriteTimeUtc(file);
-                    if (_fileTracker!.TryGetValue(file, out var tracked))
-                    {
-                        if (lastWrite <= tracked)
-                        {
-                            skippedFiles++;
-                            continue; // 未修改
-                        }
-                        updatedFiles++;
-                    }
-                    else
-                    {
-                        newFiles++;
-                    }
-
-                    var tag = _fileTracker.ContainsKey(file) ? "[更新]" : "[新增]";
-                    Console.WriteLine($"   {tag} {Path.GetFileName(file)}");
-                    await LoadAndSplitFile(file, type, priority);
-                    _fileTracker[file] = lastWrite;
-                }
+                await ProcessChangedFilesAsync(
+                    EnumerateSupportedFiles(dir, SearchOption.AllDirectories),
+                    f => ProcessSingleFileAsync(f, type, priority));
             }
 
-            // [P3 增量更新] 检测已删除的文件并清理对应分块
+            // [病灶⑤修复] H166 制度模板目录（DOC/DOCX）增量同样覆盖
+            var h166Dir = Path.Combine(_knowledgeBasePath, "H166—危险化学品化工企业安全生产三级标准化管理制度消防台账资料档案");
+            await ProcessChangedFilesAsync(
+                EnumerateSupportedFiles(h166Dir, SearchOption.AllDirectories)
+                    .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".doc" or ".docx"),
+                ProcessH166FileAsync);
+
+            // [P3 增量更新] 检测已删除的文件并清理对应分块（新表按相对路径 CASCADE，旧表/BM25 按文件名）
             int deletedFiles = 0;
             var deletedKeys = new List<string>();
             foreach (var trackedFile in _fileTracker!.Keys)
@@ -249,7 +274,7 @@ namespace Agent1.Services
                 if (!File.Exists(trackedFile))
                 {
                     Console.WriteLine($"   [删除] {Path.GetFileName(trackedFile)}");
-                    await _knowledgeBase.RemoveChunksBySourceFileAsync(trackedFile);
+                    await RemoveFileFromKnowledgeBaseAsync(trackedFile);
                     deletedKeys.Add(trackedFile);
                     deletedFiles++;
                 }
@@ -258,7 +283,7 @@ namespace Agent1.Services
                 _fileTracker.Remove(key);
 
             SaveFileTracker();
-            Console.WriteLine($"\n   增量结果: +{newFiles} 新增, ~{updatedFiles} 更新, ≡{skippedFiles} 跳过, -{deletedFiles} 删除");
+            Console.WriteLine($"\n   增量结果: +{newFiles} 新增, ~{updatedFiles} 更新, ≡{skippedFiles} 跳过, ✗{failedIncrFiles} 失败, -{deletedFiles} 删除");
             Console.WriteLine($"   知识库文档总数: {_knowledgeBase.GetDocumentCount()}\n");
         }
 
@@ -296,46 +321,6 @@ namespace Agent1.Services
             {
                 Console.WriteLine($"   ⚠️ 保存文件追踪器失败: {ex.Message}");
             }
-        }
-        /// <summary>
-        /// 异步加载并分块处理文件内容
-        /// </summary>
-        /// <param name="regulationType">文件类型，例如"国标"、"园区规则"或"历史案例"。</param>
-        /// <param name="priority">文件优先级，例如"高"、"中"或"低"。</param>
-        /// <returns>包含所有分块的列表。</returns>
-        private async Task<List<string>> LoadAndSplitFile(string filePath, string regulationType, string priority)
-        {
-            var chunks = new List<string>();
-            var fileName = Path.GetFileNameWithoutExtension(filePath);
-            
-            try
-            {
-                var content = await File.ReadAllTextAsync(filePath, Encoding.UTF8);
-                Console.WriteLine("  加载文件: " + fileName + " (" + content.Length + " 字符)");
-
-                var splitChunks = SplitTextIntoChunks(content, 500);
-                
-                var chunkIndex = 0;
-                foreach (var chunk in splitChunks)
-                {
-                    chunkIndex++;
-                    if (RejectGarbledChunk(chunk, fileName, chunkIndex)) continue;
-                    var metadata = new Dictionary<string, object>();
-                    metadata["RegulationType"] = regulationType;
-                    metadata["Priority"] = priority;
-                    metadata["SourceFile"] = fileName;
-                    await _knowledgeBase.AddDocumentAsync(chunk, metadata);
-                    chunks.Add(chunk);
-                }
-
-                Console.WriteLine("    - 分块数: " + splitChunks.Count);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("    加载失败: " + ex.Message);
-            }
-
-            return chunks;
         }
         /// <summary>
         /// 将文本内容按段落分块，每个分块最大500个字符。
@@ -392,10 +377,8 @@ namespace Agent1.Services
             var fileInfo = new FileInfo(filePath);
             var ext = fileInfo.Extension.TrimStart('.').ToLowerInvariant();
 
-            // 计算相对路径
-            var relativePath = filePath;
-            if (filePath.StartsWith(_knowledgeBasePath))
-                relativePath = filePath.Substring(_knowledgeBasePath.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            // 计算相对路径（与删除路径共用同一函数，保证删除键=插入键）
+            var relativePath = GetRelativeSourcePath(filePath);
 
             var doc = new KnowledgeDocumentRecord
             {
@@ -417,66 +400,142 @@ namespace Agent1.Services
             return await _databaseService.InsertDocumentAsync(doc);
         }
 
+        // [增量全格式] 支持的文档扩展名（全量与增量共用）
+        private static readonly string[] SupportedExtensions = { ".txt", ".pdf", ".doc", ".docx" };
+
         /// <summary>
-        /// 统一目录加载：自动识别 PDF/DOC/DOCX/TXT
+        /// 枚举目录下所有支持格式的文档。
+        /// 用 "*.*" 通配后按实际扩展名过滤，规避 Windows 下 GetFiles("*.doc") 连带匹配 .docx 的怪癖；
+        /// 同时排除 Office 临时文件（~$、~WRL 前缀）。目录不存在时返回空序列。
+        /// </summary>
+        private static IEnumerable<string> EnumerateSupportedFiles(string dirPath, SearchOption option)
+        {
+            if (!Directory.Exists(dirPath)) return Enumerable.Empty<string>();
+            return Directory.GetFiles(dirPath, "*.*", option)
+                .Where(f => SupportedExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
+                .Where(f =>
+                {
+                    var name = Path.GetFileName(f);
+                    return !name.StartsWith("~$") && !name.StartsWith("~WRL");
+                })
+                .Distinct()
+                .OrderBy(f => f, StringComparer.Ordinal);
+        }
+
+        /// <summary>
+        /// 计算文件相对知识库根的路径，与 knowledge_documents.source_path 的写入键一致；
+        /// 插入（InsertDocumentForFileAsync）与删除（RemoveFileFromKnowledgeBaseAsync）共用，保证键对齐。
+        /// </summary>
+        private string GetRelativeSourcePath(string filePath)
+        {
+            var full = Path.GetFullPath(filePath);
+            var root = Path.GetFullPath(_knowledgeBasePath);
+            if (full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                return full.Substring(root.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return filePath;
+        }
+
+        // 成功处理后登记到文件追踪器（全量路径使用；增量路径在调度器中登记）
+        private void TrackFile(string filePath)
+        {
+            if (_fileTracker == null) return;
+            _fileTracker[filePath] = File.GetLastWriteTimeUtc(filePath);
+        }
+
+        /// <summary>
+        /// 从知识库中彻底移除一个文件的全部数据：
+        /// 新表按相对路径删除文档记录（knowledge_chunks 经 ON DELETE CASCADE 级联清理），
+        /// 旧表 chemical_documents 与 BM25 内存索引经 RemoveChunksBySourceFileAsync 按文件名清理。
+        /// </summary>
+        private async Task RemoveFileFromKnowledgeBaseAsync(string filePath)
+        {
+            if (_databaseService != null)
+            {
+                var removed = await _databaseService.DeleteKnowledgeDocumentBySourcePathAsync(GetRelativeSourcePath(filePath));
+                if (removed > 0)
+                    Console.WriteLine($"   🗑️ 已删除文档记录及级联分块: {Path.GetFileName(filePath)}");
+            }
+            await _knowledgeBase.RemoveChunksBySourceFileAsync(filePath);
+        }
+
+        /// <summary>
+        /// [增量全格式] 统一单文件处理管线：按扩展名分派到对应处理器，全量与增量共用，
+        /// 保证任何入口进来的文件都走同一条 提取 → 清洗 → 语义分块 → 双层表 + BM25 链路。
+        /// </summary>
+        private async Task<bool> ProcessSingleFileAsync(string filePath, string regulationType, string priority)
+        {
+            switch (Path.GetExtension(filePath).ToLowerInvariant())
+            {
+                case ".pdf":
+                    return await ProcessPdfFileAsync(filePath, regulationType, priority);
+                case ".doc":
+                case ".docx":
+                    return await ProcessDocFileAsync(filePath, regulationType, priority);
+                case ".txt":
+                    return await ProcessTxtFileAsync(filePath, regulationType, priority);
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// 统一目录加载：自动识别 PDF/DOC/DOCX/TXT，成功后登记文件追踪器
         /// </summary>
         private async Task LoadDirectoryAsync(string dirPath, string regulationType, string priority)
         {
-            var pdfFiles = Directory.GetFiles(dirPath, "*.pdf", SearchOption.TopDirectoryOnly)
-                .Where(f => !Path.GetFileName(f).StartsWith("~$"));
-            foreach (var f in pdfFiles)
-                await ProcessPdfFileAsync(f, regulationType, priority);
-
-            var docFiles = Directory.GetFiles(dirPath, "*.doc", SearchOption.TopDirectoryOnly)
-                .Concat(Directory.GetFiles(dirPath, "*.docx", SearchOption.TopDirectoryOnly))
-                .Where(f => !Path.GetFileName(f).StartsWith("~$"))
-                .Distinct();
-            foreach (var f in docFiles)
-                await ProcessDocFileAsync(f, regulationType, priority);
-
-            var txtFiles = Directory.GetFiles(dirPath, "*.txt", SearchOption.TopDirectoryOnly);
-            foreach (var f in txtFiles)
+            foreach (var f in EnumerateSupportedFiles(dirPath, SearchOption.TopDirectoryOnly))
             {
-                _totalFiles++;
-                try
+                if (await ProcessSingleFileAsync(f, regulationType, priority))
+                    TrackFile(f);
+            }
+        }
+
+        /// <summary>
+        /// 处理TXT文件并添加到知识库中（清洗 → 语义分块 → 双层表）。
+        /// </summary>
+        private async Task<bool> ProcessTxtFileAsync(string f, string regulationType, string priority)
+        {
+            _totalFiles++;
+            try
+            {
+                var content = await File.ReadAllTextAsync(f, Encoding.UTF8);
+                var cr = _textCleaner.Clean(content, regulationType);
+                var chunks = _semanticChunker.Chunk(cr.CleanText, regulationType);
+
+                // 双层表：先插入文档记录
+                var quality = cr.IsGarbled ? "partial" : "good";
+                var regNumber = chunks.FirstOrDefault()?.RegulationNumber;
+                var documentId = await InsertDocumentForFileAsync(f, regulationType, priority,
+                    extractionQuality: quality, regulationNumber: regNumber);
+
+                foreach (var c in chunks)
                 {
-                    var content = await File.ReadAllTextAsync(f, Encoding.UTF8);
-                    var cr = _textCleaner.Clean(content, regulationType);
-                    var chunks = _semanticChunker.Chunk(cr.CleanText, regulationType);
-
-                    // 双层表：先插入文档记录
-                    var quality = cr.IsGarbled ? "partial" : "good";
-                    var regNumber = chunks.FirstOrDefault()?.RegulationNumber;
-                    var documentId = await InsertDocumentForFileAsync(f, regulationType, priority,
-                        extractionQuality: quality, regulationNumber: regNumber);
-
-                    foreach (var c in chunks)
+                    if (RejectGarbledChunk(c.Content, Path.GetFileNameWithoutExtension(f), c.ChunkIndex)) continue;
+                    await _knowledgeBase.AddDocumentAsync(c.Content, new Dictionary<string, object>
                     {
-                        if (RejectGarbledChunk(c.Content, Path.GetFileNameWithoutExtension(f), c.ChunkIndex)) continue;
-                        await _knowledgeBase.AddDocumentAsync(c.Content, new Dictionary<string, object>
-                        {
-                            ["RegulationType"] = regulationType, ["Priority"] = priority,
-                            ["SourceFile"] = Path.GetFileNameWithoutExtension(f),
-                            ["RegulationNumber"] = c.RegulationNumber ?? "",
-                            ["ChapterTitle"] = c.ChapterTitle ?? "",
-                            ["ClauseNumber"] = c.ClauseNumber ?? "",
-                            ["ChunkIndex"] = c.ChunkIndex,
-                            ["PageNumber"] = c.PageNumber ?? (object)DBNull.Value,
-                            ["ExtractionQuality"] = quality,
-                            ["DocumentId"] = documentId
-                        });
-                        _totalChunks++;
-                    }
-
-                    if (_databaseService != null && documentId > 0)
-                        await _databaseService.UpdateDocumentChunkCountAsync(documentId, chunks.Count);
-
-                    _successFiles++;
+                        ["RegulationType"] = regulationType, ["Priority"] = priority,
+                        ["SourceFile"] = Path.GetFileNameWithoutExtension(f),
+                        ["RegulationNumber"] = c.RegulationNumber ?? "",
+                        ["ChapterTitle"] = c.ChapterTitle ?? "",
+                        ["ClauseNumber"] = c.ClauseNumber ?? "",
+                        ["ChunkIndex"] = c.ChunkIndex,
+                        ["PageNumber"] = c.PageNumber ?? (object)DBNull.Value,
+                        ["ExtractionQuality"] = quality,
+                        ["DocumentId"] = documentId
+                    });
+                    _totalChunks++;
                 }
-                catch (Exception ex)
-                {
-                    _failedFiles++; _failedFileList.Add($"{Path.GetFileNameWithoutExtension(f)} ({ex.Message})");
-                }
+
+                if (_databaseService != null && documentId > 0)
+                    await _databaseService.UpdateDocumentChunkCountAsync(documentId, chunks.Count);
+
+                _successFiles++;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _failedFiles++; _failedFileList.Add($"{Path.GetFileNameWithoutExtension(f)} ({ex.Message})");
+                return false;
             }
         }
         /// <summary>
@@ -485,14 +544,24 @@ namespace Agent1.Services
         /// <param name="rootDir">根目录路径。</param>
         private async Task LoadH166DirectoryAsync(string rootDir)
         {
-            var docFiles = Directory.GetFiles(rootDir, "*.doc", SearchOption.AllDirectories)
-                .Concat(Directory.GetFiles(rootDir, "*.docx", SearchOption.AllDirectories))
-                .Where(f => !Path.GetFileName(f).StartsWith("~$"))
-                .ToList();
+            var docFiles = EnumerateSupportedFiles(rootDir, SearchOption.AllDirectories)
+                .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".doc" or ".docx");
 
             foreach (var file in docFiles)
             {
-                _totalFiles++;
+                if (await ProcessH166FileAsync(file))
+                    TrackFile(file);
+            }
+        }
+
+        /// <summary>
+        /// 处理单个 H166 制度模板文档（企业制度/低优先级），全量与增量共用。
+        /// </summary>
+        private async Task<bool> ProcessH166FileAsync(string file)
+        {
+            _totalFiles++;
+            try
+            {
                 var result = _docExtractor.Extract(file);
 
                 // 双层表：先插入文档记录
@@ -544,6 +613,12 @@ namespace Agent1.Services
                     _totalChunks++;
                     _skippedFiles++;
                 }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _failedFiles++; _failedFileList.Add($"{Path.GetFileNameWithoutExtension(file)} ({ex.Message})");
+                return false;
             }
         }
         /// <summary>
@@ -552,7 +627,7 @@ namespace Agent1.Services
         /// <param name="filePath">文件路径，包含文件名。</param>
         /// <param name="regulationType">文件类型，例如"国标"、"园区规则"或"历史案例"。</param>
         /// <param name="priority">文件优先级，例如"高"、"中"或"低"。</param>
-        private async Task ProcessPdfFileAsync(string filePath, string regulationType, string priority)
+        private async Task<bool> ProcessPdfFileAsync(string filePath, string regulationType, string priority)
         {
             _totalFiles++;
             var fileName = Path.GetFileNameWithoutExtension(filePath);
@@ -563,7 +638,7 @@ namespace Agent1.Services
                 if (pdfResult.Quality == "failed")
                 {
                     _failedFiles++; _failedFileList.Add($"{fileName} (PDF解析失败)");
-                    return;
+                    return false;
                 }
                 //检索过滤
                 var cleanResult = _textCleaner.Clean(pdfResult.FullText, regulationType);
@@ -601,10 +676,12 @@ namespace Agent1.Services
 
                 if (cleanResult.IsGarbled) _partialFiles++; else _successFiles++;
                 Console.WriteLine($"   ✅ [{fileName}]: {pdfResult.PageCount}页 → {chunks.Count}块 (质量:{pdfResult.Quality})");
+                return true;
             }
             catch (Exception ex)
             {
                 _failedFiles++; _failedFileList.Add($"{fileName} ({ex.Message})");
+                return false;
             }
         }
         /// <summary>
@@ -613,7 +690,7 @@ namespace Agent1.Services
         /// <param name="filePath">文件路径，包含文件名。</param>
         /// <param name="regulationType">文件类型，例如"国标"、"园区规则"或"历史案例"。</param>
         /// <param name="priority">文件优先级，例如"高"、"中"或"低"。</param>
-        private async Task ProcessDocFileAsync(string filePath, string regulationType, string priority)
+        private async Task<bool> ProcessDocFileAsync(string filePath, string regulationType, string priority)
         {
             _totalFiles++;
             var fileName = Path.GetFileNameWithoutExtension(filePath);
@@ -666,10 +743,12 @@ namespace Agent1.Services
                     _totalChunks++;
                     _skippedFiles++;
                 }
+                return true;
             }
             catch (Exception ex)
             {
                 _failedFiles++; _failedFileList.Add($"{fileName} ({ex.Message})");
+                return false;
             }
         }
         /// <summary>

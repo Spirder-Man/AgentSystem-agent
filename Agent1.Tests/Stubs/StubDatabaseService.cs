@@ -68,6 +68,9 @@ public class StubDatabaseService : IDatabaseService
     public Task<int> DeleteChemicalDocumentsBySourceAsync(string sourceFile)
         => Task.FromResult(0);
 
+    public Task<int> DeleteKnowledgeDocumentBySourcePathAsync(string sourcePath)
+        => Task.FromResult(0);
+
     // ═══════════════════════════════════════
     // 知识库双层表架构 — 存根（Phase 1-6）
     // ═══════════════════════════════════════
