@@ -316,8 +316,8 @@ describe('checkSimulatedError — x-simulate-error 错误注入', () => {
 // ═══════════════════════════════════════
 
 describe('handlers 数组 — 路由配置完整性', () => {
-  it('共 56 条路由', () => {
-    expect(handlers.length).toBe(56);
+  it('共 57 条路由', () => {
+    expect(handlers.length).toBe(57);
   });
 
   it('每条 handler 都有 method 和 path 信息', () => {
@@ -374,6 +374,7 @@ describe('handlers 数组 — 路由配置完整性', () => {
     // Dashboard
     { method: 'GET', path: '/api/Dashboard/overview' },
     { method: 'POST', path: '/api/Dashboard/scan' },
+    { method: 'GET', path: '/api/Dashboard/scan/status' },
     { method: 'GET', path: '/api/Dashboard/findings' },
     { method: 'GET', path: '/api/Dashboard/history' },
     { method: 'GET', path: '/api/Dashboard/report/hazard' },

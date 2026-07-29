@@ -10,7 +10,7 @@
 //   GET  /api/Dashboard/assets         → (保留: 可用于资产详情页跳转)
 // ============================================================
 
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useAuthStore } from '@/stores/auth';
 import apiClient from '@/lib/axios';
 import type {
@@ -18,7 +18,8 @@ import type {
   DashboardFindingsResponse,
   DashboardHistoryResponse,
   DashboardHazardReport,
-  DashboardScanResult,
+  DashboardScanAccepted,
+  DashboardScanStatus,
   QuickCheckResult,
 } from '@/types/api';
 import SkeletonCard from '@/components/common/SkeletonCard.vue';
@@ -163,27 +164,53 @@ async function runQuickCheck() {
   }
 }
 
-// ── 自动扫描 ──
-const scanResult = ref<DashboardScanResult | null>(null);
+// ── 自动扫描（[#4] 后台任务 + 2s 进度轮询）──
+const scanStatus = ref<DashboardScanStatus | null>(null);
 const scanLoading = ref(false);
 const scanError = ref('');
+let scanPollTimer: ReturnType<typeof setInterval> | null = null;
+
+function stopScanPolling() {
+  if (scanPollTimer) {
+    clearInterval(scanPollTimer);
+    scanPollTimer = null;
+  }
+}
+
+async function pollScanStatus() {
+  try {
+    const { data } = await apiClient.get<DashboardScanStatus>('/api/Dashboard/scan/status');
+    scanStatus.value = data;
+    if (!data.running) {
+      stopScanPolling();
+      scanLoading.value = false;
+      if (data.error) scanError.value = data.error;
+      // 扫描完成后刷新总览
+      await fetchAll();
+    }
+  } catch {
+    /* 单次轮询失败不终止，下一轮重试 */
+  }
+}
 
 async function runAutoScan() {
   scanError.value = '';
-  scanResult.value = null;
+  scanStatus.value = null;
   scanLoading.value = true;
   try {
-    const { data } = await apiClient.post<DashboardScanResult>('/api/Dashboard/scan', null, { timeout: 600_000 });
-    scanResult.value = data;
-    // 扫描完成后刷新总览
-    await fetchAll();
+    // 202 受理后转轮询，不再长连接等待（旧实现 timeout 600s 同步阻塞）
+    await apiClient.post<DashboardScanAccepted>('/api/Dashboard/scan', null);
+    stopScanPolling();
+    scanPollTimer = setInterval(pollScanStatus, 2000);
+    await pollScanStatus();
   } catch (e: unknown) {
     const ae = e as { response?: { data?: { error?: string } } };
     scanError.value = ae.response?.data?.error || '扫描启动失败';
-  } finally {
     scanLoading.value = false;
   }
 }
+
+onUnmounted(stopScanPolling);
 </script>
 
 <template>
@@ -263,17 +290,30 @@ async function runAutoScan() {
             {{ scanLoading ? '扫描中…' : '触发全库扫描' }}
           </button>
           <div v-if="scanError" class="text-xs text-red-600 mt-2">{{ scanError }}</div>
+          <!-- 扫描进行中：进度条（[#4] 轮询实时刷新） -->
           <div
-            v-if="scanResult"
+            v-if="scanLoading && scanStatus"
+            data-testid="dashboard-scan-progress"
+            class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded text-xs space-y-1"
+          >
+            <p class="font-medium text-blue-800">⏳ 扫描进行中…</p>
+            <p class="text-slate-600">
+              进度 {{ scanStatus.current }}/{{ scanStatus.total }} · 新发现 {{ scanStatus.newFindings }} 条
+            </p>
+          </div>
+          <!-- 扫描完成：结果摘要 -->
+          <div
+            v-if="!scanLoading && scanStatus && !scanStatus.error"
             data-testid="dashboard-scan-result"
             class="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded text-xs space-y-1"
           >
             <p class="font-medium text-emerald-800">✅ 扫描完成</p>
             <p class="text-slate-600">
-              资产 {{ scanResult.overview.checkedAssets }}/{{ scanResult.overview.totalAssets }} · 发现
-              {{ scanResult.totalFindings }} 条 · 新增 {{ scanResult.newFindings }} 条
+              资产 {{ scanStatus.current }}/{{ scanStatus.total }} · 新增 {{ scanStatus.newFindings }} 条发现
             </p>
-            <p class="text-slate-400">{{ new Date(scanResult.scannedAt).toLocaleString('zh-CN') }}</p>
+            <p v-if="scanStatus.completedAt" class="text-slate-400">
+              {{ new Date(scanStatus.completedAt).toLocaleString('zh-CN') }}
+            </p>
           </div>
         </div>
       </div>

@@ -348,17 +348,23 @@ export const handlers = [
     const s = maybeSimulateError(request);
     if (s) return HttpResponse.json(s, { status: 503 });
     await simulateLlmDelay(request);
+    // [#4] 扫描改后台任务：启动返回 202 { scanId }，进度经 /scan/status 轮询
+    return HttpResponse.json({ scanId: 'mock-scan-001', totalAssets: 6 }, { status: 202 });
+  }),
+
+  http.get('/api/Dashboard/scan/status', async ({ request }) => {
+    const g = readAuthGuard(request);
+    if (g) return g;
+    // Mock 直接返回已完成快照（前端首轮轮询即命中 running=false → 刷新总览）
     return HttpResponse.json({
+      running: false,
+      scanId: 'mock-scan-001',
+      current: 6,
+      total: 6,
       newFindings: 1,
-      totalFindings: 3,
-      scannedAt: new Date().toISOString(),
-      overview: {
-        totalAssets: 6,
-        checkedAssets: 6,
-        complianceRate: 0.67,
-        openFindings: 5,
-        remediationRate: 0.58,
-      },
+      startedAt: new Date(Date.now() - 5000).toISOString(),
+      completedAt: new Date().toISOString(),
+      error: null,
     });
   }),
 

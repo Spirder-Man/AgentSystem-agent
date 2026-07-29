@@ -586,18 +586,22 @@ export interface DashboardFindingsResponse {
   };
 }
 
-/** POST /api/Dashboard/scan */
-export interface DashboardScanResult {
+/** POST /api/Dashboard/scan — 202 受理响应（[#4] 扫描已转后台执行） */
+export interface DashboardScanAccepted {
+  scanId: string;
+  totalAssets: number;
+}
+
+/** GET /api/Dashboard/scan/status — 后台扫描进度快照（[#4] 前端 2s 轮询） */
+export interface DashboardScanStatus {
+  running: boolean;
+  scanId: string | null;
+  current: number;
+  total: number;
   newFindings: number;
-  totalFindings: number;
-  scannedAt: string;
-  overview: {
-    totalAssets: number;
-    checkedAssets: number;
-    complianceRate: number;
-    openFindings: number;
-    remediationRate: number;
-  };
+  startedAt: string | null;
+  completedAt: string | null;
+  error: string | null;
 }
 
 /** GET /api/Dashboard/history */
