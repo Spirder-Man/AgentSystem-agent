@@ -239,7 +239,7 @@ start_services() {
     # Embedding 模型只需小上下文，保留 -c 2048
     nohup "$LLAMA_DIR/llama-server" \
       -m "$EMB_MODEL" \
-      --host 0.0.0.0 --port 8081 --embeddings -c 2048 --batch-size 1024 \
+      --host 0.0.0.0 --port 8081 --embeddings -c 2048 -b 2048 -ub 2048 \
       > /root/autodl-tmp/logs/llama-embed.log 2>&1 &
     echo "    PID: $!"
 

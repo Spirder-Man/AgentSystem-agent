@@ -65,8 +65,9 @@ EMBED_MODEL=$(ls "$MODEL_DIR"/{nomic,bge}*gguf 2>/dev/null | head -1)
 if [ -z "$EMBED_MODEL" ]; then
   echo "  ⚠️ Embedding 模型未找到，跳过"
 else
+  # -ub 2048: 物理批次上限，OCR条款切分后单块可达600+ token，默认512会500报错
   nohup "$LLAMA_BIN" -m "$EMBED_MODEL" \
-    --host 0.0.0.0 --port 8081 --embedding -c 8192 -ngl 99 \
+    --host 0.0.0.0 --port 8081 --embedding -c 8192 -ngl 99 -b 2048 -ub 2048 \
     > "$LOG_DIR/llama-embed.log" 2>&1 &
   echo "  ✅ 已启动 (pid $!) → $(basename "$EMBED_MODEL")"
 fi
