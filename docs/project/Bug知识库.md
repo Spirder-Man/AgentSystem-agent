@@ -2,7 +2,7 @@
 
 > **目的**：结构化记录每个 Bug 的根因/修复/影响模块，实现跨批次知识累积，避免同类问题反复出现。
 > **使用方式**：每次修复 Bug 后按模板录入；每次分析日志前浏览「系统弱点了然表」确定重点监控项。
-> **文档版本**：v2.5 | **创建日期**：2026-06-30 | **最后更新**：2026-07-27（Bug-033：降级路径架构收敛 — 门卫+责任链+统一入口）
+> **文档版本**：v2.7 | **创建日期**：2026-06-30 | **最后更新**：2026-07-28（Bug-035：天真 SQL 拆分破坏字符串字面量 — SQLite 兜底库整体静默降级）
 
 ---
 
@@ -34,6 +34,8 @@
 | W20 | **哈希输入含微秒时间戳致往返漂移** | 每次时间归一化逻辑变更后历史记录哈希验证全败，修复后不重写旧记录致循环复发 | `哈希链断裂于 ID=1` / `RepairChainAsync` 修复数>0 反复出现 | [Bug-031](#bug-031) |
 | W21 | **FC=Required 违约时 LLM 废话透传（系统性）** | Qwen3-8B 忽略 FC 指令输出通用助手废话，ApplyDecoupledPipeline 兜底分支合并废话到用户可见输出；Emergency/RegulatoryAudit/KnowledgeGraph 路径零质量门 | `[SK诊断] ⚠️ 本轮未调用任何工具` + 输出含 emoji/时间戳注释 | [Bug-032](#bug-032) |
 | W22 | **LLM 零工具调用降级路径分裂** | 4 条 LLM 零工具调用降级路径各自处理方式不同：E1 正则猜测、FC=Required 违约→BuildNoResult、熔断器→规则引擎、"生成失败"→规则引擎。同一场景不同入口行为不一致，E1 正则永远不被 T13 评测路径触发 | `toolCalls==0` 在不同调用路径下行为不一致 / E1 命中率 0 vs 规则引擎命中率 >0 | [Bug-033](#bug-033) |
+| W23 | **幽灵依赖 + 假成功静音**（配置声明的外部实例从未部署，失败被伪装成成功） | 配置声明端点但部署脚本/启动检查/文档三处均无记录；异常被字符串化吞掉；API 对错误文案返回 200 + INF"完成"日志 | 重操作耗时低于物理下限（如视觉推理 <1s）/ 模块长期 ERR=0 且零真实产出 / 配置含上代技术栈化石语法（如 Ollama `:latest`） | [Bug-034](#bug-034) |
+| W24 | **手写解析器低估目标语法复杂度**（天真 `Split` 解析结构化文本） | 用 `sql.Split(';')` 拆分 SQL 脚本，字符串字面量内的分隔符（如 `GROUP_CONCAT(..., '; ')`）把语句拦腰截断；初始化失败进 catch 后仍置 `_initialized=true`，降级永久化且不可重现 | `unrecognized token: "'"` / 兜底库查询恒为空但无 ERR 复现 / 手写 `Split`/正则解析含引号语法的文本 | [Bug-035](#bug-035) |
 
 ---
 
@@ -41,6 +43,8 @@
 
 | ID | 日期 | 等级 | 类别 | 标题 |
 |:---:|------|:---:|------|------|
+| [Bug-035](#bug-035) | 07-28 | P0 | SQL解析 | 天真 `Split(';')` 破坏 GROUP_CONCAT 字符串字面量 — SQLite 兜底库初始化失败且降级永久化 |
+| [Bug-034](#bug-034) | 07-28 | P1 | 幽灵依赖 | 多模态视觉实例 8083 从未部署 — 连接拒绝被三层静音伪装成 200 假成功（81ms 指纹） |
 | [Bug-019](#bug-019) | 07-03 | P0 | LLM配置 | HyDE + FunctionChoiceBehavior.Required() 导致 FC 递归死循环（F005 静默卡死） |
 | [Bug-026](#bug-026) | 07-03 | P0 | 评测数据 | 评测集7条危险类别expected_regulation_number与数据库不对齐（结论准确率仅40%） |
 | [Bug-027](#bug-027) | 07-03 | P0 | 评测引擎 | Citation Accuracy 误判数据库源GB编号为幻觉（42条中仅8-12条为真实幻觉） |
@@ -1068,6 +1072,66 @@
 | N5 | 实现决策 | 「规则引擎当前只覆盖三类场景，如何从设计上解决扩展性？」 | 现行硬编码三步 if/else（TryHandleStorageQuery → TryHandleHazardQuery → TryHandleSafetyDistanceQuery）每次新增场景必须修改核心方法。引入 IComplianceQueryHandler 接口 + _handlers 列表：新增场景 = 新 Handler 类 + 一行注册，核心方法零改动 | 选责任链模式：接口定义契约 → ChemicalSignalGate 粗筛 → foreach _handlers → 首个命中返回 | 保持 if/else 但抽取为独立方法列表：实现形式不同但本质相同，不如一步到位用接口 |
 | N6 | 实现决策 | 「信号词门卫放多少词？会不会误拦？」 | 18 个化工信号词（危险/安全/储存/化学品/合规/法规/GB/禁忌/物质/特性/类别/分类/分级/间距/距离/防火/同库/共存/混合/配伍/闪点/沸点/危害/储罐）。门卫只做粗筛不做精准判断：放行"危险的蜘蛛侠"（含"危险"），由责任链二次过滤 → 三个 handler 都不匹配 → 返回 null → 走 DecoupledPipeline/BuildNoResult。宁可漏进不可误拦 | 信号词控制在 20 个以内，保持 O(20) 复杂度。不追求穷举，因为责任链有二次过滤 | 做 NLP 意图分类 → 过度设计，引入 LLM 依赖违背"确定性兜底"设计哲学 |
 | N7 | 实现决策 | 「E1 正则删除后是否影响 Bot 对话的正常问题回答？」 | E1 正则原本只在评测路径（ExecuteEvalInternalAsync/ExecuteEvalPerCaseAsync）触发，对话路径走的是 FC=Required 违约→BuildNoResult 分支。删除 E1 后评测路径统一为 TryFallbackToRuleEngine → 门卫 → 责任链 → 未命中走 DecoupledPipeline，与对话路径完全一致。不影响正常 toolCalls>0 的任何场景 | 四路径全收敛：ExecuteChemicalComplianceAsync/ExecuteEvalInternalAsync/ExecuteEvalPerCaseAsync + 原有熔断器/生成失败路径 | 只删 E1 不改对话路径：继续维持路径分裂 |
+
+---
+
+### Bug-034：多模态视觉实例 8083 从未部署 — 连接拒绝被三层静音伪装成 200 假成功（幽灵依赖） {#bug-034}
+
+> **专题文档**：本 Bug 提炼的「幽灵依赖」现象定义、识别指纹、检测防线与案例库见 [`docs/troubleshooting/幽灵依赖现象归纳与案例库.md`](../troubleshooting/幽灵依赖现象归纳与案例库.md)（案例 GD-001）。
+
+| 字段 | 内容 |
+|------|------|
+| **发现日期** | 2026-07-28 |
+| **严重等级** | 🟡 P1 — 多模态识图功能真实成功率 0%，但日志/监控面成功率 100%；主链路（RAG/知识图谱/主 LLM）不受影响故未定 P0 |
+| **发现场景** | 分析 `api-20260728_104206.log` 时发现 L5731 `多模态分析完成: 类型=hazard-label, 耗时=81ms`（INF 级）— 81ms 远低于视觉推理物理下限 3-30s，恰为 TCP 连接拒绝的快速失败耗时指纹；实测确认返回给用户的"分析结果"实为错误文案字符串 |
+| **影响模块** | `Agent1/Services/AI/MultimodalService.cs`（修复前 4 个 catch 分支全部字符串化吞异常）、`Agent1.Api/Controllers/MultimodalController.cs`（修复前对任何非空字符串一律 200 + LogInformation）、`Agent1/appsettings.json` L29-L30（`qwen-vl:latest` + `http://localhost:8083/v1`）、`Agent1/Services/Compliance/ChemicalComplianceTools.cs`（`LookupHazardLabel` 工具链入口，错误文案可能被 LLM 当图片内容产生二次幻觉） |
+| **根因** | **三层链**：**L1 根因层（幽灵依赖）**：`appsettings.json` 声明了 8083 视觉实例端点，但该实例**物理上从未存在**——`start_services.sh`、启动检查、部署文档三处均无记录（部署契约缺失）；`qwen-vl:latest` 的 Ollama 标签语法暴露了 Ollama→llama.cpp 迁移时只改端口未落实部署的断层；**L2 湮灭层**：Service 层 4 个 catch 分支全部 `return "错误: ..."` 字符串，异常类型信息在此湮灭；**L3 假成功层**：Controller 无成败判定，任何非空字符串一律 200 + INF"完成"。部署缺口决定它存在，假成功决定它不可见 |
+| **修复** | **A 部分（已完成）**：① 新增 `MultimodalResult` 结构化结果（`Success` + 六类 `ErrorCategory`：FileNotFound/ServiceUnavailable/Timeout/HttpError/EmptyResponse/Unknown）；② `HttpRequestException` 专属分支内嵌"请确认已在 8083 端口启动 llama-server --mmproj 视觉实例"指引；③ Controller 按分类映射状态码（ServiceUnavailable/Timeout→503，HttpError/EmptyResponse→502，其他→500）+ 失败路径 LogWarning 带错误分类字段；④ `LookupHazardLabel` 保留 string 签名（KernelFunction 工具链兼容，抛异常会中断 FC 循环）底层走 Detailed 结构化方法；⑤ 3 个反假成功回归测试。**B 部分（待远程实例开机）**：部署 Qwen2.5-VL GGUF + mmproj 到 8083，同步清理 `qwen-vl:latest` 化石配置，端到端实测 |
+| **修复提交** | 本次（A 部分）；B 部分待远程实例开机 |
+| **关联 Bug** | [Bug-029](#bug-029)/[Bug-030](#bug-030)（W19 外部依赖降级同族 — 但彼为"依赖存在但失败无兜底"，本 Bug 为"依赖从未存在且失败被伪装成功"）；[Bug-032](#bug-032)（同属"异常路径输出伪装成正常"哲学问题 — 降级的正确形态是让调用方知道降级发生了）；伴生发现：Agent1.sln 不含 Agent1.Tests 的"幽灵覆盖"变体（专题文档案例 GD-002） |
+| **验证方法** | ① `MultimodalServiceTests` 6/6 通过，其中 `AnalyzeImageDetailed_ServiceUnreachable_FailsWithServiceUnavailable` 锁定"本地无 8083 时必须判定失败"；② 本地无 8083 时调用多模态 API 返回 503 + `errorCategory: ServiceUnavailable`，日志为 WRN 级；③ B 部署后端到端：上传真实危化品标签图 → 200 + 真实分析内容，耗时应 ≥3s |
+| **教训** | ① **声明与兑现必须原子化**：配置里每写一个端点，同一次变更里必须有部署脚本/启动检查/文档三者之一承接，否则就是在制造只存在于配置文件里的口头协议；② **降级不等于伪装**：把错误文案塞进成功响应的语义槽位是核心边界违约，正确形态是 5xx + 结构化错误分类 + 启动指引；③ **INF 日志也要能报警**：纯日志级别告警对假成功全盲，必须补充耗时物理下限指纹维度（视觉推理 <1s 即可疑）；④ **技术栈迁移要做化石扫描**：迁移收尾 grep 全量配置中旧栈特征语法（如 Ollama `:latest`），化石是幽灵依赖最廉价的探测器；⑤ **长期 100% 成功且零真实产出的模块比报错的模块更值得怀疑** |
+| **追问深度** | 4 层（L1 81ms 假成功现象 → L2 Service 层字符串化吞异常 → L3 配置-部署对账实锤"从未部署" + Ollama 化石定位迁移断层 → L4 现象层抽象：提炼「幽灵依赖」通用模式入专题案例库） |
+
+## 思维链路（对话复盘）
+
+> 记录本次 Bug 分析的关键思考节点，使后续复盘时不依赖记忆即可还原推理过程。
+> **特别标注**：N6 是本 Bug 最有价值的跨案例抽象 — 从"修一个 Bug"上升到"定义一类现象"，产出独立专题文档可迁移复用。
+
+| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
+|:---:|------|------|------|------|------|
+| N1 | 现象确认 | 日志 L5731 INF"多模态分析完成 耗时=81ms"，但用户反馈识图功能异常 | 81ms 远低于视觉推理物理下限 3-30s，恰为 TCP 拒连快速失败指纹 — "完成"日志不可信 | 不信任日志级别与文案，以耗时物理下限为判据进入根因分析 | 把"分析结果质量差"归咎于模型能力：被 81ms 指纹否定 |
+| N2 | L1→L2 追问 | 为什么连接失败没有任何 ERR/WRN 日志？ | `MultimodalService` 4 个 catch 分支全部 `return "错误: ..."` 字符串，异常类型湮灭；Controller 对任何非空字符串 200 + LogInformation | 定位为"三层静音"叠加：吞异常 + 无成败判定 + INF 级假日志 | 只加日志不改结构：不解决调用方（工具链/前端）被骗问题 |
+| N3 | L2→L3 追问 | 8083 到底有没有部署过？ | 配置-部署对账：`start_services.sh`、启动检查、部署文档三处零记录；`qwen-vl:latest` 是 Ollama 标签语法化石 — 实锤"配置上存在、物理上从未存在" | 定性为幽灵依赖（部署契约缺失），非普通服务故障 | 当作"8083 挂了重启即可"：从未存在的实例无法"重启" |
+| N4 | 影响面分析 | 假成功波及哪些链路？RAG/知识图谱受影响吗？ | 多模态 API 三类分析全假成功；`LookupHazardLabel` 工具链可能二次幻觉；审计统计被污染。但日志 L5725-5730 证明 RAG/知识图谱/主 LLM 正常 — 多实例端口隔离架构兑现了故障隔离 | 定级 P1（非 P0）：单功能失效 + 主链路隔离良好 | 定 P0 全面告急：与隔离证据不符 |
+| N5 | 方案分支 | 只修代码 / 只部署 8083 / A+B 全套？ | 只修代码：功能仍不可用（治不可见不治不可用）；只部署：下次依赖故障仍假成功（治不可用不治不可见）；两层缺陷正交，必须都修 | 用户确认 A+B 全套；A 先行（本地可验证），B 待远程实例开机 | 方案 D（LookupHazardLabel 改抛异常）：KernelFunction 抛异常会中断 FC 工具循环，保留 string 签名底层走结构化 |
+| N6 | 现象抽象（用户发起） | "把'物理上从未存在'的幽灵依赖现象总结成 md 并把该案例记录进去" | 本 Bug 可抽象为通用模式：声明→迁移断层→契约缺失→静音存活四阶段；五指纹（耗时下限/零错零产出/对账不平/化石/构造永不失败）；同族变体"幽灵覆盖"（sln 不含测试项目）也在本次修复中被发现 | 创建 `docs/troubleshooting/幽灵依赖现象归纳与案例库.md`（GD-001 本案例 + GD-002 幽灵覆盖变体 + 检测防线 + 预防清单） | 只录 Bug 不抽象现象：错过可迁移方法论，下次换个端点同样的坑还会重踩 |
+
+---
+
+### Bug-035：天真 `Split(';')` 破坏 GROUP_CONCAT 字符串字面量 — SQLite 兜底库初始化失败且降级永久化 {#bug-035}
+
+| 字段 | 内容 |
+|------|------|
+| **发现日期** | 2026-07-28 |
+| **严重等级** | 🔴 P0 — 无 PostgreSQL 环境下 SQLite 兜底库整体不可用，化学品查询/安全距离/存储兼容全部降级到硬编码字典，且因降级永久化而难以察觉 |
+| **发现场景** | 分析启动日志 L114 `unrecognized token: "'"` — 初步归因"种子 SQL 未转义"，但调研实锤种子数据全部已参数化（`InsertSubstance` 等均用 `@param`），真凶另有其人 |
+| **影响模块** | `Agent1/Services/Knowledge/ChemicalDatabaseService.cs`（修复前 L452-455 `SplitSqlStatements` + L58/L501 两处调用点 + 初始化 catch 分支）、`db/chemical_substances_v2.sql` L109（受害者：`GROUP_CONCAT(..., '; ')` 字符串字面量含分号） |
+| **根因** | **两层叠加**：① `SplitSqlStatements` 用 `sql.Split(';')` 天真拆分 SQL 脚本，不理解字符串字面量语法 — schema 脚本中视图定义的 `GROUP_CONCAT(..., '; ')` 字面量内含分号，语句被拦腰截断产生孤立引号 → `unrecognized token: "'"`（该方法注释"SQLite 不支持批量"本身就是错的，Microsoft.Data.Sqlite 的 `ExecuteNonQuery` 原生支持多语句命令文本）；② 初始化失败进 catch 后仍置 `_initialized = true`，后续调用全部短路，降级永久化且无日志重现机会 |
+| **修复** | ① 删除 `SplitSqlStatements`，两处调用点（外部 schema 文件 + 内联 schema）改为整段 SQL 一次 `ExecuteNonQuery`；② 初始化失败不再置 `_initialized = true`，下次调用可重试并留下日志；③ 一并清理同文件 CS8620 可空性警告 |
+| **修复提交** | 本次（十项问题分批修复 #1） |
+| **关联 Bug** | [Bug-034](#bug-034)（同属"失败被静音"哲学问题 — 彼为假成功伪装，本 Bug 为降级永久化；都让故障对调用方不可见）；[Bug-007](#bug-007)（同属手写文本解析低估目标语法复杂度族） |
+| **验证方法** | ① `ChemicalDatabaseTests` 新增用例：初始化后 `LookupAsync("苯")` 非空、`GetSafetyDistanceAsync("甲类仓库-明火点")` 命中；② 无 PG 环境下本地实测 CheckStorageCompatibility 走 SQLite 兜底命中（L114 失败场景转为成功路径）；③ 全量回归零新增失败 |
+| **教训** | ① **不要手写解析器去拆自己不理解的语法**：SQL/JSON/CSV 等含引号转义的文本用 `Split`/正则拆分迟早被字面量内容击穿，优先用库原生能力（本例 `ExecuteNonQuery` 本就支持多语句）；② **写下"X 不支持 Y"的注释前先查证官方文档**：错误的能力认知注释会把临时拐杖固化成"必要设计"，误导后续维护者不敢删；③ **失败不得置成功标记**：catch 分支里置 `_initialized=true` 是把"避免重试风暴"做成了"永久隐藏故障"，降级必须可重试、可观测；④ **报错位置不等于根因位置**：`unrecognized token` 报在 SQL 文本上，直觉归因"数据未转义"，实锤参数化后才定位到拆分器 — 归因前先排除"看起来最像"的嫌疑人 |
+| **追问深度** | 3 层（L1 日志 `unrecognized token` 现象 → L2 排除"种子未转义"假设（调研实锤全参数化）→ L3 定位 `SplitSqlStatements` 天真拆分 + `_initialized=true` 降级永久化双层叠加） |
+
+#### 思维链路（对话复盘）
+
+| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
+|:---:|------|------|------|------|------|
+| N1 | 归因纠偏 | 问题清单初始归因"种子 SQL 未转义" | grep 全部种子写入点：`InsertSubstance` 等均用 `@param` 参数化，不存在拼接 | 推翻初始归因，转向 SQL 执行路径本身 | 按原归因直接"加转义"：修不存在的问题，真凶继续潜伏 |
+| N2 | 根因定位 | 参数化数据怎么会产生 `unrecognized token: "'"`？ | `SplitSqlStatements` 用 `sql.Split(';')` 拆 schema 脚本，`chemical_substances_v2.sql` L109 视图内 `GROUP_CONCAT(..., '; ')` 字面量含分号被截断 | 定位拆分器为真凶 | 给拆分器加"引号感知"状态机：重造轮子且注释声称的限制根本不存在 |
+| N3 | 伴生发现 | 为什么这个 P0 长期无人察觉？ | catch 分支置 `_initialized = true`，失败后所有调用静默短路，降级永久化且不再留日志 | 一并修复：失败不置成功标记，保留重试与可观测性 | 只修拆分器不修降级永久化：下一个初始化异常仍会静默消失 |
 
 ---
 

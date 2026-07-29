@@ -1,6 +1,6 @@
 # Agent1 — 化工园区危化品合规审查 AI Agent
 
-> **版本**：v4.7 | **编译**：0 错误 | **测试**：1500 通过 | **分支**：`linux原生编译模型llama.cpp`
+> **版本**：v4.8 | **编译**：0 错误 | **测试**：1565 用例（对基线 NEW_FAILURES=0） | **分支**：`linux原生编译模型llama.cpp`
 
 基于 .NET 8 + Semantic Kernel + **llama.cpp 原生编译**构建的企业级化工园区危化品合规审查 AI Agent。支持 REST API、JWT 认证、PostgreSQL+pgvector 混合检索、OpenTelemetry 可观测性、等保三级审计（SHA256 哈希链），**针对 NVIDIA GPU (RTX 3090/3080 Ti) Linux 环境 RAG 全链路 GPU 加速**。
 
@@ -36,8 +36,8 @@ Agent1/                 # .NET 8 核心类库
 │   └── Eval/           # T13 无状态评测引擎
 ├── Config/             # 配置中心
 └── Program.cs          # 控制台入口
-Agent1.Api/             # Web API 层（15 个 Controller + 5 个 Middleware）
-Agent1.Tests/           # xUnit 测试（152 通过）
+Agent1.Api/             # Web API 层（15 个 Controller + 5 个 Middleware + ScanProgressService 异步扫描）
+Agent1.Tests/           # xUnit 测试（1565 用例）
 agent1-web/             # Vue 3 前端（MSW Mock 并行开发）
 docs/                   # 项目文档（架构/部署/测试/排障）
 scripts/                # 开发者工具箱（日志下载/远程监控）
@@ -160,6 +160,23 @@ docs/
 
 ## 📋 近期更新
 
+### v4.8 — 十项问题分批修复 + 系统血谱方法论落地（2026-07-28）
+
+> 源自一次远程运行日志的十项问题清单（2P1 + 5P2 + 3P3），逐项日志实锤归因后分批修复，全程零概率性手段。详见 [十项问题多维度深度分析报告](docs/analysis/2026-07-28_十项问题多维度深度分析报告.md)。
+
+- **#1 Bug-035（P0）SQLite 兜底库静默降级**：`SplitSqlStatements` 天真 `Split(';')` 被 `GROUP_CONCAT(..., '; ')` 字面量击穿——删除拆分器改整段 `ExecuteNonQuery`（原生支持多语句）；catch 不再置 `_initialized=true`，降级可重试可观测。提炼警示模式 W24「手写解析器低估目标语法复杂度」
+- **#2 幻觉法规号硬校验**：`OutputValidator` 白名单硬校验——库外 GB 编号替换为【待核实】标注（不删除、不打分）；白名单取三源并集（regulation_versions 种子 ∪ 知识图谱 ∪ 硬编码字典源）防误杀
+- **#3 安全距离设施对补全**：按 GB 50016/50160 表格补全设施对（每条带条款出处），SQLite 种子/PG 迁移/测试桩三处同源拷贝同步
+- **#4 Dashboard 扫描异步化**：同步阻塞 521s → `ScanProgressService` 202+scanId 后台任务 + GET 轮询 + 并发 409，前端 2s 轮询；复用既有进度回调零新增埋点
+- **#5 知识库乱码闸门**：新增 `GarbledTextDetector` 三规则守门员，5 处入库循环过滤 + WRN 留痕（存量乱码块待知识库重建清除）
+- **#6 告警收件人**：本地配置实为完备（调研勘误），仅补前端空值防御；远程 `.env` 补配待实例开机
+- **#7 缓存预热双格式兼容**：`WarmupFromEvalSet` wrapper 对象优先 + 数组兜底，与 EvalEngine 同构
+- **#8 quality-rules.json 构建分发**：根因是 csproj 缺 Content 分发项（非文件缺失），补分发后启动 WRN 消除
+- **#9 CS0618 警告收敛**：`AgentDialog` 私有字段承载内部状态 + Obsolete 属性只读透出——CS0618 14→0，警告对外部调用者保留
+- **#10 GetCurrentTime 取舍标注**：领域化 system prompt 下时间类工具低触发是预期副作用，拒绝概率性调 prompt，文档标注取舍理由（不改代码）
+- **系统血谱方法论**：新增 [系统血谱](docs/architecture/系统血谱.md)（L0 大动脉/L1 静脉持久主图 + 同源拷贝登记表 + 病灶登记表）与 `system-blood-map` 技能——代码变更前先输出影响血管清单，改完回写主图
+- **最终回归**：三项目 0 error；后端 1565 测试 NEW_FAILURES=0；前端 vitest 350/356（6 失败实锤为既有问题）+ vue-tsc 通过
+
 ### v4.7 — 架构收敛：降级路径统一为门卫+责任链+规则引擎（2026-07-27）
 
 - **Bug-033 架构收敛**：4 条 LLM 零工具调用降级路径（E1正则猜测/FC=Required违约→BuildNoResult/熔断器打开→规则引擎/"生成失败"→规则引擎）统一收敛为单一入口 `TryFallbackToRuleEngine`
@@ -211,4 +228,4 @@ docs/
 
 ---
 
-**文档版本**：v4.20 | **最后更新**：2026-07-27 | **许可证**：MIT
+**文档版本**：v4.21 | **最后更新**：2026-07-28 | **许可证**：MIT
