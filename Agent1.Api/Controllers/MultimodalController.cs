@@ -71,24 +71,45 @@ public class MultimodalController : ControllerBase
             var sw = Stopwatch.StartNew();
             using var multimodal = new MultimodalService();
 
-            string result;
+            MultimodalResult result;
             switch (analysisType)
             {
                 case "storage-scene":
-                    result = await multimodal.AnalyzeStorageSceneAsync(tempPath);
+                    result = await multimodal.AnalyzeStorageSceneDetailedAsync(tempPath);
                     break;
                 case "custom":
                     var prompt = string.IsNullOrWhiteSpace(customPrompt)
                         ? "你是化工安全专家。请详细分析这张图片，识别其中与化工安全、危化品管理、设备合规相关的内容。如果没有化工安全相关内容，请简要描述图片内容。必须使用中文回复。"
                         : customPrompt;
-                    result = await multimodal.AnalyzeImageAsync(tempPath, prompt);
+                    result = await multimodal.AnalyzeImageDetailedAsync(tempPath, prompt);
                     break;
                 default: // hazard-label
-                    result = await multimodal.AnalyzeHazardLabelAsync(tempPath);
+                    result = await multimodal.AnalyzeHazardLabelDetailedAsync(tempPath);
                     break;
             }
 
             sw.Stop();
+
+            // 失败不再伪装成 200"分析完成"：按错误分类映射状态码，并打 WRN 日志便于排障
+            if (!result.Success)
+            {
+                _logger.LogWarning(
+                    "多模态分析失败: 类型={Type}, 文件={File}, 错误分类={Category}, 耗时={Elapsed}ms, 详情={Detail}",
+                    analysisType, image.FileName, result.ErrorCategory, sw.ElapsedMilliseconds, result.Content);
+
+                var statusCode = result.ErrorCategory switch
+                {
+                    "ServiceUnavailable" or "Timeout" => StatusCodes.Status503ServiceUnavailable,
+                    "HttpError" or "EmptyResponse" => StatusCodes.Status502BadGateway,
+                    _ => StatusCodes.Status500InternalServerError
+                };
+                return StatusCode(statusCode, new
+                {
+                    error = result.Content,
+                    errorCategory = result.ErrorCategory,
+                    model = ModelConfig.MultimodalModelId
+                });
+            }
 
             _logger.LogInformation(
                 "多模态分析完成: 类型={Type}, 文件={File}, 耗时={Elapsed}ms",
@@ -101,7 +122,7 @@ public class MultimodalController : ControllerBase
                 analysisType,
                 model = ModelConfig.MultimodalModelId,
                 elapsedMs = sw.ElapsedMilliseconds,
-                result
+                result = result.Content
             });
         }
         catch (Exception ex)

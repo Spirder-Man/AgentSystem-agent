@@ -21,12 +21,17 @@ namespace Agent1.Services
         private readonly IAuditService _auditService;
         private readonly DeterministicRuleEngine? _ruleEngine;
 
+        // [#9 FIX] 内部状态改用私有字段承载，避免自引用 Obsolete 属性产生 CS0618；
+        // 公共属性仅作向后兼容只读透出，对外签名语义不变（原 setter 即为 private）。
+        private Dictionary<string, string> _lastToolResults = new();
+        private ToolPlan? _lastToolPlan;
+
         /// <summary>最近一次化工合规执行的工具结果（供 Reflection 验证层使用）</summary>
         [Obsolete("请使用 ExecuteAsync 返回的 CliExecutionResult.ToolCalls。LastToolResults 仅保留向后兼容。")]
-        public Dictionary<string, string> LastToolResults { get; private set; } = new();
+        public Dictionary<string, string> LastToolResults => _lastToolResults;
         /// <summary>最近一次工具规划结果</summary>
         [Obsolete("请使用 ExecuteAsync 返回的 CliExecutionResult。LastToolPlan 仅保留向后兼容。")]
-        public ToolPlan? LastToolPlan { get; private set; }
+        public ToolPlan? LastToolPlan => _lastToolPlan;
 
         public AgentDialog(
             ISessionService sessionService,
@@ -177,6 +182,19 @@ namespace Agent1.Services
                             "[DecoupledPipeline] OutputSanitizer 拦截 {Removed} 字符 | TraceId={TraceId}",
                             beforeLen - afterLen, traceId);
                     }
+                }
+            }
+
+            // [#2 FIX] 库内法规号白名单硬校验：与 Sanitizer 的“当次工具返回”动态白名单互补，
+            // 用库内全集静态白名单在输出末端拦截非库内法规号（Citation Acc 65.3% 整改）
+            if (intent == IntentType.ChemicalCompliance)
+            {
+                var beforeWhitelist = result;
+                result = OutputValidator.EnforceLibraryWhitelist(result);
+                if (!ReferenceEquals(beforeWhitelist, result) && beforeWhitelist != result)
+                {
+                    Serilog.Log.Warning(
+                        "[CitationWhitelist] 非库内法规号已标注为待核实 | TraceId={TraceId}", traceId);
                 }
             }
 
@@ -418,13 +436,13 @@ namespace Agent1.Services
                 // 复制工具调用记录
                 toolCalls = new List<FunctionCallRecord>(_llmService.LastFunctionCalls);
                 // 填充工具调用结果
-                LastToolResults = new Dictionary<string, string>();
+                _lastToolResults = new Dictionary<string, string>();
                 // 遍历工具调用记录
                 foreach (var fc in _llmService.LastFunctionCalls)
                 {
-                    LastToolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
+                    _lastToolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
                 }
-                LastToolPlan = new ToolPlan
+                _lastToolPlan = new ToolPlan
                 {
                     NeedsTools = true,
                     ToolNames = _llmService.LastFunctionCalls.Select(fc => fc.FunctionName).ToList()
@@ -440,8 +458,8 @@ namespace Agent1.Services
                     _memoryService.ExtractAndStoreKeyFacts(input, fallbackAnswer);
                     return (fallbackAnswer, new List<FunctionCallRecord>(), new List<string> { "LLM未调工具，规则引擎接管" });
                 }
-                LastToolResults = new Dictionary<string, string>();
-                LastToolPlan = new ToolPlan { NeedsTools = false };
+                _lastToolResults = new Dictionary<string, string>();
+                _lastToolPlan = new ToolPlan { NeedsTools = false };
             }
             // ★ 双通道解耦架构：统一入口（事实提取 + 消毒 + 事实渲染 + 合并）
             answer = ApplyDecoupledPipeline(answer, toolCalls, isInfoQuery: false);
@@ -468,7 +486,7 @@ namespace Agent1.Services
             if (_memoryCoordinator != null)
             {
                 var userId = context.UserProfile.UserName ?? "default";
-                _ = _memoryCoordinator.PostInferenceAsync(context.Session.SessionId, userId, input, answer, LastToolResults);
+                _ = _memoryCoordinator.PostInferenceAsync(context.Session.SessionId, userId, input, answer, _lastToolResults);
             }
 
             // P0-2: 审计留痕（激活 ComplianceAuditLogger 死代码）
@@ -585,12 +603,12 @@ namespace Agent1.Services
                     // 同步工具调用记录供评测器检查
                     if (llmService.LastFunctionCalls.Count > 0)
                     {
-                        LastToolResults = new Dictionary<string, string>();
+                        _lastToolResults = new Dictionary<string, string>();
                         foreach (var fc in llmService.LastFunctionCalls)
                         {
-                            LastToolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
+                            _lastToolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
                         }
-                        LastToolPlan = new ToolPlan
+                        _lastToolPlan = new ToolPlan
                         {
                             NeedsTools = true,
                             ToolNames = llmService.LastFunctionCalls.Select(fc => fc.FunctionName).ToList()
@@ -598,8 +616,8 @@ namespace Agent1.Services
                     }
                     else
                     {
-                        LastToolResults = new Dictionary<string, string>();
-                        LastToolPlan = new ToolPlan { NeedsTools = false };
+                        _lastToolResults = new Dictionary<string, string>();
+                        _lastToolPlan = new ToolPlan { NeedsTools = false };
                     }
 
                     // 流式结果为空时降级到非流式
@@ -701,12 +719,12 @@ namespace Agent1.Services
                     // 同步工具调用记录供评测器检查
                     if (llmService.LastFunctionCalls.Count > 0)
                     {
-                        LastToolResults = new Dictionary<string, string>();
+                        _lastToolResults = new Dictionary<string, string>();
                         foreach (var fc in llmService.LastFunctionCalls)
                         {
-                            LastToolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
+                            _lastToolResults[fc.FunctionName] = fc.Result ?? "(无返回)";
                         }
-                        LastToolPlan = new ToolPlan
+                        _lastToolPlan = new ToolPlan
                         {
                             NeedsTools = true,
                             ToolNames = llmService.LastFunctionCalls.Select(fc => fc.FunctionName).ToList()
@@ -721,13 +739,13 @@ namespace Agent1.Services
                             Console.WriteLine($"   [规则引擎兜底] 确定性降级成功，跳过 DecoupledPipeline");
                             return fallbackAnswer;
                         }
-                        LastToolResults = new Dictionary<string, string>();
-                        LastToolPlan = new ToolPlan { NeedsTools = false };
+                        _lastToolResults = new Dictionary<string, string>();
+                        _lastToolPlan = new ToolPlan { NeedsTools = false };
                     }
                     else
                     {
-                        LastToolResults = new Dictionary<string, string>();
-                        LastToolPlan = new ToolPlan { NeedsTools = false };
+                        _lastToolResults = new Dictionary<string, string>();
+                        _lastToolPlan = new ToolPlan { NeedsTools = false };
                     }
 
                     // 流式结果为空时降级到非流式（保留全量工具作为兜底）

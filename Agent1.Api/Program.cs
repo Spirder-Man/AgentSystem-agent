@@ -146,6 +146,8 @@ builder.Services.AddSingleton<InspectionOrchestrator>();
 builder.Services.AddSingleton<DeterministicRuleEngine>();
 builder.Services.AddSingleton<ComplianceRuleEngine>();
 builder.Services.AddSingleton<InspectionRepository>();
+// [#4 FIX] 后台扫描进度跟踪（Dashboard /scan 改异步后的进度轮询数据源）
+builder.Services.AddSingleton<Agent1.Api.Services.ScanProgressService>();
 
 // [P1 安全加固] Token 黑名单 — 登出时撤销 Access Token
 builder.Services.AddSingleton<TokenBlacklistService>();

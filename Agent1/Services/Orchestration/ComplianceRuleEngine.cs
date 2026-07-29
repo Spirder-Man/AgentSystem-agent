@@ -94,9 +94,12 @@ namespace Agent1.Services.Orchestration
         /// 对标 DT 的"导入 SBOM → 自动匹配漏洞"。
         /// 输入: 化学品资产列表
         /// 输出: 不合规发现列表（仅包含触发规则的条目）
+        /// [#4 FIX] progress 可选回调 (current, total, newFindings)，供后台扫描进度轮询；
+        /// 不传时行为与旧签名完全一致（向后兼容）。
         /// </summary>
         public async Task<ComplianceScanResult> ScanAssetsAsync(
-            List<ChemicalAsset> assets, string operator_ = "system")
+            List<ChemicalAsset> assets, string operator_ = "system",
+            Action<int, int, int>? progress = null)
         {
             var result = new ComplianceScanResult
             {
@@ -133,7 +136,8 @@ namespace Agent1.Services.Orchestration
                 result.CheckedAssets++;
                 asset.LastCheckedAt = DateTime.Now;
 
-                // 进度显示
+                // 进度显示 + 回调上报
+                progress?.Invoke(result.CheckedAssets, assets.Count, result.NewFindings);
                 if (result.CheckedAssets % 3 == 0 || result.CheckedAssets == assets.Count)
                     Console.WriteLine($"   进度: {result.CheckedAssets}/{assets.Count} | 发现: {result.NewFindings}个新问题");
             }

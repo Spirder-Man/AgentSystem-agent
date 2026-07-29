@@ -6,6 +6,16 @@ using Agent1.Config;
 namespace Agent1.Services
 {
     /// <summary>
+    /// 多模态分析结构化结果 — 区分成功与失败，消灭"错误文案伪装成分析结果"的假成功路径。
+    /// ErrorCategory 取值: FileNotFound | ServiceUnavailable | Timeout | HttpError | EmptyResponse | Unknown
+    /// </summary>
+    public sealed record MultimodalResult(bool Success, string Content, string? ErrorCategory = null)
+    {
+        public static MultimodalResult Ok(string content) => new(true, content);
+        public static MultimodalResult Fail(string category, string message) => new(false, message, category);
+    }
+
+    /// <summary>
     /// [P2] 多模态视觉分析服务 — 通过 llama.cpp 的 OpenAI 兼容 /v1/chat/completions 端点
     /// 调用视觉模型（需单独启动 llama-server --mmproj 实例在 8083 端口，与 Reranker 8082 分离）。
     /// 
@@ -41,16 +51,23 @@ namespace Agent1.Services
         }
 
         /// <summary>
-        /// 核心方法：传入图片路径和分析提示词，返回视觉模型的文本分析结果。
+        /// 向后兼容包装：返回纯文本（成功=分析结果，失败=错误文案）。
+        /// KernelFunction 工具链（LookupHazardLabel）依赖 string 签名，保留此入口。
+        /// 新调用方（Controller 等）应使用 AnalyzeImageDetailedAsync 以区分成败。
+        /// </summary>
+        public async Task<string> AnalyzeImageAsync(string imagePath, string prompt)
+            => (await AnalyzeImageDetailedAsync(imagePath, prompt)).Content;
+
+        /// <summary>
+        /// 核心方法：传入图片路径和分析提示词，返回结构化分析结果（含成败标志与错误分类）。
         /// 图片自动转为 Base64 编码，通过 llama.cpp OpenAI 兼容 API 的 image_url 发送。
         /// </summary>
         /// <param name="imagePath">本地图片文件路径（支持 jpg/png/webp）</param>
         /// <param name="prompt">分析提示词（中文即可）</param>
-        /// <returns>模型分析文本</returns>
-        public async Task<string> AnalyzeImageAsync(string imagePath, string prompt)
+        public async Task<MultimodalResult> AnalyzeImageDetailedAsync(string imagePath, string prompt)
         {
             if (!File.Exists(imagePath))
-                return $"错误: 图片文件不存在 — {imagePath}";
+                return MultimodalResult.Fail("FileNotFound", $"错误: 图片文件不存在 — {imagePath}");
 
             try
             {
@@ -98,7 +115,8 @@ namespace Agent1.Services
                 if (!response.IsSuccessStatusCode)
                 {
                     var errorBody = await response.Content.ReadAsStringAsync();
-                    return $"视觉分析请求失败 [{response.StatusCode}]: {Truncate(errorBody)}";
+                    return MultimodalResult.Fail("HttpError",
+                        $"视觉分析请求失败 [{response.StatusCode}]: {Truncate(errorBody)}");
                 }
 
                 var responseJson = await response.Content.ReadAsStringAsync();
@@ -107,17 +125,25 @@ namespace Agent1.Services
                 if (choices.GetArrayLength() > 0)
                 {
                     var result = choices[0].GetProperty("message").GetProperty("content").GetString();
-                    return result ?? "(模型返回空内容)";
+                    return string.IsNullOrWhiteSpace(result)
+                        ? MultimodalResult.Fail("EmptyResponse", "(模型返回空内容)")
+                        : MultimodalResult.Ok(result);
                 }
-                return "(模型未返回结果)";
+                return MultimodalResult.Fail("EmptyResponse", "(模型未返回结果)");
             }
             catch (TaskCanceledException)
             {
-                return "视觉分析超时（3分钟），图片可能过大或模型未就绪";
+                return MultimodalResult.Fail("Timeout", "视觉分析超时（3分钟），图片可能过大或模型未就绪");
+            }
+            catch (HttpRequestException ex)
+            {
+                // 连接被拒/DNS 失败 — 8083 视觉实例未部署时的典型路径（快速失败，通常 <100ms）
+                return MultimodalResult.Fail("ServiceUnavailable",
+                    $"视觉服务不可达 ({_endpoint}): {ex.Message}。请确认已在 {_endpoint.Port} 端口启动 llama-server --mmproj 视觉实例");
             }
             catch (Exception ex)
             {
-                return $"视觉分析异常: {ex.Message}";
+                return MultimodalResult.Fail("Unknown", $"视觉分析异常: {ex.Message}");
             }
         }
 
@@ -134,13 +160,8 @@ namespace Agent1.Services
             };
         }
 
-        /// <summary>
-        /// GHS 标签识别：分析化学品包装上的 GHS 危险标签图片。
-        /// 自动提取：危险类别、信号词、危险声明代码（H 语句）、防范声明代码（P 语句）。
-        /// </summary>
-        public async Task<string> AnalyzeHazardLabelAsync(string imagePath)
-        {
-            var prompt = @"你是化工安全专家。请分析这张 GHS 化学品标签图片，提取以下信息：
+        /// <summary>GHS 标签识别提示词（AnalyzeHazardLabelAsync / Detailed 版共用）。</summary>
+        private const string HazardLabelPrompt = @"你是化工安全专家。请分析这张 GHS 化学品标签图片，提取以下信息：
 1. 危险象形图（如火焰、骷髅、腐蚀等图标）
 2. 信号词（危险/警告）
 3. 危险声明 H 代码（如 H225 高度易燃液体）
@@ -149,16 +170,8 @@ namespace Agent1.Services
 
 请用中文输出，格式清晰。如果图片不清晰或无法识别，请明确说明。";
 
-            return await AnalyzeImageAsync(imagePath, prompt);
-        }
-
-        /// <summary>
-        /// 储罐/管道场景分析：分析化工储罐或管道照片的合规性。
-        /// 检查：标识标签完整性、腐蚀/泄漏痕迹、安全附件状态。
-        /// </summary>
-        public async Task<string> AnalyzeStorageSceneAsync(string imagePath)
-        {
-            var prompt = @"你是化工园区安全巡检专家。请分析这张储罐/管道照片，检查以下方面：
+        /// <summary>储罐/管道场景分析提示词（AnalyzeStorageSceneAsync / Detailed 版共用）。</summary>
+        private const string StorageScenePrompt = @"你是化工园区安全巡检专家。请分析这张储罐/管道照片，检查以下方面：
 1. 设备标识标签是否完整、可读（名称、编号、危险性标识）
 2. 可见区域是否有腐蚀、锈蚀、泄漏痕迹
 3. 安全附件状态（压力表、温度计、安全阀是否正常范围内）
@@ -167,8 +180,27 @@ namespace Agent1.Services
 
 请逐项说明检查结果，指出不合规项。如果信息不足，请明确说明需要补充的信息。";
 
-            return await AnalyzeImageAsync(imagePath, prompt);
-        }
+        /// <summary>
+        /// GHS 标签识别：分析化学品包装上的 GHS 危险标签图片。
+        /// 自动提取：危险类别、信号词、危险声明代码（H 语句）、防范声明代码（P 语句）。
+        /// </summary>
+        public async Task<string> AnalyzeHazardLabelAsync(string imagePath)
+            => await AnalyzeImageAsync(imagePath, HazardLabelPrompt);
+
+        /// <summary>GHS 标签识别（结构化结果版，供 API Controller 区分成败）。</summary>
+        public Task<MultimodalResult> AnalyzeHazardLabelDetailedAsync(string imagePath)
+            => AnalyzeImageDetailedAsync(imagePath, HazardLabelPrompt);
+
+        /// <summary>储罐/管道场景分析（结构化结果版，供 API Controller 区分成败）。</summary>
+        public Task<MultimodalResult> AnalyzeStorageSceneDetailedAsync(string imagePath)
+            => AnalyzeImageDetailedAsync(imagePath, StorageScenePrompt);
+
+        /// <summary>
+        /// 储罐/管道场景分析：分析化工储罐或管道照片的合规性。
+        /// 检查：标识标签完整性、腐蚀/泄漏痕迹、安全附件状态。
+        /// </summary>
+        public async Task<string> AnalyzeStorageSceneAsync(string imagePath)
+            => await AnalyzeImageAsync(imagePath, StorageScenePrompt);
 
         private static string Truncate(string text, int maxLen = 200)
             => text.Length <= maxLen ? text : text[..maxLen] + "...";

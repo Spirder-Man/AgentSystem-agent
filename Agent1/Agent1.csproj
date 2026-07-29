@@ -39,6 +39,10 @@
     <Content Include="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- [#8 FIX] 质量规则声明式配置随构建分发，消除启动时 "quality-rules.json 未找到" WRN -->
+    <Content Include="Config\quality-rules.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="..\Data\**">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Link>Data\%(RecursiveDir)%(Filename)%(Extension)</Link>

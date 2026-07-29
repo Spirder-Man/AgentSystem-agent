@@ -4,6 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
 using Agent1.Models;
+using Agent1.Api.Services;
 using Agent1.Services.Orchestration;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -27,15 +28,18 @@ public class DashboardController : ControllerBase
     private readonly InspectionRepository _repo;
     private readonly ComplianceRuleEngine _ruleEngine;
     private readonly InspectionOrchestrator _orchestrator;
+    private readonly ScanProgressService _scanProgress;
 
     public DashboardController(
         InspectionRepository repo,
         ComplianceRuleEngine ruleEngine,
-        InspectionOrchestrator orchestrator)
+        InspectionOrchestrator orchestrator,
+        ScanProgressService scanProgress)
     {
         _repo = repo;
         _ruleEngine = ruleEngine;
         _orchestrator = orchestrator;
+        _scanProgress = scanProgress;
     }
 
     // ═══════════════════════════════════════
@@ -136,12 +140,13 @@ public class DashboardController : ControllerBase
 
     /// <summary>
     /// 自动合规扫描 — 对标 DashboardCommand.AutoScanAsync。
-    /// 对全部资产执行 AI 合规检查，更新资产状态并生成合规发现。
+    /// [#4 FIX] 改为后台任务：原子启动扫描后立即返回 202 { scanId }，
+    /// 已有扫描在跑返回 409；进度经 GET /scan/status 轮询。
     /// 需要 Auditor 或更高角色。
     /// </summary>
     [HttpPost("scan")]
     [Authorize(Policy = "Auditor")]
-    public async Task<IActionResult> AutoScan()
+    public IActionResult AutoScan()
     {
         var assets = _repo.GetAllAssets();
         if (assets.Count == 0)
@@ -149,36 +154,58 @@ public class DashboardController : ControllerBase
 
         var username = GetCurrentUsername();
 
-        var result = await _ruleEngine.ScanAssetsAsync(assets, username);
+        if (!_scanProgress.TryStart(assets.Count, out var scanId))
+            return Conflict(new { error = "已有扫描任务在执行中，请稍后重试", scanId });
 
-        // 更新资产状态
-        foreach (var f in result.Findings)
+        // 后台执行（全 Singleton 服务，Task.Run 持有引用安全；勿捕获 HttpContext）
+        _ = Task.Run(async () =>
         {
-            var asset = assets.FirstOrDefault(a => a.AssetId == f.AssetId);
-            if (asset != null)
-                asset.LastCheckResult = false;
-        }
+            try
+            {
+                var result = await _ruleEngine.ScanAssetsAsync(
+                    assets, username, _scanProgress.Report);
 
-        // 合并新发现
-        _repo.SaveFindings(result.Findings);
-        _repo.SetLastScanTime(result.ScannedAt);
+                // 更新资产状态
+                foreach (var f in result.Findings)
+                {
+                    var asset = assets.FirstOrDefault(a => a.AssetId == f.AssetId);
+                    if (asset != null)
+                        asset.LastCheckResult = false;
+                }
 
-        var overview = _ruleEngine.BuildOverview(
-            _repo.GetAllAssets(), _repo.GetAllFindings(), _repo.GetLastScanTime());
+                // 合并新发现
+                _repo.SaveFindings(result.Findings);
+                _repo.SetLastScanTime(result.ScannedAt);
 
+                _scanProgress.Complete(result.NewFindings);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ 后台合规扫描失败: {ex.Message}");
+                _scanProgress.Fail(ex.Message);
+            }
+        });
+
+        return Accepted(new { scanId, totalAssets = assets.Count });
+    }
+
+    /// <summary>
+    /// [#4 FIX] 扫描进度查询 — 前端 2s 轮询直至 running=false 后刷新总览。
+    /// </summary>
+    [HttpGet("scan/status")]
+    public IActionResult GetScanStatus()
+    {
+        var s = _scanProgress.GetStatus();
         return Ok(new
         {
-            newFindings = result.NewFindings,
-            totalFindings = result.Findings.Count,
-            scannedAt = result.ScannedAt,
-            overview = new
-            {
-                overview.TotalAssets,
-                overview.CheckedAssets,
-                complianceRate = Math.Round(overview.ComplianceRate, 4),
-                overview.OpenFindings,
-                remediationRate = Math.Round(overview.RemediationRate, 4)
-            }
+            running = s.Running,
+            scanId = s.ScanId,
+            current = s.Current,
+            total = s.Total,
+            newFindings = s.NewFindings,
+            startedAt = s.StartedAt,
+            completedAt = s.CompletedAt,
+            error = s.Error
         });
     }
 

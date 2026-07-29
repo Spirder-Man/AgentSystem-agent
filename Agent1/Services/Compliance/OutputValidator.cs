@@ -150,6 +150,72 @@ public static class OutputValidator
     }
 
     // ════════════════════════════════════════
+    // [#2 FIX] 库内法规号白名单硬校验（确定性：纯正则 + 集合查找）
+    // ════════════════════════════════════════
+
+    /// <summary>
+    /// 库内法规主编号白名单 = regulation_versions 种子全集 ∪ ChemicalKnowledgeGraph 引用
+    /// ∪ 硬编码字典源（ComplianceRuleEngine / CapabilityRegistry / InspectionModels / MultimodalService）。
+    /// Bug-027 教训：字典源编号不是幻觉，白名单必须含数据源全集防误杀。
+    /// </summary>
+    private static readonly HashSet<string> LibraryMainNumbers = new(StringComparer.Ordinal)
+    {
+        "15603",  // 常用化学危险品贮存通则
+        "30000",  // 化学品分类和标签规范（系列，子编号另验）
+        "50160",  // 石油化工企业设计防火标准
+        "18218",  // 危险化学品重大危险源辨识
+        "50016",  // 建筑设计防火规范
+        "30871",  // 危险化学品企业特殊作业安全规范
+        "15258",  // 化学品安全标签编写规定（字典源）
+        "50140",  // 建筑灭火器配置设计规范（字典源）
+        "7231",   // 工业管道的基本识别色（字典源）
+    };
+
+    /// <summary>GB 30000《化学品分类和标签规范》系列共 29 部分（GB 30000.1-29）</summary>
+    private const int Gb30000MaxPart = 29;
+
+    /// <summary>从 GB 编号文本中提取主编号与点分子编号（'-' 后的 4 位数视为年份而非子编号）</summary>
+    private static readonly Regex MainSubPattern = new(@"(\d{4,5})(?:\.(\d+))?", RegexOptions.Compiled);
+
+    /// <summary>
+    /// 库内白名单硬校验：输出文本中出现的 GB 编号若主编号不在库内白名单
+    /// → 替换为【待核实：GB XXXX 非库内法规】；子编号超出库内已知范围同样标注。
+    /// 与 OutputSanitizer 的区别：后者用“当次工具返回”动态白名单，本方法用“库内全集”
+    /// 静态白名单，作为双通道输出末端的最后一道确定性防线（#2：29 条疑似幻觉法规号）。
+    /// </summary>
+    public static string EnforceLibraryWhitelist(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+            return output ?? "";
+
+        return GbCodeHelper.GbCodePattern.Replace(output, match =>
+        {
+            // 幂等保护：已处在【待核实：...】标注内的编号不再二次包裹
+            var prefixStart = Math.Max(0, match.Index - 4);
+            if (output.Substring(prefixStart, match.Index - prefixStart).Contains("核实："))
+                return match.Value;
+
+            var ms = MainSubPattern.Match(match.Value);
+            if (!ms.Success)
+                return match.Value; // 理论不可达（GbCodePattern 必含数字）
+
+            var main = ms.Groups[1].Value;
+            if (!LibraryMainNumbers.Contains(main))
+                return $"【待核实：{OutputSanitizer.NormalizeGbNumber(match.Value)} 非库内法规】";
+
+            // GB 30000 系列子编号越界检查（如 GB 30000.35 不存在）
+            if (main == "30000" && ms.Groups[2].Success
+                && int.TryParse(ms.Groups[2].Value, out var part)
+                && (part < 1 || part > Gb30000MaxPart))
+            {
+                return $"【待核实：{OutputSanitizer.NormalizeGbNumber(match.Value)} 子编号超出库内范围】";
+            }
+
+            return match.Value;
+        });
+    }
+
+    // ════════════════════════════════════════
     // 内部方法
     // ════════════════════════════════════════
 

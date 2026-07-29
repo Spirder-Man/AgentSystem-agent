@@ -42,6 +42,7 @@ namespace Agent1.Services
         private int _failedFiles;
         private int _skippedFiles;
         private int _totalChunks;
+        private int _garbledChunks;   // [#5 FIX] 被乱码过滤器拒收的块数
         private readonly List<string> _failedFileList = new();
         /// <summary>
         /// 构造函数，初始化化工RAG实例。
@@ -157,6 +158,7 @@ namespace Agent1.Services
 
             _totalFiles = 0; _successFiles = 0; _partialFiles = 0;
             _failedFiles = 0; _skippedFiles = 0; _totalChunks = 0;
+            _garbledChunks = 0;
             _failedFileList.Clear();
 
             var gbDir = Path.Combine(_knowledgeBasePath, "国标");
@@ -313,8 +315,11 @@ namespace Agent1.Services
 
                 var splitChunks = SplitTextIntoChunks(content, 500);
                 
+                var chunkIndex = 0;
                 foreach (var chunk in splitChunks)
                 {
+                    chunkIndex++;
+                    if (RejectGarbledChunk(chunk, fileName, chunkIndex)) continue;
                     var metadata = new Dictionary<string, object>();
                     metadata["RegulationType"] = regulationType;
                     metadata["Priority"] = priority;
@@ -447,6 +452,7 @@ namespace Agent1.Services
 
                     foreach (var c in chunks)
                     {
+                        if (RejectGarbledChunk(c.Content, Path.GetFileNameWithoutExtension(f), c.ChunkIndex)) continue;
                         await _knowledgeBase.AddDocumentAsync(c.Content, new Dictionary<string, object>
                         {
                             ["RegulationType"] = regulationType, ["Priority"] = priority,
@@ -503,6 +509,7 @@ namespace Agent1.Services
 
                     foreach (var c in chunks)
                     {
+                        if (RejectGarbledChunk(c.Content, result.FileName, c.ChunkIndex)) continue;
                         await _knowledgeBase.AddDocumentAsync(c.Content, new Dictionary<string, object>
                         {
                             ["RegulationType"] = "企业制度", ["Priority"] = "低",
@@ -573,6 +580,7 @@ namespace Agent1.Services
                 //构建字典存储检索后的分词
                 foreach (var c in chunks)
                 {
+                    if (RejectGarbledChunk(c.Content, fileName, c.ChunkIndex)) continue;
                     await _knowledgeBase.AddDocumentAsync(c.Content, new Dictionary<string, object>
                     {
                         ["RegulationType"] = regulationType, ["Priority"] = priority,
@@ -624,6 +632,7 @@ namespace Agent1.Services
 
                     foreach (var c in chunks)
                     {
+                        if (RejectGarbledChunk(c.Content, fileName, c.ChunkIndex)) continue;
                         await _knowledgeBase.AddDocumentAsync(c.Content, new Dictionary<string, object>
                         {
                             ["RegulationType"] = regulationType, ["Priority"] = priority, ["SourceFile"] = fileName,
@@ -664,6 +673,18 @@ namespace Agent1.Services
             }
         }
         /// <summary>
+        /// [#5 FIX] 入库前的乱码块守门员：命中 GarbledTextDetector 任一规则即拒收，
+        /// 打 WRN 日志（含文件名+块序号）并计入 _garbledChunks 统计。
+        /// </summary>
+        private bool RejectGarbledChunk(string content, string sourceFile, int chunkIndex)
+        {
+            if (!GarbledTextDetector.IsGarbled(content, out var reason)) return false;
+            _garbledChunks++;
+            Console.WriteLine($"   ⚠️ WRN 乱码块拒收: {sourceFile} #chunk{chunkIndex} ({reason})");
+            return true;
+        }
+
+        /// <summary>
         /// 打印知识库加载质量报告。
         /// </summary>          
         private void PrintQualityReport()
@@ -678,6 +699,7 @@ namespace Agent1.Services
             Console.WriteLine($"  ⏭️  跳过:  {_skippedFiles} (空表单/模板)");
             Console.WriteLine("----------------------------------------");
             Console.WriteLine($"  总块数:    {_totalChunks}");
+            Console.WriteLine($"  🚫 乱码块拒收: {_garbledChunks}");
             Console.WriteLine($"  知识库文档数: {_knowledgeBase.GetDocumentCount()}");
             if (_failedFileList.Count > 0)
             {

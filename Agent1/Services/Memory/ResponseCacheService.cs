@@ -97,7 +97,19 @@ public class ResponseCacheService
         try
         {
             var json = File.ReadAllText(evalSetPath);
-            var evalSet = JsonSerializer.Deserialize<List<EvalCase>>(json);
+            // [#7 FIX] 评测集 v1.1 是 { name, version, test_cases: [...] } 包装结构，
+            // 与 EvalEngine 加载逻辑同构；旧版纯数组格式保留兜底。
+            List<EvalCase>? evalSet = null;
+            var trimmed = json.TrimStart();
+            if (trimmed.StartsWith("{"))
+            {
+                var wrapper = JsonSerializer.Deserialize<EvalSet>(json);
+                evalSet = wrapper?.TestCases;
+            }
+            else
+            {
+                evalSet = JsonSerializer.Deserialize<List<EvalCase>>(json);
+            }
             if (evalSet == null || evalSet.Count == 0)
                 return;
 

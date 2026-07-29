@@ -19,6 +19,7 @@ public class ChemicalDatabaseService
 {
     private readonly string _connectionString;
     private bool _initialized = false;
+    private bool _initFailureLogged = false;
     private static readonly Lazy<ChemicalDatabaseService> _instance = new(() => new ChemicalDatabaseService());
 
     /// <summary>全局单例（自动初始化）</summary>
@@ -54,12 +55,11 @@ public class ChemicalDatabaseService
             else
             {
                 var schema = await File.ReadAllTextAsync(schemaPath);
-                // 逐条执行（SQLite 不支持批量）
-                foreach (var stmt in SplitSqlStatements(schema))
-                {
-                    using var cmd = new SqliteCommand(stmt, conn);
-                    await cmd.ExecuteNonQueryAsync();
-                }
+                // [Bug-035 FIX] Microsoft.Data.Sqlite 原生支持多语句命令文本，整段执行。
+                // 旧实现按 ';' 天真拆分会截断字符串字面量（如 GROUP_CONCAT(..., '; ')）
+                // 导致 unrecognized token 异常，离线兜底库整体降级不可用。
+                using var schemaCmd = new SqliteCommand(schema, conn);
+                await schemaCmd.ExecuteNonQueryAsync();
             }
 
             // 检查是否已有数据
@@ -74,13 +74,18 @@ public class ChemicalDatabaseService
             {
                 Console.WriteLine($"   ✅ 化工数据库 v2 已就绪 ({count} 种化学品)");
             }
+
+            // [Bug-035 FIX] 仅在初始化成功时置位，失败时保留重试机会，避免永久静默降级
+            _initialized = true;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"   ⚠️ 数据库初始化异常（系统将以降级模式运行）: {ex.Message}");
+            if (!_initFailureLogged)
+            {
+                Console.WriteLine($"   ⚠️ 数据库初始化异常（系统将以降级模式运行，后续请求将重试初始化）: {ex.Message}");
+                _initFailureLogged = true;
+            }
         }
-
-        _initialized = true;
     }
 
     // ════════════════════════════════════════
@@ -402,7 +407,7 @@ public class ChemicalDatabaseService
         var sub = new ChemicalSubstance
         {
             Name = reader.GetString(0),
-            NameEn = reader.IsDBNull(1) ? null : reader.GetString(1),
+            NameEn = reader.IsDBNull(1) ? "" : reader.GetString(1),
             CasNumber = reader.IsDBNull(2) ? "" : reader.GetString(2),
             UnNumber = reader.IsDBNull(3) ? "" : reader.GetString(3),
             Formula = reader.IsDBNull(4) ? "" : reader.GetString(4),
@@ -449,14 +454,6 @@ public class ChemicalDatabaseService
         };
     }
 
-    private static List<string> SplitSqlStatements(string sql)
-    {
-        return sql.Split(';', StringSplitOptions.RemoveEmptyEntries)
-            .Select(s => s.Trim())
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .ToList();
-    }
-
     private async Task CreateSchemaInlineAsync(SqliteConnection conn)
     {
         var schema = @"
@@ -498,11 +495,9 @@ CREATE TABLE IF NOT EXISTS regulation_versions (
     regulation_number TEXT NOT NULL, title TEXT, current_version TEXT,
     deprecated_versions TEXT, has_full_text INTEGER DEFAULT 0, change_notes TEXT
 );";
-        foreach (var stmt in SplitSqlStatements(schema))
-        {
-            using var cmd = new SqliteCommand(stmt, conn);
-            await cmd.ExecuteNonQueryAsync();
-        }
+        // 多语句 schema 整段执行（Microsoft.Data.Sqlite 原生支持）
+        using var cmd = new SqliteCommand(schema, conn);
+        await cmd.ExecuteNonQueryAsync();
         Console.WriteLine("   ✅ 数据库 schema 内联创建完成");
     }
 
@@ -533,32 +528,32 @@ CREATE TABLE IF NOT EXISTS regulation_versions (
         // ── 易燃液体类 ──
         await InsertSubstance(conn, tx, "苯", "Benzene", "71-43-2", "1114", "C6H6", "液体",
             -11, 80.1, 1.2, 8.0, 560, 0.88, 2.77, 50,
-            new[] { ("易燃液体", "GB 30000.7", "类别2", null), ("致癌性", "GB 30000.23", "类别1A", ""),
+            new (string, string, string?, string?)[] { ("易燃液体", "GB 30000.7", "类别2", null), ("致癌性", "GB 30000.23", "类别1A", ""),
                     ("严重眼损伤/刺激", "GB 30000.20", "类别2", null), ("特异性靶器官毒性 反复接触", "GB 30000.26", "类别1", ""),
                     ("吸入危害", "GB 30000.27", "类别1", null) },
             new[] { "纯苯", "安息油" }, new[] { "氧化剂", "强酸", "硝酸", "高锰酸钾" });
 
         await InsertSubstance(conn, tx, "甲苯", "Toluene", "108-88-3", "1294", "C7H8", "液体",
             4, 110.6, 1.2, 7.1, 535, 0.87, 3.14, 500,
-            new[] { ("易燃液体", "GB 30000.7", "类别2", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别2", ""),
+            new (string, string, string?, string?)[] { ("易燃液体", "GB 30000.7", "类别2", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别2", ""),
                     ("特异性靶器官毒性 反复接触", "GB 30000.26", "类别2", null), ("吸入危害", "GB 30000.27", "类别1", null) },
             new[] { "甲基苯", "Toluol" }, new[] { "氧化剂", "强酸", "硝酸" });
 
         await InsertSubstance(conn, tx, "二甲苯", "Xylene", "1330-20-7", "1307", "C8H10", "液体",
             25, 138.5, 1.0, 7.0, 463, 0.86, 3.66, 500,
-            new[] { ("易燃液体", "GB 30000.7", "类别3", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别2", ""),
+            new (string, string, string?, string?)[] { ("易燃液体", "GB 30000.7", "类别3", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别2", ""),
                     ("吸入危害", "GB 30000.27", "类别1", null) },
             new[] { "混合二甲苯", "Xylol" }, new[] { "氧化剂", "强酸" });
 
         await InsertSubstance(conn, tx, "甲醇", "Methanol", "67-56-1", "1230", "CH3OH", "液体",
             11, 64.7, 6.0, 36.5, 464, 0.79, 1.11, 500,
-            new[] { ("易燃液体", "GB 30000.7", "类别2", null), ("急性毒性", "GB 30000.18", "类别3（经口/经皮/吸入）", ""),
+            new (string, string, string?, string?)[] { ("易燃液体", "GB 30000.7", "类别2", null), ("急性毒性", "GB 30000.18", "类别3（经口/经皮/吸入）", ""),
                     ("特异性靶器官毒性 一次接触", "GB 30000.25", "类别1", null) },
             new[] { "木醇", "木精", "甲基醇" }, new[] { "氧化剂", "强酸", "硝酸", "过氧化物" });
 
         await InsertSubstance(conn, tx, "丙酮", "Acetone", "67-64-1", "1090", "C3H6O", "液体",
             -18, 56.2, 2.5, 12.8, 465, 0.79, 2.0, 500,
-            new[] { ("易燃液体", "GB 30000.7", "类别2", null), ("严重眼损伤/刺激", "GB 30000.20", "类别2", ""),
+            new (string, string, string?, string?)[] { ("易燃液体", "GB 30000.7", "类别2", null), ("严重眼损伤/刺激", "GB 30000.20", "类别2", ""),
                     ("特异性靶器官毒性 一次接触", "GB 30000.25", "类别3", null) },
             new[] { "二甲基酮", "醋酮" }, new[] { "氧化剂", "硝酸", "过氧化氢", "高锰酸钾" });
 
@@ -569,20 +564,20 @@ CREATE TABLE IF NOT EXISTS regulation_versions (
 
         await InsertSubstance(conn, tx, "乙酸", "Acetic acid", "64-19-7", "2789", "CH3COOH", "液体",
             39, 118.1, 4.0, 19.9, 463, 1.05, 2.07, 0,
-            new[] { ("易燃液体", "GB 30000.7", "类别3", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别1A", ""),
+            new (string, string, string?, string?)[] { ("易燃液体", "GB 30000.7", "类别3", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别1A", ""),
                     ("金属腐蚀物", "GB 30000.17", "类别1", null) },
             new[] { "醋酸", "冰醋酸", "冰乙酸" }, new[] { "氧化剂", "硝酸", "过氧化氢", "高锰酸钾", "铬酸", "碱", "氢氧化钠" });
 
         // ── 氧化剂类 ──
         await InsertSubstance(conn, tx, "过氧化氢", "Hydrogen peroxide", "7722-84-1", "2015", "H2O2", "液体",
             null, 150.2, null, null, null, 1.44, null, 50,
-            new[] { ("氧化性液体", "GB 30000.14", "类别1", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别1A", ""),
+            new (string, string, string?, string?)[] { ("氧化性液体", "GB 30000.14", "类别1", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别1A", ""),
                     ("急性毒性", "GB 30000.18", "类别4（经口/经皮/吸入）", null) },
             new[] { "双氧水", "过氧化氢溶液" }, new[] { "易燃液体", "有机物", "还原剂", "丙酮", "乙醇", "甲醇" });
 
         await InsertSubstance(conn, tx, "硝酸", "Nitric acid", "7697-37-2", "2031", "HNO3", "液体",
             null, 83, null, null, null, 1.5, 2.0, 100,
-            new[] { ("氧化性液体", "GB 30000.14", "类别2", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别1A", ""),
+            new (string, string, string?, string?)[] { ("氧化性液体", "GB 30000.14", "类别2", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别1A", ""),
                     ("金属腐蚀物", "GB 30000.17", "类别1", null), ("急性毒性", "GB 30000.18", "类别3（吸入）", null) },
             new[] { "硝镪水", "浓硝酸", "稀硝酸" }, new[] { "易燃液体", "碱", "有机物", "还原剂", "金属粉末", "氰化物" });
 
@@ -593,13 +588,13 @@ CREATE TABLE IF NOT EXISTS regulation_versions (
 
         await InsertSubstance(conn, tx, "高锰酸钾", "Potassium permanganate", "7722-64-7", "1490", "KMnO4", "固体",
             null, null, null, null, null, 2.7, null, 100,
-            new[] { ("氧化性固体", "GB 30000.15", "类别2", null), ("急性毒性", "GB 30000.18", "类别4（经口）", ""),
+            new (string, string, string?, string?)[] { ("氧化性固体", "GB 30000.15", "类别2", null), ("急性毒性", "GB 30000.18", "类别4（经口）", ""),
                     ("对水生环境危害", "GB 30000.28", "类别1", null) },
             new[] { "灰锰氧", "PP粉" }, new[] { "易燃液体", "易燃固体", "有机物", "还原剂", "甘油", "乙醇" });
 
         await InsertSubstance(conn, tx, "重铬酸钠", "Sodium dichromate", "10588-01-9", "3085", "Na2Cr2O7", "固体",
             null, null, null, null, null, 2.35, null, 50,
-            new[] { ("氧化性固体", "GB 30000.15", "类别2", null), ("致癌性", "GB 30000.23", "类别1B", ""),
+            new (string, string, string?, string?)[] { ("氧化性固体", "GB 30000.15", "类别2", null), ("致癌性", "GB 30000.23", "类别1B", ""),
                     ("生殖细胞致突变性", "GB 30000.22", "类别1B", null), ("急性毒性", "GB 30000.18", "类别2（经口）", ""),
                     ("皮肤腐蚀/刺激", "GB 30000.19", "类别1B", null), ("对水生环境危害", "GB 30000.28", "类别1", null) },
             new[] { "红矾钠" }, new[] { "易燃液体", "易燃固体", "有机物", "还原剂" });
@@ -607,28 +602,28 @@ CREATE TABLE IF NOT EXISTS regulation_versions (
         // ── 毒性气体类 ──
         await InsertSubstance(conn, tx, "氯", "Chlorine", "7782-50-5", "1017", "Cl2", "气体（加压液化）",
             null, -34.5, null, null, null, 1.47, 2.48, 5,
-            new[] { ("加压气体", "GB 30000.6", "液化气体", null), ("氧化性气体", "GB 30000.5", "类别1", ""),
+            new (string, string, string?, string?)[] { ("加压气体", "GB 30000.6", "液化气体", null), ("氧化性气体", "GB 30000.5", "类别1", ""),
                     ("急性毒性", "GB 30000.18", "类别2（吸入）", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别2", ""),
                     ("严重眼损伤/刺激", "GB 30000.20", "类别2", null), ("对水生环境危害", "GB 30000.28", "类别1", null) },
             new[] { "液氯", "氯气", "绿气" }, new[] { "氨", "氢", "乙炔", "烃类", "金属粉末", "还原剂", "可燃物" });
 
         await InsertSubstance(conn, tx, "氨", "Ammonia", "7664-41-7", "1005", "NH3", "气体（加压液化）",
             null, -33.4, 15.0, 28.0, 651, 0.82, 0.59, 10,
-            new[] { ("易燃气体", "GB 30000.3", "类别2", null), ("加压气体", "GB 30000.6", "液化气体", ""),
+            new (string, string, string?, string?)[] { ("易燃气体", "GB 30000.3", "类别2", null), ("加压气体", "GB 30000.6", "液化气体", ""),
                     ("急性毒性", "GB 30000.18", "类别3（吸入）", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别1B", ""),
                     ("对水生环境危害", "GB 30000.28", "类别1", null) },
             new[] { "氨气", "液氨", "阿摩尼亚" }, new[] { "氧化剂", "卤素", "酸", "次氯酸盐", "氯", "氯化氢", "溴", "碘", "环氧乙烷" });
 
         await InsertSubstance(conn, tx, "硫化氢", "Hydrogen sulfide", "7783-06-4", "1053", "H2S", "气体",
             null, -60.3, 4.3, 46.0, 260, null, 1.19, 5,
-            new[] { ("易燃气体", "GB 30000.3", "类别1", null), ("加压气体", "GB 30000.6", "液化气体", ""),
+            new (string, string, string?, string?)[] { ("易燃气体", "GB 30000.3", "类别1", null), ("加压气体", "GB 30000.6", "液化气体", ""),
                     ("急性毒性", "GB 30000.18", "类别2（吸入）", null), ("对水生环境危害", "GB 30000.28", "类别1", null) },
             new[] { "氢硫酸", "硫化氢气" }, new[] { "氧化剂", "硝酸", "过氧化氢", "氯气" });
 
         // ── 易燃气体类 ──
         await InsertSubstance(conn, tx, "乙炔", "Acetylene", "74-86-2", "1001", "C2H2", "气体（溶解）",
             -18, -84, 2.5, 82.0, 305, null, 0.91, 1,
-            new[] { ("易燃气体", "GB 30000.3", "类别1", null), ("加压气体", "GB 30000.6", "溶解气体", ""),
+            new (string, string, string?, string?)[] { ("易燃气体", "GB 30000.3", "类别1", null), ("加压气体", "GB 30000.6", "溶解气体", ""),
                     ("爆炸物", "GB 30000.2", "不安定爆炸物（无空气也可爆炸）", null) },
             new[] { "电石气", "乙炔气" }, new[] { "氧", "氧化剂", "卤素", "铜", "银", "汞及其化合物" });
 
@@ -640,31 +635,31 @@ CREATE TABLE IF NOT EXISTS regulation_versions (
         // ── 腐蚀品类 ──
         await InsertSubstance(conn, tx, "硫酸", "Sulfuric acid", "7664-93-9", "1830", "H2SO4", "液体",
             null, 330, null, null, null, 1.84, 3.4, 100,
-            new[] { ("皮肤腐蚀/刺激", "GB 30000.19", "类别1A", null), ("金属腐蚀物", "GB 30000.17", "类别1", ""),
+            new (string, string, string?, string?)[] { ("皮肤腐蚀/刺激", "GB 30000.19", "类别1A", null), ("金属腐蚀物", "GB 30000.17", "类别1", ""),
                     ("严重眼损伤/刺激", "GB 30000.20", "类别1", null) },
             new[] { "磺镪水", "发烟硫酸", "硫酸水" }, new[] { "易燃液体", "碱", "有机物", "还原剂", "金属粉末", "氰化物", "高锰酸钾" });
 
         await InsertSubstance(conn, tx, "盐酸", "Hydrochloric acid", "7647-01-0", "1789", "HCl", "液体（氯化氢水溶液）",
             null, 108.6, null, null, null, 1.18, 1.27, 0,
-            new[] { ("金属腐蚀物", "GB 30000.17", "类别1", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别1B", ""),
+            new (string, string, string?, string?)[] { ("金属腐蚀物", "GB 30000.17", "类别1", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别1B", ""),
                     ("严重眼损伤/刺激", "GB 30000.20", "类别1", null), ("特异性靶器官毒性 一次接触", "GB 30000.25", "类别3", null) },
             new[] { "氢氯酸", "氯化氢溶液", "盐镪水" }, new[] { "碱", "氧化剂", "氰化物", "金属", "胺类", "氨", "氢氧化钠" });
 
         await InsertSubstance(conn, tx, "氢氧化钠", "Sodium hydroxide", "1310-73-2", "1823", "NaOH", "固体",
             null, 1388, null, null, null, 2.13, null, 0,
-            new[] { ("金属腐蚀物", "GB 30000.17", "类别1", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别1A", ""),
+            new (string, string, string?, string?)[] { ("金属腐蚀物", "GB 30000.17", "类别1", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别1A", ""),
                     ("严重眼损伤/刺激", "GB 30000.20", "类别1", null) },
             new[] { "烧碱", "火碱", "苛性钠", "固碱" }, new[] { "酸", "氯化氢", "铝", "锌", "锡", "硝基化合物", "氰化氢" });
 
         await InsertSubstance(conn, tx, "氢氧化钾", "Potassium hydroxide", "1310-58-3", "1813", "KOH", "固体",
             null, 1320, null, null, null, 2.04, null, 0,
-            new[] { ("金属腐蚀物", "GB 30000.17", "类别1", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别1A", ""),
+            new (string, string, string?, string?)[] { ("金属腐蚀物", "GB 30000.17", "类别1", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别1A", ""),
                     ("急性毒性", "GB 30000.18", "类别4（经口）", null) },
             new[] { "苛性钾", "钾碱" }, new[] { "酸", "氯化氢", "铝", "锌", "锡" });
 
         await InsertSubstance(conn, tx, "氢氟酸", "Hydrofluoric acid", "7664-39-3", "1790", "HF", "液体",
             null, 19.5, null, null, null, 1.15, 0.7, 1,
-            new[] { ("急性毒性", "GB 30000.18", "类别1（经皮）", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别1A", ""),
+            new (string, string, string?, string?)[] { ("急性毒性", "GB 30000.18", "类别1（经皮）", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别1A", ""),
                     ("金属腐蚀物", "GB 30000.17", "类别1", null) },
             new[] { "氟化氢溶液", "氟氢酸" }, new[] { "碱", "氨", "氨水", "玻璃", "硅酸盐", "金属" });
 
@@ -677,7 +672,7 @@ CREATE TABLE IF NOT EXISTS regulation_versions (
         // ── 环氧乙烷 ──
         await InsertSubstance(conn, tx, "环氧乙烷", "Ethylene oxide", "75-21-8", "1040", "C2H4O", "气体（加压液化）",
             null, 10.7, 3.0, 100.0, 429, null, 1.52, 10,
-            new[] { ("易燃气体", "GB 30000.3", "类别1", null), ("加压气体", "GB 30000.6", "液化气体", ""),
+            new (string, string, string?, string?)[] { ("易燃气体", "GB 30000.3", "类别1", null), ("加压气体", "GB 30000.6", "液化气体", ""),
                     ("急性毒性", "GB 30000.18", "类别3（吸入）", null), ("致癌性", "GB 30000.23", "类别1B", ""),
                     ("生殖细胞致突变性", "GB 30000.22", "类别1B", null) },
             new[] { "氧化乙烯", "EO" }, new[] { "氨", "酸", "碱", "水", "醇类", "聚合引发剂" });
@@ -685,21 +680,21 @@ CREATE TABLE IF NOT EXISTS regulation_versions (
         // ── 其他有机物 ──
         await InsertSubstance(conn, tx, "甲醛", "Formaldehyde", "50-00-0", "2209", "CH2O", "液体（甲醛溶液）",
             50, -19.5, 7.0, 73.0, 430, 1.08, 1.03, 5,
-            new[] { ("易燃液体", "GB 30000.7", "类别3（甲醛溶液）", null), ("急性毒性", "GB 30000.18", "类别3（经口/经皮/吸入）", ""),
+            new (string, string, string?, string?)[] { ("易燃液体", "GB 30000.7", "类别3（甲醛溶液）", null), ("急性毒性", "GB 30000.18", "类别3（经口/经皮/吸入）", ""),
                     ("皮肤腐蚀/刺激", "GB 30000.19", "类别1B", null), ("致癌性", "GB 30000.23", "类别1B", ""),
                     ("皮肤致敏", "GB 30000.21", "类别1", null) },
             new[] { "福尔马林", "甲醛溶液", "蚁醛", "甲醛水" }, new[] { "氧化剂", "硝酸", "过氧化氢", "胺类", "氨" });
 
         await InsertSubstance(conn, tx, "苯乙烯", "Styrene", "100-42-5", "2055", "C8H8", "液体",
             31, 145, 1.1, 8.0, 490, 0.91, 3.6, 500,
-            new[] { ("易燃液体", "GB 30000.7", "类别3", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别2", ""),
+            new (string, string, string?, string?)[] { ("易燃液体", "GB 30000.7", "类别3", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别2", ""),
                     ("严重眼损伤/刺激", "GB 30000.20", "类别2", null), ("致癌性", "GB 30000.23", "类别2", ""),
                     ("特异性靶器官毒性 反复接触", "GB 30000.26", "类别1", null) },
             new[] { "乙烯基苯", "苏合香烯", "ST" }, new[] { "过氧化物", "氧化剂", "强酸", "过氧化氢", "聚合引发剂" });
 
         await InsertSubstance(conn, tx, "三氯甲烷", "Chloroform", "67-66-3", "1888", "CHCl3", "液体",
             null, 61.2, null, null, null, 1.48, 4.12, 0,
-            new[] { ("急性毒性", "GB 30000.18", "类别4（经口/经皮）", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别2", ""),
+            new (string, string, string?, string?)[] { ("急性毒性", "GB 30000.18", "类别4（经口/经皮）", null), ("皮肤腐蚀/刺激", "GB 30000.19", "类别2", ""),
                     ("严重眼损伤/刺激", "GB 30000.20", "类别2", null), ("致癌性", "GB 30000.23", "类别2", ""),
                     ("特异性靶器官毒性 反复接触", "GB 30000.26", "类别1", null) },
             new[] { "氯仿", "哥罗仿" }, new[] { "强碱", "碱金属", "铝" });
@@ -707,13 +702,13 @@ CREATE TABLE IF NOT EXISTS regulation_versions (
         // ── 气体 / 液化气体 ──
         await InsertSubstance(conn, tx, "氯化氢", "Hydrogen chloride", "7647-01-0", "1050", "HCl", "气体（液化）",
             null, -85, null, null, null, null, 1.27, 20,
-            new[] { ("加压气体", "GB 30000.6", "液化气体", null), ("急性毒性", "GB 30000.18", "类别3（吸入）", ""),
+            new (string, string, string?, string?)[] { ("加压气体", "GB 30000.6", "液化气体", null), ("急性毒性", "GB 30000.18", "类别3（吸入）", ""),
                     ("皮肤腐蚀/刺激", "GB 30000.19", "类别1A", null), ("金属腐蚀物", "GB 30000.17", "类别1", null) },
             new[] { "氯化氢气", "盐酸气", "无水盐酸" }, new[] { "碱", "胺类", "氨", "氢氧化钠", "活泼金属" });
 
         await InsertSubstance(conn, tx, "二氧化硫", "Sulfur dioxide", "7446-09-5", "1079", "SO2", "气体（液化）",
             null, -10, null, null, null, 1.46, 2.26, 20,
-            new[] { ("加压气体", "GB 30000.6", "液化气体", null), ("急性毒性", "GB 30000.18", "类别3（吸入）", ""),
+            new (string, string, string?, string?)[] { ("加压气体", "GB 30000.6", "液化气体", null), ("急性毒性", "GB 30000.18", "类别3（吸入）", ""),
                     ("皮肤腐蚀/刺激", "GB 30000.19", "类别1B", null), ("金属腐蚀物", "GB 30000.17", "类别1", null) },
             new[] { "亚硫酸酐", "亚硫酐" }, new[] { "氨", "碱", "强还原剂" });
 
@@ -736,7 +731,7 @@ CREATE TABLE IF NOT EXISTS regulation_versions (
         // ── 氨溶液 ──
         await InsertSubstance(conn, tx, "氨溶液", "Ammonia solution", "1336-21-6", "2672", "NH3·H2O", "液体",
             null, 38, null, null, null, 0.91, null, 10,
-            new[] { ("皮肤腐蚀/刺激", "GB 30000.19", "类别1B", null), ("严重眼损伤/刺激", "GB 30000.20", "类别1", ""),
+            new (string, string, string?, string?)[] { ("皮肤腐蚀/刺激", "GB 30000.19", "类别1B", null), ("严重眼损伤/刺激", "GB 30000.20", "类别1", ""),
                     ("对水生环境危害", "GB 30000.28", "类别1", null) },
             new[] { "氨水", "氢氧化铵", "阿摩尼亚水" }, new[] { "酸", "盐", "卤素", "次氯酸盐", "氯", "氢氟酸", "氯化氢" });
 
@@ -827,20 +822,19 @@ CREATE TABLE IF NOT EXISTS regulation_versions (
             ("液化烃储罐-厂区围墙", "液化烃储罐-围墙,液化烃储罐与厂区围墙", 35, "GB 50160", null, "甲A类"),
             ("液化烃储罐-办公楼", null, 35, "GB 50160", null, ""),
             ("甲类仓库-建筑", null, 20, "GB 50160 / GB 50016", null, ""),
-            ("甲类仓库-明火点", "甲类仓库-明火,甲类仓库与明火点", 30, "GB 50160", null, "明火点包括锅炉房、加热炉、火炬等"),
+            ("甲类仓库-明火点", "甲类仓库-明火,甲类仓库与明火点,甲库-明火", 30, "GB 50160", null, "明火点包括锅炉房、加热炉、火炬等"),
             ("甲类仓库-办公楼", "甲类仓库与办公楼", 30, "GB 50160", null, ""),
             ("甲类仓库-厂内道路", null, 15, "GB 50016", null, ""),
             ("甲类工艺装置-重要设施", "甲类工艺装置-中控室,甲类装置-重要设施", 30, "GB 50160", null, "重要设施包括中央控制室、变配电站等"),
             ("甲类工艺装置-明火点", null, 30, "GB 50160", null, ""),
             ("乙炔气柜-建筑", null, 25, "GB 50160", null, ""),
             ("乙炔气柜-办公楼", "乙炔气柜与办公楼", 25, "GB 50160", null, "甲类，按重要公共建筑对待"),
-            ("氨罐-厂外道路", "氨罐与厂外道路", 20, "GB 50160", null, "乙类"),
+            ("氨罐-厂外道路", "氨罐与厂外道路,液氨储罐-厂外道路", 20, "GB 50160", null, "乙类"),
             ("氢气长管拖车-明火点", "氢气长管拖车停车位-明火点,氢气拖车-明火", 25, "GB 50160", null, "氢气属甲类易燃气体"),
             ("消防站-甲类装置", "消防站-甲类工艺装置,消防站与甲类装置", 15, "GB 50160", null, ""),
             ("氯气储存区-居住区", "氯气储存区与居住区", 200, "GB 50160", "依据重大危险源等级", "剧毒气体，安全防护距离"),
             ("甲类厂房-甲类厂房", null, 12, "GB 50016", null, ""),
             ("易燃液体储罐-装卸站", null, 15, "GB 50160", null, ""),
-            ("甲类仓库-明火点", "甲库-明火", 30, "GB 50160", null, "明火点包括锅炉房、加热炉、火炬等"),
         };
 
         foreach (var d in distances)

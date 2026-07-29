@@ -178,6 +178,8 @@ namespace Agent1.Services
             ["爆炸品"] = new() { "一切其他类别" },
         };
 
+        // [#3 FIX] 补全评测集 8 类设施对（数值与 SQLite 种子/PG migration 002 一致，均出自 GB 50160）
+        // 本字典是 Level 3 降级路径，SQLite 不可用时保证安全距离查询不失效
         private static readonly Dictionary<string, int> SafetyDistances = new()
         {
             ["储罐-储罐"] = 15,
@@ -185,8 +187,15 @@ namespace Agent1.Services
             ["储罐-消防通道"] = 15,
             ["储罐-厂区边界"] = 30,
             ["液化烃储罐-储罐"] = 20,
+            ["液化烃储罐-厂区围墙"] = 35,
             ["甲类仓库-建筑"] = 20,
             ["甲类仓库-明火点"] = 30,
+            ["甲类工艺装置-重要设施"] = 30,
+            ["乙炔气柜-办公楼"] = 25,
+            ["氨罐-厂外道路"] = 20,
+            ["氢气长管拖车-明火点"] = 25,
+            ["消防站-甲类装置"] = 15,
+            ["氯气储存区-居住区"] = 200,
         };
 
         // [E7 DELETED] 冗余的 SubstanceAliasMap —— ChemicalSubstanceDatabase.Aliases 已完整覆盖，
@@ -683,7 +692,7 @@ namespace Agent1.Services
         {
             var key = facilityType.Trim();
 
-            // Level 1: SQLite 结构化数据库（权威数据源，22条GB50160规则）
+            // Level 1: SQLite 结构化数据库（权威数据源，21条GB50160/GB50016规则）
             if (_chemDb != null)
             {
                 var dbRule = await _chemDb.GetSafetyDistanceAsync(key);
@@ -837,7 +846,7 @@ namespace Agent1.Services
             }
             catch (Exception ex)
             {
-                return $"GHS 标签识别失败: {ex.Message}。请确认图片路径正确且 Ollama 已启动 qwen-vl 模型";
+                return $"GHS 标签识别失败: {ex.Message}。请确认图片路径正确且 8083 端口的 llama-server 视觉实例已启动";
             }
         }
     }
