@@ -7,6 +7,7 @@ using Agent1.Models;
 using Agent1.Modules;
 using Agent1.Services;
 using Agent1.Services.Orchestration;
+using Agent1.Tests.Stubs;
 using FluentAssertions;
 using Moq;
 using Xunit;
@@ -43,7 +44,7 @@ public class InspectionOrchestratorTests : IDisposable
         _orchestrator = new InspectionOrchestrator(
             null!, _kbMock.Object, _auditMock.Object,
             _llmMock.Object, _sessionMock.Object,
-            _repo, new DeterministicRuleEngine());
+            _repo, new DeterministicRuleEngine(new StubChemicalKnowledgeGraph(), new ChemicalNamingInference()));
     }
 
     public void Dispose() => CleanupFile();

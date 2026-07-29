@@ -129,19 +129,75 @@ public class DashboardApiIntegrationTests : IClassFixture<CustomApiWebApplicatio
     }
 
     [Fact]
-    public async Task Dashboard_Scan_Auditor_StubAssets_Success()
+    public async Task Dashboard_Scan_Auditor_StubAssets_Accepted()
     {
-        // Stub 数据库包含预置化学资产，扫描应成功返回 200
+        // [#4 FIX] 扫描改后台任务：启动返回 202 { scanId }，进度经 /scan/status 轮询
         var client = await LoginAndGetClient("auditor", "Audit@456");
         var response = await client.PostAsync("/api/Dashboard/scan", null);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
 
-        json.TryGetProperty("newFindings", out _).Should().BeTrue();
-        json.TryGetProperty("totalFindings", out _).Should().BeTrue();
-        json.TryGetProperty("scannedAt", out _).Should().BeTrue();
-        json.TryGetProperty("overview", out _).Should().BeTrue();
+        json.TryGetProperty("scanId", out var scanId).Should().BeTrue();
+        scanId.GetString().Should().NotBeNullOrEmpty();
+        json.TryGetProperty("totalAssets", out _).Should().BeTrue();
+
+        // 轮询 status 直至后台扫描结束（Stub 资产量小，数秒内完成）
+        for (var i = 0; i < 50; i++)
+        {
+            var statusResp = await client.GetAsync("/api/Dashboard/scan/status");
+            statusResp.StatusCode.Should().Be(HttpStatusCode.OK);
+            var status = await statusResp.Content.ReadFromJsonAsync<JsonElement>();
+
+            status.TryGetProperty("running", out var running).Should().BeTrue();
+            status.TryGetProperty("current", out _).Should().BeTrue();
+            status.TryGetProperty("total", out _).Should().BeTrue();
+            status.TryGetProperty("newFindings", out _).Should().BeTrue();
+
+            if (!running.GetBoolean())
+            {
+                status.GetProperty("completedAt").ValueKind.Should().NotBe(JsonValueKind.Null);
+                return;
+            }
+            await Task.Delay(200);
+        }
+
+        Assert.Fail("后台扫描 10 秒内未完成");
+    }
+
+    [Fact]
+    public async Task Dashboard_Scan_Concurrent_ReturnsConflict()
+    {
+        // [#4 FIX] 已有扫描在跑时重复发起 → 409（启动立即连发两次，第二次命中在跑分支或已完成重新 202）
+        var client = await LoginAndGetClient("auditor", "Audit@456");
+
+        // 等待可能残留的上一轮扫描结束（单例进度服务跨用例共享）
+        await WaitForScanIdleAsync(client);
+
+        var first = await client.PostAsync("/api/Dashboard/scan", null);
+        first.StatusCode.Should().Be(HttpStatusCode.Accepted);
+
+        var second = await client.PostAsync("/api/Dashboard/scan", null);
+        // Stub 扫描可能极快完成，两种合法结果：在跑 409 / 已完成后新启动 202
+        second.StatusCode.Should().BeOneOf(HttpStatusCode.Conflict, HttpStatusCode.Accepted);
+        if (second.StatusCode == HttpStatusCode.Conflict)
+        {
+            var json = await second.Content.ReadFromJsonAsync<JsonElement>();
+            json.TryGetProperty("scanId", out _).Should().BeTrue();
+        }
+
+        await WaitForScanIdleAsync(client);
+    }
+
+    private static async Task WaitForScanIdleAsync(HttpClient client)
+    {
+        for (var i = 0; i < 50; i++)
+        {
+            var status = await (await client.GetAsync("/api/Dashboard/scan/status"))
+                .Content.ReadFromJsonAsync<JsonElement>();
+            if (!status.GetProperty("running").GetBoolean()) return;
+            await Task.Delay(200);
+        }
     }
 
     [Fact]

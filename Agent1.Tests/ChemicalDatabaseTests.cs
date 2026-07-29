@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Agent1.Models;
 using Agent1.Services;
 using Xunit;
@@ -316,6 +318,89 @@ namespace Agent1.Tests
             sub.Should().NotBeNull();
             sub!.MajorHazardThresholdTons.Should().Be(1,
                 "乙炔临界量应为1吨（极易燃气体）");
+        }
+    }
+
+    // ═════════════════════════════════════════
+    // ChemicalDatabaseService 测试 — SQLite 兜底库（Bug-035 回归）
+    // ═════════════════════════════════════════
+    public class ChemicalDatabaseServiceTests : IDisposable
+    {
+        private readonly string _tempDir;
+        private readonly ChemicalDatabaseService _service;
+
+        public ChemicalDatabaseServiceTests()
+        {
+            // 临时目录确保每次从零初始化：完整走 schema 执行 + 种子写入路径
+            // （真实 schema 含 GROUP_CONCAT(..., '; ') 字面量，回归 Bug-035 天真拆分问题）
+            _tempDir = Path.Combine(Path.GetTempPath(), "agent1_chemdb_test_" + Guid.NewGuid().ToString("N"));
+            _service = new ChemicalDatabaseService(_tempDir);
+        }
+
+        public void Dispose()
+        {
+            try { Directory.Delete(_tempDir, recursive: true); } catch { /* 清理失败不影响测试结果 */ }
+        }
+
+        [Fact]
+        public async Task InitializeAsync_SeedsDatabase_CountGreaterThanZero()
+        {
+            await _service.InitializeAsync();
+            var count = await _service.GetCountAsync();
+            count.Should().BeGreaterThan(0, "初始化后种子数据应写入成功（Bug-035 修复前此处静默降级为 0）");
+        }
+
+        [Fact]
+        public async Task LookupAsync_Benzene_ReturnsSubstance()
+        {
+            var sub = await _service.LookupAsync("苯");
+            sub.Should().NotBeNull("SQLite 兜底库初始化成功后应能查到苯");
+            sub!.CasNumber.Should().Be("71-43-2");
+            sub.HazardCategories.Should().NotBeEmpty();
+        }
+
+        [Fact]
+        public async Task LookupAsync_ByAlias_ResolvesToStandardName()
+        {
+            var sub = await _service.LookupAsync("双氧水");
+            sub.Should().NotBeNull();
+            sub!.Name.Should().Be("过氧化氢", "别名应还原为标准名称");
+        }
+
+        [Fact]
+        public async Task GetSafetyDistanceAsync_WarehouseToFlame_Returns30m()
+        {
+            var rule = await _service.GetSafetyDistanceAsync("甲类仓库-明火点");
+            rule.Should().NotBeNull();
+            rule!.MinDistanceMeters.Should().Be(30);
+            rule.RegulationRef.Should().Contain("GB 50160");
+        }
+
+        // [#3 FIX] 评测集 E001-E008 全部安全距离设施对的 SQLite 种子覆盖回归
+        [Theory]
+        [InlineData("甲类仓库-明火点", 30)]
+        [InlineData("乙炔气柜-办公楼", 25)]
+        [InlineData("液化烃储罐-厂区围墙", 35)]
+        [InlineData("氢气长管拖车-明火点", 25)]
+        [InlineData("消防站-甲类装置", 15)]
+        [InlineData("氨罐-厂外道路", 20)]
+        [InlineData("甲类工艺装置-重要设施", 30)]
+        [InlineData("氯气储存区-居住区", 200)]
+        public async Task GetSafetyDistanceAsync_EvalSetPairs_AllCovered(string pair, double expected)
+        {
+            var rule = await _service.GetSafetyDistanceAsync(pair);
+            rule.Should().NotBeNull($"评测集设施对「{pair}」应在 SQLite 种子中命中");
+            rule!.MinDistanceMeters.Should().Be(expected);
+        }
+
+        [Fact]
+        public async Task GetSafetyDistanceAsync_LiquidAmmoniaAlias_ResolvesToAmmoniaTank()
+        {
+            // 别名命中：液氨储罐-厂外道路 → 氨罐-厂外道路
+            var rule = await _service.GetSafetyDistanceAsync("液氨储罐-厂外道路");
+            rule.Should().NotBeNull();
+            rule!.FacilityPair.Should().Be("氨罐-厂外道路");
+            rule.MinDistanceMeters.Should().Be(20);
         }
     }
 }

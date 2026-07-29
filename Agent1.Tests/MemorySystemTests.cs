@@ -1027,7 +1027,7 @@ public class ResponseCacheServiceTests
         var tempFile = Path.GetTempFileName();
         try
         {
-            // WarmupFromEvalSet 反序列化为 List<EvalCase>，不是 EvalSet
+            // [#7 FIX] 旧版纯数组格式仍走兜底分支，必须继续可用
             var evalCases = new List<EvalCase>
             {
                 new() { Id = "1", Query = "测试查询1" },
@@ -1046,6 +1046,53 @@ public class ResponseCacheServiceTests
         {
             if (File.Exists(tempFile)) File.Delete(tempFile);
         }
+    }
+
+    [Fact]
+    public void WarmupFromEvalSet_V11WrapperFormat_ShouldWarmCache()
+    {
+        // [#7 FIX] 评测集 v1.1 是 { name, version, test_cases: [...] } 包装结构，
+        // 旧实现直接 Deserialize<List<EvalCase>> 必然失败导致预热 0 条
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            var evalSet = new EvalSet
+            {
+                Name = "测试评测集",
+                Version = "1.1",
+                TestCases = new List<EvalCase>
+                {
+                    new() { Id = "W1", Query = "包装格式查询1" },
+                    new() { Id = "W2", Query = "包装格式查询2" },
+                    new() { Id = "W3", Query = "包装格式查询3" }
+                }
+            };
+            File.WriteAllText(tempFile, JsonSerializer.Serialize(evalSet));
+
+            var cache = new ResponseCacheService();
+            cache.WarmupFromEvalSet(tempFile);
+            cache.Count.Should().Be(3);
+            var result = cache.Get("包装格式查询1");
+            result.Should().NotBeNull();
+            result!.FromCache.Should().BeTrue();
+        }
+        finally
+        {
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public void WarmupFromEvalSet_RealEvalSetFile_ShouldWarmMoreThanZero()
+    {
+        // [#7 FIX] 用随测试输出分发的真实评测集断言预热条数 >0（复现原 Bug 场景）
+        var realPath = Path.Combine(AppContext.BaseDirectory, "Data", "ComplianceEvalSet.json");
+        if (!File.Exists(realPath)) return; // 文件未分发时跳过，不制造环境依赖假失败
+
+        var cache = new ResponseCacheService();
+        cache.WarmupFromEvalSet(realPath);
+
+        cache.Count.Should().BeGreaterThan(0);
     }
 
     [Fact]

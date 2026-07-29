@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Agent1.Config;
@@ -635,9 +636,9 @@ public class AgentDialogUnitTests
 // ═══════════════════════════════════════════
 public class MultimodalServiceTests
 {
-    [Fact]
-    public void Constructor_DoesNotThrow()
+    public MultimodalServiceTests()
     {
+        // xUnit 不保证类内测试执行顺序，配置加载必须放在构造函数里对每个测试生效
         try { AppConfig.Instance.ToString(); } catch
         {
             var config = new ConfigurationBuilder()
@@ -657,7 +658,11 @@ public class MultimodalServiceTests
             AppConfig.Load(config);
         }
         ModelConfig.Initialize(AppConfig.Instance);
+    }
 
+    [Fact]
+    public void Constructor_DoesNotThrow()
+    {
         var action = () => new MultimodalService();
         action.Should().NotThrow();
     }
@@ -665,7 +670,6 @@ public class MultimodalServiceTests
     [Fact]
     public async Task AnalyzeImage_MissingFile_ReturnsErrorString()
     {
-        ModelConfig.Initialize(AppConfig.Instance);
         using var service = new MultimodalService();
         var result = await service.AnalyzeImageAsync("nonexistent.jpg", "test prompt");
         result.Should().Contain("不存在");
@@ -674,9 +678,53 @@ public class MultimodalServiceTests
     [Fact]
     public async Task AnalyzeHazardLabel_MissingFile_ReturnsError()
     {
-        ModelConfig.Initialize(AppConfig.Instance);
         using var service = new MultimodalService();
         var result = await service.AnalyzeHazardLabelAsync("nonexistent.jpg");
         result.Should().Contain("不存在");
+    }
+
+    // ── 假成功修复：结构化结果必须能区分成败与失败 ──
+
+    [Fact]
+    public async Task AnalyzeImageDetailed_MissingFile_FailsWithFileNotFound()
+    {
+        using var service = new MultimodalService();
+        var result = await service.AnalyzeImageDetailedAsync("nonexistent.jpg", "test");
+        result.Success.Should().BeFalse();
+        result.ErrorCategory.Should().Be("FileNotFound");
+        result.Content.Should().Contain("不存在");
+    }
+
+    [Fact]
+    public async Task AnalyzeImageDetailed_ServiceUnreachable_FailsWithServiceUnavailable()
+    {
+        // 8083 视觉实例未部署时连接被拒 → 必须返回 ServiceUnavailable 而非伪装成成功文本
+        var tempImage = Path.Combine(Path.GetTempPath(), $"mm-test-{Guid.NewGuid():N}.png");
+        // 最小合法 PNG 头，仅需通过 File.Exists 检查
+        await File.WriteAllBytesAsync(tempImage, new byte[] { 0x89, 0x50, 0x4E, 0x47 });
+        try
+        {
+            using var service = new MultimodalService();
+            var result = await service.AnalyzeImageDetailedAsync(tempImage, "test");
+            result.Success.Should().BeFalse("本地没有 8083 视觉服务，必须判定为失败");
+            result.ErrorCategory.Should().BeOneOf("ServiceUnavailable", "Timeout", "HttpError");
+        }
+        finally
+        {
+            File.Delete(tempImage);
+        }
+    }
+
+    [Fact]
+    public void MultimodalResult_FactoryMethods_SetFieldsCorrectly()
+    {
+        var ok = MultimodalResult.Ok("分析内容");
+        ok.Success.Should().BeTrue();
+        ok.ErrorCategory.Should().BeNull();
+
+        var fail = MultimodalResult.Fail("ServiceUnavailable", "连接被拒");
+        fail.Success.Should().BeFalse();
+        fail.ErrorCategory.Should().Be("ServiceUnavailable");
+        fail.Content.Should().Be("连接被拒");
     }
 }

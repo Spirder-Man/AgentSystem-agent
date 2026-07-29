@@ -293,4 +293,70 @@ public class OutputValidatorTests
 
         result.HasHallucination.Should().BeFalse();
     }
+
+    // ═══════════════════════════════════════════════════
+    // [#2 FIX] EnforceLibraryWhitelist: 库内法规号白名单硬校验
+    // ═══════════════════════════════════════════════════
+
+    [Theory]
+    [InlineData("依据 GB 15603 判定合规。")]
+    [InlineData("依据 GB 50160 与 GB 50016，防火间距不足。")]
+    [InlineData("GB 30000.7 类别2 易燃液体。")]
+    [InlineData("参照 GB 15258-2009 标签规定。")]
+    public void EnforceLibraryWhitelist_LibraryRegs_Untouched(string output)
+    {
+        OutputValidator.EnforceLibraryWhitelist(output).Should().Be(output,
+            "库内法规号不应被改动（Bug-027：防误杀）");
+    }
+
+    [Fact]
+    public void EnforceLibraryWhitelist_NonLibraryReg_Annotated()
+    {
+        var output = "依据 GB 88888 判定。";
+        var result = OutputValidator.EnforceLibraryWhitelist(output);
+
+        result.Should().Contain("【待核实：GB 88888 非库内法规】");
+        result.Should().NotContain("依据 GB 88888 判定");
+    }
+
+    [Fact]
+    public void EnforceLibraryWhitelist_YearVariant_LibraryRegKept()
+    {
+        // 带年份变体：主编号归一后在库内 → 不动
+        var output = "依据 GB 15603-2022 第 4.1 条。";
+        OutputValidator.EnforceLibraryWhitelist(output).Should().Be(output);
+    }
+
+    [Fact]
+    public void EnforceLibraryWhitelist_Gb30000SubNumberOutOfRange_Annotated()
+    {
+        var output = "分类依据 GB 30000.35。";
+        var result = OutputValidator.EnforceLibraryWhitelist(output);
+
+        result.Should().Contain("子编号超出库内范围");
+        result.Should().NotContain("分类依据 GB 30000.35。");
+    }
+
+    [Fact]
+    public void EnforceLibraryWhitelist_Gb30000SubNumberInRange_Kept()
+    {
+        var output = "分类依据 GB 30000.29。";
+        OutputValidator.EnforceLibraryWhitelist(output).Should().Be(output);
+    }
+
+    [Fact]
+    public void EnforceLibraryWhitelist_Idempotent_NoDoubleWrapping()
+    {
+        var once = OutputValidator.EnforceLibraryWhitelist("依据 GB 88888 判定。");
+        var twice = OutputValidator.EnforceLibraryWhitelist(once);
+
+        twice.Should().Be(once, "已标注的编号不应被二次包裹");
+    }
+
+    [Fact]
+    public void EnforceLibraryWhitelist_EmptyOrNull_Safe()
+    {
+        OutputValidator.EnforceLibraryWhitelist("").Should().Be("");
+        OutputValidator.EnforceLibraryWhitelist(null!).Should().Be("");
+    }
 }

@@ -18,6 +18,7 @@ using Agent1.Modules;
 using Agent1.Services;
 using Agent1.Services.Orchestration;
 using Agent1.Services.Security;
+using Agent1.Tests.Stubs;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -875,7 +876,7 @@ public class InspectionControllerTests
             Mock.Of<ILlmService>(),
             Mock.Of<ISessionService>(),
             repo,
-            new DeterministicRuleEngine());
+            new DeterministicRuleEngine(new StubChemicalKnowledgeGraph(), new ChemicalNamingInference()));
     }
 
     private static ComplianceRuleEngine CreateRuleEngine()

@@ -8,6 +8,7 @@ using Agent1.Models;
 using Agent1.Modules;
 using Agent1.Services;
 using Agent1.Services.Orchestration;
+using Agent1.Tests.Stubs;
 using FluentAssertions;
 using Moq;
 using Xunit;
@@ -27,7 +28,8 @@ namespace Agent1.Tests;
 
 public class DeterministicRuleEngineTests
 {
-    private readonly DeterministicRuleEngine _engine = new();
+    private readonly DeterministicRuleEngine _engine =
+        new(new StubChemicalKnowledgeGraph(), new ChemicalNamingInference());
 
     [Fact]
     public void TryNumericCheck_StandardLeq_ActualBelow_Compliant()

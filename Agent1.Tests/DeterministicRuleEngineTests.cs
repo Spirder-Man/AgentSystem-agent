@@ -13,7 +13,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using Agent1.Models;
+using Agent1.Services;
 using Agent1.Services.Orchestration;
+using Agent1.Tests.Stubs;
 using FluentAssertions;
 using Xunit;
 
@@ -21,7 +23,8 @@ namespace Agent1.Tests;
 
 public class DeterministicRuleEngineV2Tests
 {
-    private readonly DeterministicRuleEngine _engine = new();
+    private readonly DeterministicRuleEngine _engine =
+        new(new StubChemicalKnowledgeGraph(), new ChemicalNamingInference());
 
     // ═══════════════════════════════
     // TryDetermine — 分派
@@ -300,6 +303,26 @@ public class DeterministicRuleEngineV2Tests
             result.Quality.Should().Be("DATABASE_HIT");
             result.RegulationRefs.Should().NotBeEmpty();
         }
+    }
+
+    // [#3 FIX] 评测集 E001-E008 设施对在确定性规则引擎降级路径的命中回归（Stub 种子已同步）
+    [Theory]
+    [InlineData("甲类仓库与明火点的最小安全距离是多少？", "30")]
+    [InlineData("乙炔气柜与办公楼的最小间距？", "25")]
+    [InlineData("液化烃储罐与厂区围墙的安全距离？", "35")]
+    [InlineData("氢气长管拖车停车位与明火点的间距？", "25")]
+    [InlineData("消防站与甲类装置的防火间距？", "15")]
+    [InlineData("氨罐与厂外道路的安全距离？", "20")]
+    [InlineData("甲类工艺装置与重要设施的间距？", "30")]
+    [InlineData("氯气储存区与居住区的安全距离？", "200")]
+    public void TryHandleComplianceQuery_EvalSetSafetyDistancePairs_ShouldHit(string query, string expectedDistance)
+    {
+        var result = _engine.TryHandleComplianceQuery(query);
+
+        result.Should().NotBeNull($"评测集设施对查询「{query}」应在降级路径命中");
+        result!.Answer.Should().Contain($"{expectedDistance}m");
+        result.Quality.Should().Be("DATABASE_HIT");
+        result.RegulationRefs.Should().NotBeEmpty();
     }
 
     [Fact]
