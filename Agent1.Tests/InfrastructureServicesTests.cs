@@ -116,7 +116,9 @@ namespace Agent1.Tests
         {
             var audit = new AuditService(db: null);
             await audit.LogOperationAsync("u1", "op1", "detail1");
-            var midPoint = DateTime.Now;
+            // AuditService 内部统一以 UTC 微秒存储 CreateTime，边界也必须用 UTC；
+            // 若用 DateTime.Now（本地），在 UTC±8 等非零时区机器上会因 tick 偏移导致过滤失真。
+            var midPoint = DateTime.UtcNow;
             await Task.Delay(10);
             await audit.LogOperationAsync("u2", "op2", "detail2");
 

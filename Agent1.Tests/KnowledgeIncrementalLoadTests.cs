@@ -173,11 +173,14 @@ public class KnowledgeIncrementalLoadTests : IDisposable
 
         await CreateRag().LoadKnowledgeBaseIncrementalAsync();
         var countAfterFirst = _kb.AddedDocuments.Count;
+        // [Bug-039] 新文件首轮也会做无条件防御性删除（DELETE 0 行，幂等，防止上次中断遗留的僵尸行），
+        // 故以首轮删除计数为基线，验证"二次增量对未修改文件不再触发新的删除"这一真实契约。
+        var removedAfterFirst = _kb.RemovedSourceFiles.Count;
         countAfterFirst.Should().BeGreaterThan(0);
 
         await CreateRag().LoadKnowledgeBaseIncrementalAsync();
         _kb.AddedDocuments.Count.Should().Be(countAfterFirst, "未修改文件不应重复入库");
-        _kb.RemovedSourceFiles.Should().BeEmpty("未修改文件不应触发删除");
+        _kb.RemovedSourceFiles.Count.Should().Be(removedAfterFirst, "未修改文件在二次增量应被跳过，不应触发新的删除");
     }
 
     // ── T3: 更新场景先删后插（source_path UNIQUE 契约）──────────────────

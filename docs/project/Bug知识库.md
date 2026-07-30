@@ -2,7 +2,7 @@
 
 > **目的**：结构化记录每个 Bug 的根因/修复/影响模块，实现跨批次知识累积，避免同类问题反复出现。
 > **使用方式**：每次修复 Bug 后按模板录入；每次分析日志前浏览「系统弱点了然表」确定重点监控项。
-> **文档版本**：v3.0 | **创建日期**：2026-06-30 | **最后更新**：2026-07-30（Bug-042/043：Bug-001 假修复复发 RRF 融合率归零、检索元数据键名三方错位；Bug-039/040/041 已终验闭环）
+> **文档版本**：v3.0 | **创建日期**：2026-06-30 | **最后更新**：2026-07-30（Bug-044/045：远程全量回归暴露的两处测试侧缺陷 — KnowledgeIncremental T2 断言随 Bug-039 行为变更失真、AuditService 时区过滤 UTC/本地混用；均非生产缺陷，已本地修复验证。Bug-042/043 检索层缺陷、Bug-039/040/041 知识管线已终验闭环）
 
 ---
 
@@ -44,6 +44,8 @@
 | W30 | **处理成功判定不含质量门，降级结果永久化** | OCR 失败沿用薄文本仍 return true → tracker 记完成，依赖服务的瞬时故障被固化为数据的永久降级，不 touch 不自愈 | `⚠️ OCR 未产出有效文本...沿用原始提取结果` 后紧跟 ✅ 入库成功 / DB 中扫描件 extraction_quality=partial 且 chunk_count=1 / tracker 含该文件但检索命中率异常低 | [Bug-041](#bug-041) |
 | W31 | **幂等标识符的随机默认值 —「假修复」把缺陷藏进构造函数** | 去重键从显式 `Guid.NewGuid()` 改为封装方法 `GetDedupKey`，但随机性下沉到 `RetrievedChunk` 构造函数默认 `Id`；`Id` 恒非空使内容前缀兜底成死代码 → 两路检索同一分块键永不相等 → RRF 融合恒不发生 | 混合检索 score 全为 `1/(60+rank+1)` 纯值(无求和)/ Top-K 出现内容逐字相同但 id 不同的重复项 / 单元测试手工造 `Id=null` 恰好绕开生产恒非空的真实路径 | [Bug-042](#bug-042) |
 | W32 | **跨层元数据键名无契约（读写两端各造各的键名）** | rag-test 响应读小写 `source`/`importance`，而写入链全程只写 PascalCase `SourceFile`/`Priority`/`RegulationType` — 读取的键从未被写入过 → 溯源恒「未知」、重要度恒「未标注」 | 检索结果 `source:未知` `importance:未标注` / 同一语义字段在写入处与读取处键名不同且无共享常量约束 | [Bug-043](#bug-043) |
+| W33 | **测试断言口径随生产行为变更而失真（共享夹具累积状态）** | 生产改动使旧行为假设失效（Bug-039 把「更新才删」改为「无条件删」→ 新文件首轮也触发一次幂等空删）；测试用**类级共享**桩 `_kb`、断言**累积**列表 `RemovedSourceFiles.BeEmpty()`，把首轮的空删也算进来 → 二次运行明明正确跳过却被误判为回归 | 本地 filter 未覆盖该测试类致回归漏网 / 运行日志 `≡1 跳过` 正确但断言仍红 / 断言查累积总量而非单轮增量 | [Bug-044](#bug-044) |
+| W34 | **UTC 存储与本地时间边界混用（DateTime 比较无视 Kind）** | 存储侧统一 UTC（`DateTime.UtcNow` + 微秒归一），测试/调用侧边界却用 `DateTime.Now` 本地时间；.NET `DateTime` 比较只比 ticks 不管 Kind → UTC±8 机器边界偏移 8 小时，过滤失真 | 时间过滤「期望 1 找到 2」/ 仅在非零时区机器复现（UTC 机器恰好蒙对）/ 存储 `UtcNow` 而边界 `Now` | [Bug-045](#bug-045) |
 
 ---
 
@@ -51,6 +53,8 @@
 
 | ID | 日期 | 等级 | 类别 | 标题 |
 |:---:|------|:---:|------|------|
+| [Bug-045](#bug-045) | 07-30 | P2 | 测试 | AuditService 时区过滤测试缺陷 — 存储用 UTC 微秒、测试 midPoint 用 `DateTime.Now` 本地时间，UTC±8 机器过滤失真「期望1找到2」（非生产缺陷） |
+| [Bug-044](#bug-044) | 07-30 | P2 | 测试 | KnowledgeIncremental T2 断言口径过严 — Bug-039 无条件删除使新文件首轮触发幂等空删，类级共享 `_kb` 累积断言误判为回归（非生产缺陷） |
 | [Bug-043](#bug-043) | 07-30 | P1 | 检索 | 检索元数据键名三方错位 — 写 `source`/DB 写 `SourceFile`/读各异，溯源恒「未知」且国标优先级重排部分失效 |
 | [Bug-042](#bug-042) | 07-30 | P0 | 检索 | Bug-001 假修复复发 — RRF 去重键随机性下沉到构造函数默认 Id，两路同块键永不相等，融合率归零、Top-K 重复占位 |
 | [Bug-041](#bug-041) | 07-29 | P1 | 知识管线 | OCR 失败/降级静默沿用薄文本入库 — 成功判定无质量门，partial 结果永久化且 tracker 记完成（Bug-040 次生灾害的放大器） |
@@ -1365,6 +1369,59 @@
 |:---:|------|------|------|------|------|
 | N1 | 现象定性 | 为什么所有结果 source 都是「未知」 | 数据落库时写了 SourceFile（DB 查得到），展示却「未知」→ 读取侧问题 | grep 读取方键名 | 归因「OCR 没提取到来源」：DB 里 SourceFile 明明有值 |
 | N2 | 键名对齐 | 读写两端各用什么键？ | 读 `source`/`importance`（Controller L110-111），写 `SourceFile`/`Priority` — 无交集 | 立案 Bug-043（P1），根因归无键名契约 | 只改 Controller 键名收工：治标，字面量漂移隐患仍在（故补根治项②） |
+
+---
+
+### Bug-044：KnowledgeIncremental T2 断言口径过严 — Bug-039 无条件删除使新文件首轮触发幂等空删，类级共享桩累积断言误判为回归 {#bug-044}
+
+| 字段 | 内容 |
+|------|------|
+| **发现日期** | 2026-07-30 |
+| **严重等级** | 🔵 P2 — 测试缺陷，**非生产回归**。远程 AutoDL 全量 `dotnet test` 时 `KnowledgeIncrementalLoadTests` 第二用例（未修改文件二次增量应跳过）红灯，若误判会错误 revert 掉 Bug-039 的正确防御性删除，反而复活 SIGTERM 临终遗写僵尸行死循环 |
+| **发现场景** | 远程 Linux 服务器全量回归输出（1044 行）中该测试失败「found 条例.txt」；本地 Windows 用 `--filter "FullyQualifiedName~KnowledgeIncrementalLoadTests"` 可复现。捕获完整 console trace 定性：首轮增量 `[新增] 条例.txt` + `增量结果: +1 新增`，二次增量 `+0 新增, ≡1 跳过`（二次实际正确跳过） |
+| **影响模块** | `Agent1.Tests/KnowledgeIncrementalLoadTests.cs` — `_kb`（L84 `private readonly RecordingKnowledgeBaseService _kb = new();`）是**类级共享**桩，`RemovedSourceFiles` 是**累积**列表；T2 原断言 `_kb.RemovedSourceFiles.Should().BeEmpty()` 把首轮的删除也算进来 |
+| **根因** | 生产侧 [Bug-039](#bug-039) 把「仅 `isTracked` 才删旧」改为「插入前无条件 `RemoveFileFromKnowledgeBaseAsync`」（防僵尸行）。副作用：新文件首轮增量 `isTracked=false` 也会触发一次删除调用 —— 对新文件是幂等 `DELETE 0 行`，DB 无害，但桩的 `RemovedSourceFiles` 会记一笔。T2 用类级共享 `_kb` 跑两轮增量，断言累积列表 `BeEmpty()`，把首轮那笔空删也计入 → 明明二次正确跳过（`≡1 跳过`）却被判回归。**测试断言口径编码了 Bug-039 之前的行为假设，随生产行为变更而失真** |
+| **修复** | ✅ 改 T2 断言为 **delta 比对**：先跑首轮记 `removedAfterFirst = _kb.RemovedSourceFiles.Count` 作基线，二次增量后断言 `Count.Should().Be(removedAfterFirst)`（二次不应产生**新增**删除），并加注释说明 Bug-039 幂等空删。不碰生产代码，`ChemicalRAG.cs` L262 无条件删除保持不动 |
+| **修复提交** | 本次提交（测试文件 only）：`Agent1.Tests/KnowledgeIncrementalLoadTests.cs`；验证 `dotnet test --filter "FullyQualifiedName~KnowledgeIncrementalLoadTests"` → 失败 0、通过 7 |
+| **关联 Bug** | [Bug-039](#bug-039)（本 Bug 是其无条件删除改动的测试侧余震）；[Bug-031](#bug-031)（同为「生产改造后遗留测试断言口径失真」族） |
+| **验证方法** | 本地过滤跑该测试类 7/7 绿；console trace 佐证二次增量 `+0 新增, ≡1 跳过`，证明生产逻辑正确、仅断言口径需校准 |
+| **教训** | ① **生产行为一改，先扫描依赖旧行为假设的测试断言**——Bug-039 改删除策略时漏了这条覆盖，本地 filter（`KnowledgeBaseController\|ChemicalRAG\|KnowledgePipeline\|HybridKnowledgeBase`）不匹配 `KnowledgeIncrementalLoadTests` 致回归漏网；② **共享夹具 + 累积列表断言要查「单轮增量」而非「累积总量」**，否则跨轮状态污染判定；③ **红灯先分「测试缺陷 vs 生产回归」再动刀**：跑 trace 看真实运行日志，`≡1 跳过` 一眼定性，避免误 revert 正确修复 |
+| **追问深度** | 3 层（L1 远程 T2 红灯「found 条例.txt」→ L2 本地复现 + 读测试确认 `_kb` 类级共享、`RemovedSourceFiles` 累积 → L3 捕获 console trace 定性：首轮空删入账、二次正确跳过，判定断言口径失真而非生产回归） |
+
+#### 思维链路（对话复盘）
+
+| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
+|:---:|------|------|------|------|------|
+| N1 | 现象归属 | 远程全量红灯，是本次推送（Bug-039/041/042/043）引入的真回归还是环境性？ | 本地 Windows filter 可复现 → 排除纯环境，是真代码相关 | 深挖该测试类，先读契约 | 直接归为环境问题收工：本地能复现，站不住 |
+| N2 | 读测试契约 | T2 断了什么？`_kb` 与 `RemovedSourceFiles` 生命周期？ | `_kb` 是类级共享字段、`RemovedSourceFiles` 累积；T2 断言 `BeEmpty()` | 怀疑累积状态污染，跑 trace 求实证 | 直接改断言：机制没锁死前改是蒙 |
+| N3 | trace 定罪 | 捕获完整 console：首轮 vs 二次增量各发生什么？ | 首轮 `[新增]`→无条件删触发一次幂等空删入账；二次 `+0 新增 ≡1 跳过` 正确 | 定性为 Bug-039 有意行为 + 测试断言口径失真，**修测试不 revert 生产** | revert Bug-039 无条件删除：会复活僵尸行死循环，绝不可 |
+| N4 | 最小修复 | 如何既保 Bug-039 又让 T2 表达真实契约？ | 真实契约是「二次增量不产生**新增**删除」，非「零删除」 | 改 delta 比对（首轮删除数为基线），加注释锚定 Bug-039 | 断言总数 ≤1 之类的魔法数：脆且语义不清 |
+
+---
+
+### Bug-045：AuditService 时区过滤测试缺陷 — 存储用 UTC 微秒、测试 midPoint 用 DateTime.Now 本地时间，UTC±8 机器过滤失真 {#bug-045}
+
+| 字段 | 内容 |
+|------|------|
+| **发现日期** | 2026-07-30 |
+| **严重等级** | 🔵 P2 — 测试缺陷，**非生产回归**，与本次推送无关（P3 哈希链改造遗留）。生产 `AuditService` 时间过滤逻辑本身正确（存取都是 UTC），仅测试边界用错时区导致假红 |
+| **发现场景** | 远程全量回归 `InfrastructureServicesTests.GetAuditLogs_WithTimeFilter_ShouldFilterCorrectly` 失败「期望 1 找到 2」；本地 Windows（UTC+8）可复现，UTC 机器（如某些 CI）恰好蒙对不复现 |
+| **影响模块** | 测试侧 `Agent1.Tests/InfrastructureServicesTests.cs` L114-127（`midPoint = DateTime.Now`）；对照生产 `Agent1/Services/Infrastructure/AuditService.cs` L70 `CreateTime = NormalizeToMicroseconds(DateTime.UtcNow)`（UTC 存储）、L134-137 过滤 `CreateTime >= startTime`（`_auditLogs` 为实例字段，无跨测试污染） |
+| **根因** | 存储侧统一以 UTC 微秒写 `CreateTime`，测试构造时间边界 `midPoint` 却用 `DateTime.Now`（本地）。.NET `DateTime` 比较**只比 ticks 不管 `Kind`** → 在 UTC+8 机器上 `midPoint` 的 ticks 比真实分界领先 8 小时，两条日志都落进「≥ midPoint」区间 → 期望 1 条却过滤出 2 条。UTC 机器上本地=UTC 恰好蒙对，掩盖了缺陷 |
+| **修复** | ✅ 测试边界改 `midPoint = DateTime.UtcNow`，与存储侧对齐，并加注释说明「存储统一 UTC，边界也必须 UTC，否则非零时区机器 tick 偏移致过滤失真」。不碰生产代码 |
+| **修复提交** | 本次提交（测试文件 only）：`Agent1.Tests/InfrastructureServicesTests.cs`；验证 `dotnet test --filter "FullyQualifiedName~InfrastructureServicesTests"` → exit 0 全绿 |
+| **关联 Bug** | [Bug-031](#bug-031)（哈希链含微秒 createTime 的 UTC 微秒归一改造，本测试缺陷为其遗留）；[Bug-044](#bug-044)（同批远程回归定性出的测试侧缺陷，均「本地时区/共享状态假设」类） |
+| **验证方法** | 本地 UTC+8 机器过滤跑绿；语义上 `midPoint` 与 `CreateTime` 同为 UTC ticks，边界比较正确切开两条日志（u1 在前、u2 在后） |
+| **教训** | ① **存取时间必须同源同 Kind**：一端 `UtcNow` 存、另一端 `Now` 比，`DateTime` 无视 Kind 的 ticks 比较会静默错位，跨时区才暴露；② **只在特定时区复现的红灯优先怀疑「本地 vs UTC」**：UTC 机器蒙对是最迷惑的假绿，别被 CI 通过误导；③ 时间边界断言应用 `DateTimeOffset` 或统一 UTC，从类型层面杜绝 Kind 混用 |
+| **追问深度** | 3 层（L1 远程「期望1找到2」→ L2 读生产确认 `CreateTime=UtcNow` 存储、`_auditLogs` 实例字段无污染 → L3 对比测试 `midPoint=DateTime.Now`，定性 UTC 存储 vs 本地边界的 Kind 混用，本地 UTC+8 复现锁死） |
+
+#### 思维链路（对话复盘）
+
+| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
+|:---:|------|------|------|------|------|
+| N1 | 现象归属 | 「期望1找到2」是跨测试状态污染还是逻辑错？ | 读 `AuditService`：`_auditLogs` 是实例字段，每次 new 独立 → 排除污染 | 转查时间过滤本身 | 归因静态共享列表污染：字段是实例级，不成立 |
+| N2 | 存取对齐 | 存的时间是什么 Kind？测试边界是什么 Kind？ | 存 `DateTime.UtcNow`（UTC），测试 `midPoint=DateTime.Now`（本地）；`DateTime` 比较不看 Kind | 定性时区 bug，本地 UTC+8 复现验证 | 改生产存储为本地时间：审计必须 UTC，方向反了 |
+| N3 | 归属与最小修 | 是本次推送引入还是历史遗留？ | 属 Bug-031 UTC 微秒归一改造遗留，与本次检索/知识管线修复无关 | 仅改测试边界为 `UtcNow`，标注非生产缺陷 | 混进本次生产 commit 叙述：会误导为本次回归 |
 
 ---
 
