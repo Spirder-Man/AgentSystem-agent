@@ -2,7 +2,7 @@
 
 > **目的**：结构化记录每个 Bug 的根因/修复/影响模块，实现跨批次知识累积，避免同类问题反复出现。
 > **使用方式**：每次修复 Bug 后按模板录入；每次分析日志前浏览「系统弱点了然表」确定重点监控项。
-> **文档版本**：v2.7 | **创建日期**：2026-06-30 | **最后更新**：2026-07-28（Bug-035：天真 SQL 拆分破坏字符串字面量 — SQLite 兜底库整体静默降级）
+> **文档版本**：v3.0 | **创建日期**：2026-06-30 | **最后更新**：2026-07-30（Bug-042/043：Bug-001 假修复复发 RRF 融合率归零、检索元数据键名三方错位；Bug-039/040/041 已终验闭环）
 
 ---
 
@@ -36,6 +36,14 @@
 | W22 | **LLM 零工具调用降级路径分裂** | 4 条 LLM 零工具调用降级路径各自处理方式不同：E1 正则猜测、FC=Required 违约→BuildNoResult、熔断器→规则引擎、"生成失败"→规则引擎。同一场景不同入口行为不一致，E1 正则永远不被 T13 评测路径触发 | `toolCalls==0` 在不同调用路径下行为不一致 / E1 命中率 0 vs 规则引擎命中率 >0 | [Bug-033](#bug-033) |
 | W23 | **幽灵依赖 + 假成功静音**（配置声明的外部实例从未部署，失败被伪装成成功） | 配置声明端点但部署脚本/启动检查/文档三处均无记录；异常被字符串化吞掉；API 对错误文案返回 200 + INF"完成"日志 | 重操作耗时低于物理下限（如视觉推理 <1s）/ 模块长期 ERR=0 且零真实产出 / 配置含上代技术栈化石语法（如 Ollama `:latest`） | [Bug-034](#bug-034) |
 | W24 | **手写解析器低估目标语法复杂度**（天真 `Split` 解析结构化文本） | 用 `sql.Split(';')` 拆分 SQL 脚本，字符串字面量内的分隔符（如 `GROUP_CONCAT(..., '; ')`）把语句拦腰截断；初始化失败进 catch 后仍置 `_initialized=true`，降级永久化且不可重现 | `unrecognized token: "'"` / 兜底库查询恒为空但无 ERR 复现 / 手写 `Split`/正则解析含引号语法的文本 | [Bug-035](#bug-035) |
+| W25 | **管线环节间隐式格式契约断裂**（上游产出与下游假设不一致） | TextCleaner 以单 `\n` 重组全文，SemanticChunker 段落切分却依赖 `\n\n` → 整篇成一段；新文档类型落 switch default 走错切分器；"OCR 成功"≠"入库成功" | `X页 → 1块` / OCR 字数>1万但分块数≤1 / 新增文档类型未在 switch 显式分支 | [Bug-036](#bug-036) |
+| W26 | **嵌入服务物理批次上限静默丢向量** | 非因果注意力模型要求整段输入放进单物理批次（`-ub` 默认512），OCR 条款块 >512 token 即 500，系统降级 BM25-only 但向量检索能力静默缺失 | `向量请求失败` + `too large to process` / `跳过向量库写入（BM25 已写入）` | [Bug-037](#bug-037) |
+| W27 | **长任务端点可重入无互斥** | incremental-load 无"已在跑→409"守卫，双任务并发对同一文件删旧重插竞态；file_tracker 批末才落盘，中断=进度全丢 | api.log 同时滚动两组增量表头 / `jobs` 存在多个 incremental-load curl / 同一文件短时间两次`🗑️ 已删除` | [Bug-038](#bug-038) |
+| W28 | **SIGTERM 优雅停机期间后台任务临终遗写**（+失败踢出 tracker 与 [新增]不删旧组合成自锁死循环） | pkill 后旧进程后台任务无视取消令牌继续写库数秒；新进程 DELETE 扑空后被旧进程插队 → 23505；失败文件被踢出 tracker → 下轮 [新增] 不删旧 → 永久撞键循环 | tail 可见但 grep 不到的日志行（双进程同管道）/ DELETE 0 行(无🗑️)紧跟 INSERT 撞 23505 / 同文件连续多轮 ✗1 失败且 OCR 本身成功 | [Bug-039](#bug-039) |
+| W29 | **多模态服务 KV/prompt cache 容量低估 OCR 负载** | 单页图像 prompt 3000~3900 token，`-c 8192` 池两页并发即顶格；`--cache-ram` 默认 8192MiB 被每页唯一 prompt 囤爆 → 成功率渐进下降至崩死 | `failed to find a memory slot for batch of size N` / `cache state: N prompts, ...MiB (limits: ...)`顶格 / OCR 页成功率渐进恶化(8/13→4/20→0) / 服务死后显存反而干净 | [Bug-040](#bug-040) |
+| W30 | **处理成功判定不含质量门，降级结果永久化** | OCR 失败沿用薄文本仍 return true → tracker 记完成，依赖服务的瞬时故障被固化为数据的永久降级，不 touch 不自愈 | `⚠️ OCR 未产出有效文本...沿用原始提取结果` 后紧跟 ✅ 入库成功 / DB 中扫描件 extraction_quality=partial 且 chunk_count=1 / tracker 含该文件但检索命中率异常低 | [Bug-041](#bug-041) |
+| W31 | **幂等标识符的随机默认值 —「假修复」把缺陷藏进构造函数** | 去重键从显式 `Guid.NewGuid()` 改为封装方法 `GetDedupKey`，但随机性下沉到 `RetrievedChunk` 构造函数默认 `Id`；`Id` 恒非空使内容前缀兜底成死代码 → 两路检索同一分块键永不相等 → RRF 融合恒不发生 | 混合检索 score 全为 `1/(60+rank+1)` 纯值(无求和)/ Top-K 出现内容逐字相同但 id 不同的重复项 / 单元测试手工造 `Id=null` 恰好绕开生产恒非空的真实路径 | [Bug-042](#bug-042) |
+| W32 | **跨层元数据键名无契约（读写两端各造各的键名）** | rag-test 响应读小写 `source`/`importance`，而写入链全程只写 PascalCase `SourceFile`/`Priority`/`RegulationType` — 读取的键从未被写入过 → 溯源恒「未知」、重要度恒「未标注」 | 检索结果 `source:未知` `importance:未标注` / 同一语义字段在写入处与读取处键名不同且无共享常量约束 | [Bug-043](#bug-043) |
 
 ---
 
@@ -43,6 +51,14 @@
 
 | ID | 日期 | 等级 | 类别 | 标题 |
 |:---:|------|:---:|------|------|
+| [Bug-043](#bug-043) | 07-30 | P1 | 检索 | 检索元数据键名三方错位 — 写 `source`/DB 写 `SourceFile`/读各异，溯源恒「未知」且国标优先级重排部分失效 |
+| [Bug-042](#bug-042) | 07-30 | P0 | 检索 | Bug-001 假修复复发 — RRF 去重键随机性下沉到构造函数默认 Id，两路同块键永不相等，融合率归零、Top-K 重复占位 |
+| [Bug-041](#bug-041) | 07-29 | P1 | 知识管线 | OCR 失败/降级静默沿用薄文本入库 — 成功判定无质量门，partial 结果永久化且 tracker 记完成（Bug-040 次生灾害的放大器） |
+| [Bug-040](#bug-040) | 07-29 | P0 | 基础设施 | 视觉服务 8083 KV Cache 槽位耗尽 + prompt cache 顶格 — OCR 批次 1 分钟后渐进崩死，~20 扫描件 partial 入库且 tracker 记为完成 |
+| [Bug-039](#bug-039) | 07-29 | P1 | 并发/数据一致性 | SIGTERM 临终遗写僵尸行 — DELETE 扑空+INSERT 撞键+踢出 tracker 组合成单文件自锁死循环（GB 30000.10） |
+| [Bug-038](#bug-038) | 07-29 | P1 | 并发/运维 | 增量加载端点可重入 + tracker 批末落盘 — 双增量任务并发删旧重插竞态（已止损，互斥锁待修） |
+| [Bug-037](#bug-037) | 07-29 | P1 | 基础设施 | nomic-embed 物理批次 512 上限 — OCR 长条款块嵌入 500，向量静默缺失降级 BM25-only |
+| [Bug-036](#bug-036) | 07-29 | P0 | 知识管线 | OCR 全文入库两处叠加缺陷 — 分块退化(28页→1块) + 目录点线乱码误杀 → 实际入库 0 可检索分块 |
 | [Bug-035](#bug-035) | 07-28 | P0 | SQL解析 | 天真 `Split(';')` 破坏 GROUP_CONCAT 字符串字面量 — SQLite 兜底库初始化失败且降级永久化 |
 | [Bug-034](#bug-034) | 07-28 | P1 | 幽灵依赖 | 多模态视觉实例 8083 从未部署 — 连接拒绝被三层静音伪装成 200 假成功（81ms 指纹） |
 | [Bug-019](#bug-019) | 07-03 | P0 | LLM配置 | HyDE + FunctionChoiceBehavior.Required() 导致 FC 递归死循环（F005 静默卡死） |
@@ -1132,6 +1148,223 @@
 | N1 | 归因纠偏 | 问题清单初始归因"种子 SQL 未转义" | grep 全部种子写入点：`InsertSubstance` 等均用 `@param` 参数化，不存在拼接 | 推翻初始归因，转向 SQL 执行路径本身 | 按原归因直接"加转义"：修不存在的问题，真凶继续潜伏 |
 | N2 | 根因定位 | 参数化数据怎么会产生 `unrecognized token: "'"`？ | `SplitSqlStatements` 用 `sql.Split(';')` 拆 schema 脚本，`chemical_substances_v2.sql` L109 视图内 `GROUP_CONCAT(..., '; ')` 字面量含分号被截断 | 定位拆分器为真凶 | 给拆分器加"引号感知"状态机：重造轮子且注释声称的限制根本不存在 |
 | N3 | 伴生发现 | 为什么这个 P0 长期无人察觉？ | catch 分支置 `_initialized = true`，失败后所有调用静默短路，降级永久化且不再留日志 | 一并修复：失败不置成功标记，保留重试与可观测性 | 只修拆分器不修降级永久化：下一个初始化异常仍会静默消失 |
+
+---
+
+### Bug-036：OCR 全文入库两处叠加缺陷 — 分块退化(28页→1块) + 目录点线乱码误杀 → 实际入库 0 可检索分块 {#bug-036}
+
+| 字段 | 内容 |
+|------|------|
+| **发现日期** | 2026-07-29 |
+| **严重等级** | 🔴 P0 — 扫描件 PDF 花费数分钟 GPU OCR 产出 2 万字全文，最终实际入库 0 个可检索分块；若未发现，整批 34 文件跑完（2~4 小时 GPU）后知识库仍然检索不到扫描件内容，OCR 能力形同虚设 |
+| **发现场景** | ENABLE_VISION_OCR 首次开启后重灌知识库，监控第一个扫描件日志：`OCR 完成: 20/20页成功 → 20405字 (质量:good)` 但紧接 `乱码块拒收: #chunk0 (同字符连续重复≥4次('…'))` + `28页 → 1块` — 三行日志并列矛盾暴露叠加缺陷 |
+| **影响模块** | `Agent1/Services/Knowledge/SemanticChunker.cs`（switch 缺 `化工专业条例` 分支 + ChunkByParagraph 无超长强切）、`Agent1/Services/Knowledge/TextCleaner.cs` L145（单 `\n` 重组，只读定罪证据未改）、`Agent1/Services/Knowledge/PdfOcrService.cs`（OCR 产出未归一化）、`Agent1/Services/Knowledge/GarbledTextDetector.cs` 规则①（未改，在源头解决） |
+| **根因** | **两处独立缺陷叠加，单修任一处都不够**：① 分块退化 — 文档类型 `化工专业条例` 在 SemanticChunker switch 落 default → ChunkByParagraph 按 `\n\n` 分段；但 TextCleaner 清洗后用**单 `\n`** 重组全文（`string.Join("\n", cleaned)`），产物中根本不存在 `\n\n` → 整篇 20405 字成一个"段落"；且旧 ChunkByParagraph 对超长单段无强制切分 → 1 块（隔壁既有测试 `Chunk_SingleLargeParagraph_NotSplitWithoutBreaks` 甚至断言了这个退化行为并注释"这是当前实现限制"）；② 乱码误杀 — GarbledTextDetector 规则①（同字符连续重复≥4 即拒收）把 OCR 如实转写的目录点线"第一章…………1"误判为乱码 → 仅有的 1 块也被拒收 → 实际入库 0 块。'…' 虽在规则②白名单但躲不过规则① |
+| **修复** | 三件套（不放松乱码防线）：① `化工专业条例` → ChunkByClause（本质是 GB 系列标准含 "4.1.2" 式条款号，条款正则+超长强切双保险）；② ChunkByParagraph 增加超长段落 while 强切（优先在 `\n`/`。`/`；` 断开，边界≥MaxChunkSize/2 才采用）；③ PdfOcrService 新增 `NormalizeOcrText` 源头归一化（点线串`[…·•]{2,}|\.{4,}`→"…"、Markdown表格分隔线→" --- "、长横线串→"—"），预防性覆盖表格线场景；同步把断言退化行为的旧测试改为断言强切，新增 4 个回归测试 |
+| **修复提交** | edf34051 |
+| **关联 Bug** | [Bug-034](#bug-034)（同属"成功日志掩盖实质失败"：彼为假 200，本 Bug 为 "OCR 成功" 日志掩盖 0 块入库）；[Bug-030](#bug-030)（同属知识管线降级静默化族） |
+| **验证方法** | 远程重跑同一文件：`28页 → 80块 (质量:good)`（对照修复前 1 块）、全程零 `'…'` 拒收；本地筛选测试 33/33 通过（含新增 NormalizeOcrText 三测试：目录点线放行、表格线放行、"书书书书"真乱码仍拦截） |
+| **教训** | ① **管线环节间的格式契约必须显式化**：下游依赖 `\n\n` 而上游只产单 `\n`，这种隐式假设断裂在单元测试中测不出（各自都"正确"），只在集成链路暴露；② **断言缺陷行为的测试是负资产**："这是当前实现限制"注释+断言退化行为，把 Bug 固化成了"规格"；③ **确定性拒收规则必须针对新数据源重新校准**：乱码检测器为"文本层提取乱码"设计，OCR 转写产物（目录点线、Markdown 表格）是全新分布，旧规则直接套用必误杀；修复选在源头归一化而非放松防线；④ **逐环节验收，不被上游成功日志麻痹**：OCR 成功/入库成功/可检索是三个独立门，验收标准必须落在最末端（分块数+检索命中） |
+| **追问深度** | 4 层（L1 日志三行矛盾 → L2 为什么 28 页只切 1 块（switch default → 段落切分）→ L3 为什么段落切分失效（TextCleaner 单换行重组消灭 `\n\n`）→ L4 为什么仅有的 1 块还被拒（乱码规则①误杀 OCR 点线）） |
+
+#### 思维链路（对话复盘）
+
+| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
+|:---:|------|------|------|------|------|
+| N1 | 现象确认 | 用户贴回首文件日志：OCR 20/20 页成功 2 万字，但 `28页 → 1块` 且 chunk0 被乱码拒收 | 三行日志互相矛盾：OCR 成功≠入库成功，实际可检索分块数为 0 | 立即要求用户 pkill 止损，避免浪费数小时 GPU 跑出整批废数据 | 让批次跑完再修：34 文件全部产出 1 块/0 块，GPU 时间全部白烧 |
+| N2 | L1→L2 追问 | 28 页 2 万字为什么只切出 1 块？ | SemanticChunker switch 无 `化工专业条例` 分支→落 default ChunkByParagraph（按 `\n\n` 分段） | 继续追问"为什么没有 `\n\n`" | 直接给 ChunkByParagraph 改成按单 `\n` 分段：治标，条款结构信息仍丢失 |
+| N3 | L2→L3 追问 | 清洗后的文本里 `\n\n` 去哪了？ | TextCleaner L145 `string.Join("\n", cleaned)` 单换行重组，消灭一切空行 — 上下游隐式格式契约断裂 | 不改 TextCleaner（影响面广），改切分器适配真实输入 | 改 TextCleaner 保留 `\n\n`：所有文档类型的清洗行为全变，回归面不可控 |
+| N4 | L3→L4 追问 | 就算只有 1 块，为什么还被拒收？ | 乱码规则①（同字符连续≥4）命中 OCR 如实转写的目录点线"…………"；'…' 在规则②白名单但躲不过规则① | 在 OCR 源头归一化点线/表格线/横线，不动检测器 | 放松规则①阈值或加白名单：削弱对"书书书书"类真乱码的防线，安全系统不可接受 |
+| N5 | 横向对比 | 扫描件都是 GB 标准，为什么不走已有的 ChunkByClause？ | `化工专业条例`本质是 GB 系列标准（含 "4.1.2" 式条款号），与"国标"同构；ChunkByClause 自带条款正则+超长强切双保险 | switch 显式新增 `"化工专业条例" => ChunkByClause` 分支 | 新写专用切分器：重复造轮子 |
+| N6 | 实现决策 | 既有测试 `Chunk_SingleLargeParagraph_NotSplitWithoutBreaks` 断言了退化行为，怎么处理？ | 该测试把 Bug 固化成规格；强切后块长上限需考虑 MergeSmallChunks+AddOverlap 叠加（初版 ChunkSize+Overlap 过紧跑不过） | 改名重写为 `Chunk_SingleLargeParagraph_ForceSplitBySize`，上限放宽为 ChunkSize+2*Overlap+2 | 删掉旧测试不补：强切行为无回归保护 |
+
+---
+
+### Bug-037：nomic-embed 物理批次 512 上限 — OCR 长条款块嵌入 500，向量静默缺失降级 BM25-only {#bug-037}
+
+| 字段 | 内容 |
+|------|------|
+| **发现日期** | 2026-07-29 |
+| **严重等级** | 🟡 P1 — 约 5~7% 的 OCR 条款块（>512 token）嵌入失败，降级仅 BM25 可检索；内容不丢但语义检索能力静默缺失，混合检索质量降级难以察觉 |
+| **发现场景** | Bug-036 修复后重灌，首文件 80 块中反复出现 `向量请求失败 [InternalServerError]: input (527/620/547 tokens) is too large to process. increase the physical batch size (current batch size: 512)` |
+| **影响模块** | 远程 8081 llama-server 启动参数（缺 `-ub`）、`start_services.sh` L68-70、`scripts/zh-diag.sh` L242（有 `--batch-size 1024` 但缺 `-ub`，物理批次仍 512 — 同源拷贝不一致） |
+| **根因** | nomic-embed 是非因果注意力模型，llama.cpp 要求嵌入请求整段输入一次性放进单个**物理批次**（`--ubatch-size`，默认 512）；旧管线从未产出过 >512 token 的块所以潜伏至今，Bug-036 修复后 ChunkByClause 按条款聚合的长块（520~620 token）首次击穿上限。`-b`（逻辑批次）单调大无效，必须同时调 `-ub` |
+| **修复** | 8081 启动参数增加 `-b 2048 -ub 2048`（nomic 上下文 2048，盖满即可）；同步固化到 `start_services.sh` 与 `scripts/zh-diag.sh` 两处同源拷贝，防服务器重启后回退 |
+| **修复提交** | 0446206f |
+| **关联 Bug** | [Bug-030](#bug-030)（同为"嵌入失败降级"链路：彼时修了"跳过 DB 写入"为"BM25 照写"，本 Bug 验证了该降级正确生效，但暴露降级本身需要告警信号）；[Bug-036](#bug-036)（修复其分块退化后才暴露本 Bug — 修复揭示潜伏缺陷的典型链） |
+| **验证方法** | 重启 8081 后 802 token 长文本嵌入返回 768 维向量（修复前必 500）；后续批次日志零 `向量请求失败` |
+| **教训** | ① **上游修复会改变下游输入分布**：分块策略变更（段落→条款）后，块长分布右移击穿了下游静默假设 — 修一处必须重新压测全链路；② llama.cpp 嵌入服务 `-b`（逻辑）与 `-ub`（物理）必须同时设置，只调 `-b` 无效；③ 同源启动脚本（start_services.sh / zh-diag.sh）参数必须同批同步，否则下次用另一个脚本重启就回退 |
+| **追问深度** | 3 层（L1 500 报错现象 → L2 物理批次 vs 逻辑批次机制（为什么 zh-diag 的 --batch-size 1024 没用）→ L3 为什么现在才暴露（Bug-036 修复改变块长分布）） |
+
+#### 思维链路（对话复盘）
+
+| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
+|:---:|------|------|------|------|------|
+| N1 | 现象确认 | 验收 Bug-036 修复时日志出现新报错：`input (527 tokens) is too large... batch size: 512` | 系统已正确降级（BM25 照写不丢内容），但 5~7% 块永久失去语义检索 | 定性为次级问题，不阻断批次，但必须修 | 忽略（"BM25 还能查"）：语义检索缺口永久化 |
+| N2 | 方案分支 | 服务端调参 vs 代码侧截断到 512 token 再嵌入？ | 截断会丢失条款后半段语义；`-ub 2048` 一行参数解决且 nomic 上下文本就支持 2048 | 服务端 `-b 2048 -ub 2048`，强制收敛到唯一方案 | 代码侧截断：丢语义；改小 ChunkSize：倒退 Bug-036 的条款完整性收益 |
+| N3 | 实现决策 | 正在跑的批次要不要停下来等重启？ | 嵌入只在每文件 OCR 完成后调用一波，重启 8081 只需几秒，撞上的损失与不重启相同 | 立即热重启 8081，越早重启后续 30+ 文件越受益；已损文件事后单独 touch 补灌 | 等整批跑完再重启：后续所有文件继续丢 5~7% 向量 |
+| N4 | 同源拷贝排查 | 本地仓库里还有哪些地方启动 8081？ | grep 发现 start_services.sh（无 -b/-ub）与 zh-diag.sh（有 --batch-size 1024 但缺 -ub，实际无效）两处不一致 | 两处同批固化 `-b 2048 -ub 2048` 并提交 | 只改远程不改脚本：服务器重启即回退 |
+
+---
+
+### Bug-038：增量加载端点可重入 + tracker 批末落盘 — 双增量任务并发删旧重插竞态 {#bug-038}
+
+| 字段 | 内容 |
+|------|------|
+| **发现日期** | 2026-07-29 |
+| **严重等级** | 🟡 P1 — 同文件被两任务交错删旧重插可能产生重复分块污染检索；共享 `_fileTracker` 字典并发写非线程安全；GPU OCR 时间翻倍。本次及时止损未实际产生脏数据 |
+| **发现场景** | 用户未等第一轮整批（job [2]，正在 OCR GB 30000.15）跑完，就执行了"跑完后补 4 文件向量"的命令序列（job [4]）— `jobs` 同时显示两个 incremental-load curl 在跑，api.log 出现第二套增量表头 |
+| **影响模块** | `Agent1.Api/Controllers/KnowledgeBaseController.cs` incremental-load 端点（无并发互斥）、`Agent1/Services/Dialog/ChemicalRAG.cs` L289 `SaveFileTracker()`（仅批末落盘）+ L198 `_fileTracker` 字典（非线程安全） |
+| **根因** | **三层叠加**：① 端点无"已在跑则 409"守卫（对照：Dashboard/scan 已有此保护，见血谱静脉 5），同一长任务可无限重入；② file_tracker 只在整批结束时 SaveFileTracker 落盘，中途被杀进度全丢 → 重跑必须全量；③ 操作手册式命令交付中，"先确认 [2] Done 再执行"的前置条件依赖人工自觉，无技术强制 — 用户看到命令就顺序粘贴了 |
+| **修复** | 应急止损（已完成）：pkill API 杀掉双任务 → 重启 → 单任务重跑（删旧重插幂等性保证收敛，无脏数据残留）。代码层修复（待办）：① incremental-load 加 SemaphoreSlim(1,1) 互斥，已在跑返回 409；② 每文件处理完成后即时 SaveFileTracker，中断可续跑 |
+| **修复提交** | 应急处置无代码变更；互斥锁+逐文件落盘待下批提交 |
+| **关联 Bug** | 血谱静脉 5（Dashboard/scan 的 409+202 模式是现成正确范式，incremental-load 应对齐）；[Bug-006](#bug-006)（同属并发安全族） |
+| **验证方法** | 止损后单任务重跑，api.log 仅一套增量表头；最终验收时抓重复分块：同 source_path 下 chunk 内容去重计数应等于总数 |
+| **教训** | ① **长任务端点必须自带互斥**："已在跑→409"是一行代码的保险，不能依赖操作者自觉；② **进度状态应逐单元落盘**：批末一次性保存在长任务（2~4h）中等于把全部进度押在"不被中断"上；③ **交付给人手执行的命令序列，前置条件必须做成命令自身的守卫**（如 `while ! 条件; do sleep; done` 或合并成单段脚本），注释里的"先确认…再…"会被直接粘贴跳过；④ 删旧重插的幂等设计在事故恢复中价值巨大 — 止损重跑即收敛，无需手工清理 |
+| **追问深度** | 3 层（L1 jobs 双任务现象 → L2 竞态后果推演（同文件交错删插→重复块）→ L3 tracker 落盘时机查证（批末才存→止损后必须全量重跑，但幂等性保证无脏数据）） |
+
+#### 思维链路（对话复盘）
+
+| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
+|:---:|------|------|------|------|------|
+| N1 | 现象确认 | 用户问"现在是不是走上正轨了？"，但 `jobs` 显示 [2] 仍 Running 且 [4] 已启动 | 两个增量任务在同一 API 进程内并发，日志出现第二套表头 | 否定"正轨"判断，立即转入止损分析 | 顺着用户期望说"正常"：竞态窗口持续敲开 |
+| N2 | L1→L2 追问 | 两任务并发的实际后果是什么？ | 任务 [4] 会追上 [2]，对剩余 ~19 文件形成"你删我插"竞态，最坏留下交错重复分块；`_fileTracker` 字典并发写可能直接崩 | 必须杀进程止损，不能只杀 curl（服务端处理不检查 CancellationToken，断客户端不停服务端） | 只 kill curl 进程：服务端双任务照跑不误 |
+| N3 | L2→L3 追问 | 止损后能恢复到哪一步？进度保得住吗？ | 查证 ChemicalRAG.cs：SaveFileTracker 仅在增量循环末尾调用 → 两轮都没跑完从未落盘 → 磁盘 tracker 还是老状态，重跑必然全量 | 如实告知用户"这次会重跑全部 34 个，是唯一一次全价"，并立三条纪律（不重复触发/不 touch/以增量结果摘要为完成标志） | 手工编辑 tracker 伪造进度：风险大于收益，与"0失误"原则冲突 |
+| N4 | 横向对比 | 项目内有没有现成的长任务互斥范式？ | Dashboard/scan 已实现"已在跑?409 : Task.Run+202"（血谱静脉 5），incremental-load 应对齐 | 登记为待办：SemaphoreSlim 互斥 + 逐文件落盘 tracker | 重新设计任务队列：过度工程，现有 409 范式够用 |
+
+---
+
+### Bug-039：SIGTERM 临终遗写僵尸行 — DELETE 扑空+INSERT 撞键+踢出 tracker 组合成单文件自锁死循环 {#bug-039}
+
+| 字段 | 内容 |
+|------|------|
+| **发现日期** | 2026-07-29 |
+| **严重等级** | 🟡 P1 — 单文件（GB 30000.10）进入永久入库失败循环：每轮增量必 ✗1 失败，即使 OCR 13/13 页全成功（7142 字 good）也被僵尸行拦截丢弃；不手工干预永远无法自愈。若未定位，会被误归因为"该文件本身有问题"而反复重跑 |
+| **发现场景** | 第 3 轮重灌 `增量结果: ... ✗1 失败`，api.log L78 定位到 GB 30000.10 报 `23505: duplicate key value violates unique constraint "knowledge_documents_source_path_key"`；第 4 轮重跑中预测并验证它以 `[新增]` 身份再撞同一错误（OCR 13/13 成功后入库仍败） |
+| **影响模块** | `Agent1/Services/Dialog/ChemicalRAG.cs` L221-248 `ProcessChangedFilesAsync`（L234-235 仅 `isTracked` 才删旧、L246 失败踢出 tracker）、L454-463 `RemoveFileFromKnowledgeBaseAsync`（removed=0 时静默无日志）；`Agent1.Api` 后台增量任务未接入 `IHostApplicationLifetime.ApplicationStopping` 取消令牌；运维层：pkill 后未确认进程退出即重启+重触发 |
+| **根因** | **三段式链条，缺一不可**：① 临终遗写 — 止损 pkill 发 SIGTERM，旧 API 进入优雅停机，但后台增量任务不理会取消信号，把手里正在 OCR 的两文件跑完（对着正在咽气的 8083 只成 8/13、4/20 页），于 16:27:43 插入 id=1227（GB 30000.10）、id=1228（GB 30000.18）后才退出；② 竞态窗口 — 新进程 run 3 循环因 8083 对新连接已死、OCR 秒败，几秒内就推进到 GB 30000.10：`[更新]`→DELETE 在 ~16:27:40 扑空 0 行（行还不存在，无 🗑️ 日志）→旧进程 16:27:43 插队→新进程 INSERT 撞 23505；对照组：同一凶手写的 id=1228，run 3 循环轮到 GB 30000.18 时插入已完成，DELETE 命中删掉→重插成功，毫发无伤 — 纯时序差异；③ 自锁死循环 — L246 失败踢出 tracker → 下轮 `isTracked=false` 走 `[新增]` → L234 判断不执行删旧 → 僵尸行还在 → 再撞→再踢→死循环。僵尸行 source_path（PG 查证）与 `GetRelativeSourcePath` 产出完全一致，排除路径键错位 |
+| **修复** | 应急（远程）：批次完成后处决三连 — `DELETE FROM knowledge_documents WHERE file_name LIKE '%30000.10%'` → touch 单文件 → 补一次增量。代码层（✅ 已实施四层，2026-07-29）：① **防御性删除** — `ChemicalRAG.cs` L262 去掉 `isTracked` 判断，插入前无条件 `RemoveFileFromKnowledgeBaseAsync`（DB 有无残留不该由内存 tracker 说了算）+ L454-463 补 removed=0 DBG 日志（教训④）；② **停机取消** — `LoadKnowledgeBaseIncrementalAsync(CancellationToken)` 贯穿两个 foreach（L247 文件循环 / L305 删除检测循环），Controller `IncrementalLoad` 与 Program.cs minimal API 均绑定 `IHostApplicationLifetime.ApplicationStopping`，SIGTERM 后在文件边界收手；③ **进程内互斥+409** — `_incrementalGate = new SemaphoreSlim(1,1)` + `WaitAsync(0)` 立即失败即抛 `IncrementalAlreadyRunningException`，两个调用方均 catch → HTTP 409 Conflict；④ **运维守卫** — pkill 后 `pgrep` 确认退出再重启，因架构边界规则（scripts/ 禁管服务生命周期）落为 runbook 文档而非脚本 |
+| **修复提交** | 应急处置无代码变更；四层代码修复已实施（2026-07-29）：`ChemicalRAG.cs`（SemaphoreSlim 包装方法+Core 重命名+双循环 CancellationToken+无条件删除+DBG 日志）、新建 `IncrementalAlreadyRunningException.cs`、`KnowledgeBaseController.cs` IncrementalLoad（409+ApplicationStopping token）、`Program.cs` incremental-update 端点（409+token）；层④ pgrep 守卫为运维 runbook。构建 0 错误，51/51 相关测试通过 |
+| **关联 Bug** | [Bug-038](#bug-038)（同族：彼为同进程双任务并发，本 Bug 为跨进程新旧交接竞态 — "增量无互斥"的两种形态）；[Bug-029](#bug-029)（同为 source_path 撞键，彼时加了 UNIQUE 约束本身，本 Bug 证明约束正确拦截了脏写但需配套自愈路径）；[Bug-006](#bug-006)（并发安全族） |
+| **验证方法** | 取证链三件套：① PG 查僵尸行 `created_at=16:27:43`（run 3 开跑后数秒，新循环当时还在处理 30871）；② `ps` 仅一个 API 进程（PID 12674，16:27 启）+ api.log 仅两个增量表头（L41 run3/L339 run4）→ 排除双进程并存与双循环；③ `grep id=1227` 在 api.log 中零命中，但 run 3 用户 tail 实时流确凿出现过该行（转录核对）→ 写入者是 stdout 同路径但文件句柄不同的另一进程。修复验收：处决三连后该文件入库成功且后续增量 ✗0 |
+| **教训** | ① **"发了 SIGTERM"≠"已经死了"**：优雅停机给后台任务留了数秒到数十秒的临终窗口，重启+重触发必须等进程真正退出；② **fire-and-forget 后台任务必须持有停机令牌**，否则它的写操作会跑到继任者的时间线上；③ **"删旧"不能依赖内存状态推断 DB 状态**：tracker 说"没追踪"不等于 DB 里没有行，UNIQUE 键存在就应无条件防御性删除；④ **静默的 0 行 DELETE 是重要取证信号**：removed=0 不打日志让"扑空"与"命中"在日志上不可区分，建议补一行 DBG；⑤ **对照组思维**：id=1228 同源同凶手却安然无恙，差异只在时序 — 能把"环境问题"与"文件问题"一刀切开 |
+| **追问深度** | 5 层（L1 ✗1 失败现象 → L2 为什么同键双插（双文件假设，find 推翻）→ L3 串行循环能否自撞（读代码确认 foreach+await 严格串行，推翻）→ L4 键是否错位（PG 查证 source_path 完全一致，推翻）→ L5 谁在什么时间窗口写的（created_at + 双日志差异 + 对照组 id=1228 → 旧进程临终遗写定罪）） |
+
+#### 思维链路（对话复盘）
+
+| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
+|:---:|------|------|------|------|------|
+| N1 | 现象确认 | run 3 摘要 `✗1 失败`，grep 定位 api.log L78：GB 30000.10 撞 23505 | 同一批次内该文件日志上文已"入库成功 id=1227"，后文又"入库失败撞键" — 同键双插 | 首先怀疑双份物理文件（血谱登记过双层嵌套目录） | 当場定性为代码 Bug：证据不足 |
+| N2 | 假设推翻×1 | `find knowledgebase -iname '*30000.10*'` | 只有一份物理文件 — 双文件假设死亡 | 转向怀疑并发：读 ChemicalRAG.cs L221-248 查证循环结构 | 不读代码直接猜并发：串行 foreach+await 会被漏掉 |
+| N3 | 假设推翻×2 | 循环严格串行，单文件单循环内无法同键双插，那键是否错位？ | PG 查证：僵尸行 source_path 与 `GetRelativeSourcePath` 产出逐字符一致（插入/删除 L431 注释明确共用同函数保证键对齐） | “删除键≠插入键”假设也推翻；盯住唯一剩余矛盾：DELETE 0 行与 INSERT 撞键并存 | 继续在路径编码/大小写上找差异：PG 原样输出已排除 |
+| N4 | 关键转折 | `created_at=16:27:43` — run 3 开跑后仅几秒，新循环当时还在 30871 | 时序上必须存在第二个写入者：DELETE 扑空在先、插队在中、撞键在后 | 发两条只读命令定凶手：ps 数进程 + grep 数表头/找 id=1227 | 直接断言双进程：端口独占机制下双 API 同时服务存疑 |
+| N5 | 定罪 | ps 仅一进程、api.log 仅两表头、**grep id=1227 零命中但 run 3 tail 实时流出现过该行**（转录核对确认非记忆偏差） | 写入者=止损前的旧进程：SIGTERM 后后台任务继续跑完手头文件（OCR 8/13、4/20 正是 8083 濒死期指纹）才退出 | Bug-039 从"路径谜案"定罪为"临终遗写+竞态窗口"；对照组 id=1228 自证时序差异 | 归因"日志丢失"：无法解释 DB 里真实存在的行 |
+| N6 | 预测验证 | run 4 开跑前预测：GB 30000.10 失败被踢出 tracker→本轮 [新增]→不删旧→必再撞 | run 4 实况：`[新增]` + OCR 13/13 成功 + 再撞 23505 — 预测完全命中，自锁死循环实锤 | 交付处决三连（DELETE→touch→补增量），约定等主批次跑完再执行 | 立即中断主批次去修单文件：为 1 个文件牺牲 20+ 个文件的批次进度 |
+
+---
+
+### Bug-040：视觉服务 8083 KV Cache 槽位耗尽 + prompt cache 顶格 — OCR 批次 1 分钟后渐进崩死，~20 扫描件 partial 入库且 tracker 记为完成 {#bug-040}
+
+| 字段 | 内容 |
+|------|------|
+| **发现日期** | 2026-07-29 |
+| **严重等级** | 🔴 P0 — 视觉 OCR 服务在增量批次开跑约 1 分钟后渐进崩死；run 3 约 20 个扫描件以「沿用原始提取结果」的 partial 单块入库且 tracker 记为处理完成（不 touch 永不重试）；死状极具迷惑性 — 进程行为像活着、显存反而干净（6.7/24GB），极易误诊为网络或客户端代码问题 |
+| **发现场景** | run 3 批次日志中 OCR 页成功率**渐进恶化**：首文件 8/13 页 → 次文件 4/20 页 → 后续全失败秒败（非断崖式，是资源耗尽指纹）；`vision-8083.log` 在 16:27 停止写入，临终三行：`cache state: 43 prompts, 8022.419 MiB (limits: 8192.000 MiB ...)` + `W decode: failed to find a memory slot for batch of size 724` + `E failed to decode image` |
+| **影响模块** | 远程 8083 llama-server（Qwen2.5-VL 视觉实例）启动参数 — 旧配置 `-c 8192 -np 4`、`--cache-ram` 默认 8192 MiB；`Agent1/Services/Knowledge/PdfOcrService.cs`（客户端只见 HTTP 失败，无法区分服务降级与死亡；L50-54 `maxPages=20, dpi=150` 为设计截断，与本 Bug 无关但排查中被误疑「丢页」）；部署层：8083 启动命令只存在于 shell 历史，`start_services.sh` 未覆盖（同源拷贝缺口，Bug-037 同款病灶） |
+| **根因** | **三个数字的算术必然崩**：① 单页扫描件经视觉编码器产出的图像 prompt 约 **3000~3900 token**（150dpi 页图，日志中 batch of size 724 即图像 token 分片）；② `-c 8192` 是全部 `-np 4` 槽位（slot id 0~3）**共享的统一 KV 池** — 两页并发（约 7000+ token）即把池占满，第三个请求 `failed to find a memory slot`；③ `--cache-ram` 默认 8192 MiB 的 prompt cache 本为「相同前缀复用」设计，但 OCR **每页图像 prompt 全局唯一，复用率恒为 0%**，却仍按页囤积（43 个 prompt × ~190 MB ≈ 8022 MiB 顶格）— 纯负资产。三者叠加 → 槽位逐渐挤死 → 页成功率渐进下降 → 服务假死（进程在、拒绝一切 decode）。**不是显存 OOM**：死后 nvidia-smi 显示 6.7/24GB 干净、dmesg 无 OOM killer 记录 — 死因在 llama-server 自身的 KV/prompt cache 记账层，不在 CUDA 层 |
+| **修复** | 重启 8083 改参：`-c 32768 -np 4 --cache-ram 0` — ① `-c 32768` 使每槽独享 8192 token（32768/4），单槽足纳一页 prompt+输出还有余量，四页真并发互不挤占；KV 开销约 2GB + 模型 6.5GB，24GB 显存充裕；② `--cache-ram 0` 关闭 prompt cache 囤积（复用率 0% 的场景纯属漏水桶）。启动命令固化进部署脚本待办 |
+| **修复提交** | 远程参数已生效；`start_services.sh` 固化 8083 启动段待下批提交 |
+| **关联 Bug** | [Bug-015](#bug-015)/[Bug-016](#bug-016)（主 LLM KV Cache 溢出族 — 本 Bug 是视觉实例版，症状从 FC 退化变成 decode 拒绝）；[Bug-037](#bug-037)（同族「启动参数低估 OCR 负载」：彼为嵌入端 `-ub 512` 物理批次，本为视觉端 KV 池 + prompt cache；且同患「同源拷贝缺口」）；[Bug-034](#bug-034)（8083 部署史 — 从未部署→部署但参数欠估）；[Bug-036](#bug-036)（partial 入库沿用路径是本 Bug 次生灾害的载体） |
+| **验证方法** | 新参数重启后 run 4 全程健康：30871 **20/20 页**成功 20333 字 good→68 块、GB 30000.10 **13/13 页** 7142 字 good、GB 30000.11 **12/13 页**→14 块、GB 30000.12 **14/15 页**→20 块 — 页成功率不再随批次进度衰减；`vision-8083.log` 零 `failed to find a memory slot`。次生灾害清理：run 3 期间 partial 入库的 ~20 个扫描件需 touch 触发重处理（tracker 已记完成，不 touch 不自愈） |
+| **教训** | ① **渐进恶化曲线是资源耗尽的指纹**：8/13→4/20→0 的斜坡与断崖式崩溃（进程崩/网络断）病理完全不同，先看曲线形状再选排查方向；② **「显存干净」不能排除推理服务死亡**：llama-server 的 KV 池与 prompt cache 是自管记账，耗尽时 CUDA 层毫无异常 — 必须看服务自己的 cache state 日志；③ **`-c` 是全槽共享池，不是每槽配额**：设 `-np N` 时单请求可用上下文按最坏 `-c/N` 预算，多模态图像 prompt 动辄数千 token，文本时代的 8192 直觉必然翻车；④ **缓存机制要按复用率评估**：prompt cache 对「相同系统提示反复问答」是加速器，对「每页唯一图像」是纯漏水桶，默认值不是无害的；⑤ **服务死亡的次生灾害要单独清点**：本 Bug 真正的代价不是服务重启，而是 ~20 个文件带着 partial 结果 + tracker 完成标记潜伏下来 — 修完服务必须回头清算病中入库的数据 |
+| **追问深度** | 4 层（L1 页成功率渐进恶化现象 → L2 排除显存 OOM（nvidia-smi 干净 + dmesg 无记录）→ L3 临终三行日志定罪 KV 槽位耗尽 + prompt cache 顶格 → L4 参数算术复盘：3000~3900 token/页 × 并发 vs `-c 8192` 池、43 prompt × ~190MB vs `--cache-ram 8192MiB` 上限） |
+
+#### 思维链路（对话复盘）
+
+| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
+|:---:|------|------|------|------|------|
+| N1 | 现象确认 | run 3 日志 OCR 成功页数一路下滑：8/13 → 4/20 → 全失败 | 斜坡式恶化而非断崖 — 典型资源渐进耗尽指纹，且失败集中在 decode 阶段 | 转向 8083 服务侧排查，暂不动客户端 PdfOcrService | 怀疑 PDF 文件本身质量差：无法解释「同一文件前几页成功后几页失败」 |
+| N2 | 假设推翻 | 是不是显存 OOM 崩了？ | nvidia-smi：服务死后显存 6.7/24GB 反而干净；dmesg 无 OOM killer 记录 | 推翻 CUDA 层假设，进服务自身日志找死因 | 直接降并发/换小模型：没定位机制就调参，撞运气 |
+| N3 | 定罪 | 读 `vision-8083.log` 临终段（16:27 停写） | 三行铁证：`cache state: 43 prompts, 8022.419 MiB (limits: 8192.000 MiB)`（prompt cache 顶格）+ `failed to find a memory slot for batch of size 724`（KV 池无法容纳图像 token 分片）+ `failed to decode image` | 死因锁定：KV 槽位耗尽 + prompt cache 囤爆双重耗尽 | 归因「日志停写=进程崩」：进程实际还在，是假死拒绝服务 |
+| N4 | 机理算术 | 为什么 `-c 8192` 在文本场景够用、OCR 场景 1 分钟就死？ | 每页图像 prompt 3000~3900 token（batch 724 是其分片）；`-c` 为 `-np 4` 全槽**共享**池，两页并发即满；OCR 每页 prompt 唯一 → prompt cache 复用率 0% 却按默认 8192MiB 囤积 43 份 | 修复参数定案：`-c 32768`（每槽 8192）+ `--cache-ram 0`（关囤积）；显存预算 KV~2GB+模型 6.5GB 可行 | 只调大 `--cache-ram`：囤积上限抬高只是延迟死亡，复用率 0% 的缓存该关不该扩 |
+| N5 | 修复验证 + 疑点清算 | run 4 健康度 + 「共 28 页却 20/20 页成功」是否丢页？ | run 4 各文件 20/20、13/13、12/13、14/15 全 good 无衰减；查证 `PdfOcrService.cs` L50-54 构造默认 `maxPages=20, dpi=150`，注释「防超长文档拖垮加载」— 设计截断非 Bug | 判定修复生效；登记两项待办：~20 个 partial 文件 touch 重灌、8083 启动命令固化进脚本 | 把 20/20 当丢页去改 OCR 代码：误把设计当缺陷 |
+
+---
+
+### Bug-041：OCR 失败/降级静默沿用薄文本入库 — 成功判定无质量门，partial 结果永久化且 tracker 记完成 {#bug-041}
+
+| 字段 | 内容 |
+|------|------|
+| **发现日期** | 2026-07-29 |
+| **严重等级** | 🟡 P1 — 依赖服务（8083）的瞬时故障被固化为数据的永久降级：扫描件以封面薄文本（往往仅标题，1 块）入库且 tracker 记完成，不 touch 永不重试；是把 Bug-040「1 分钟崩死」放大成「~20 文件永久降级」的放大器；修完 Bug-040 服务参数后本缺陷依然活着，下次服务重启/网络抖动必复发 |
+| **发现场景** | 复盘 Bug-040 次生灾害时追问「为什么服务崩了文件还算处理成功？」— run 3 日志可见 `⚠️ OCR 未产出有效文本(...)，沿用原始提取结果` 后紧跟 `✅ [xxx]: N页 → 1块 (质量:partial)`，且增量摘要把这些文件计入成功数 |
+| **影响模块** | `Agent1/Services/Dialog/ChemicalRAG.cs` 三处放行：L653-656（OCR 失败只打 ⚠️ 便沿用薄文本）、L659-663（质量门仅拦 "failed"，"partial" 全放行）、L700（无条件 return true）；叠加 L238-240（processor 返 true → `_fileTracker[file]=lastWrite` 记完成）；`PdfExtractor.cs` L205-221（OCR_NEEDED 判定时 Quality="partial"，正是被沿用的薄文本）；`PdfOcrService.cs` L139-144（EvaluateOcrQuality 三级 good/partial/failed，部分页成功也只到 partial） |
+| **根因** | **三处放行串联成「降级永久化」链条**：① L653-656 `ocr.Success==false`（含服务死亡、0 页成功）不阻断流程，沿用的恰是当初触发 OCR_NEEDED 的薄文本；② L659 质量门只拦 `"failed"`，partial 照常走 L672-674 入库；③ L700 无条件 `return true` → 增量循环记 tracker 完成。成功判定的语义是「没抛异常」而非「结果可用」，且降级路径没有任何重试通道 — 与 Bug-035 的 `_initialized=true` 同款哲学（失败置成功标记） |
+| **修复** | ✅ 已实施（2026-07-29，与 Bug-039 同批）：扫描件（ExtractionMethod==OCR_NEEDED）在 `ChemicalRAG.cs` ProcessPdfFileAsync L676-699 加质量门 — ① OCR 彻底失败（`ocr.Success==false`，服务死亡/0 页）→ `return false`（不沿用触发 OCR 的薄文本）；② OCR 成功但按 `PagesOcred/PagesTotal` 比例分级：`Quality=="failed" || pageRatio<0.5` → `return false`。return false 复用现有失败重试机制（踢出 tracker → 下轮增量自动重试），避免瞬时故障固化为永久薄文本降级。应急：run 3 受害的 ~20 个扫描件 touch 后补增量重灌 |
+| **修复提交** | ✅ 已实施（2026-07-29）：`ChemicalRAG.cs` ProcessPdfFileAsync OCR 质量门（OCR 失败 return false + pageRatio<0.5 分级 return false）。构建 0 错误，51/51 相关测试通过 |
+| **关联 Bug** | [Bug-040](#bug-040)（本 Bug 是其崩死后果的放大器 — 服务层故障×管线层无质量门 = 批量永久降级）；[Bug-030](#bug-030)（嵌入失败降级静默化同族）；[Bug-036](#bug-036)（「OCR 成功日志≠入库成功」同源验收教训）；[Bug-035](#bug-035)（失败置成功标记、降级永久化同款哲学） |
+| **验证方法** | ① 构造 8083 停机场景跑增量：预期扫描件计入 ✗ 失败而非 partial 入库，tracker 不含该文件，服务恢复后下轮增量自动重试成功；② run 3 受害文件 touch 重灌后 DB 中 extraction_quality 全部 good、chunk_count 从 1 回升到十数块～数十块；③ xUnit 回归：OCR 失败路径断言 processor 返 false |
+| **教训** | ① **成功判定必须含质量门**：「没抛异常」≠「结果可用」，写 tracker/置完成标记前要问「这个结果配得上完成吗」；② **降级路径必须保留重试通道**：降级可以，但降级+记完成=永久化，依赖服务的瞬时故障不应固化为数据的永久状态；③ **服务层 Bug 修复后要追问管线层为什么没兜住**：Bug-040 是诱因，本 Bug 才是损失被放大的真正机制 — 只修诱因不修放大器，下次换个诱因照样重演 |
+| **追问深度** | 3 层（L1 服务崩了文件为何算成功 → L2 读代码定位三处放行（L653/L659/L700）→ L3 与 Bug-030/035/036 横向对比，提炼「降级永久化」族式病理） |
+
+#### 思维链路（对话复盘）
+
+| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
+|:---:|------|------|------|------|------|
+| N1 | 遗漏扫描 | 用户要求检查本次对话有无漏录 Bug — 逐项盘点发现「~20 文件 partial 入库」只作为 Bug-040 次生灾害提及，产生它的代码机制未立案 | 修完 Bug-040 服务参数后，任何瞬时 OCR 故障仍会永久烧入薄文本 — 独立根因，独立生命周期 | 读代码验证后再立案，不凭印象写档 | 当作 Bug-040 附属细节不立案：修了诱因漏了放大器 |
+| N2 | 代码定罪 | 服务崩死时文件为什么走到「成功」？通读 ChemicalRAG.cs L642-700 | 三处放行串联：L653-656 OCR 失败不阻断、L659 质量门只拦 failed、L700 无条件 return true → L240 tracker 记完成 | 立案 Bug-041（P1 知识管线），归入 Bug-030/035/036 降级静默化族 | 归咎「8083 挂了没办法」：服务故障不可避免，但永久化是管线选择 |
+| N3 | 方案分支 | 修复选「入库但标记待重试」还是「直接 return false」？ | L243-246 现成失败路径语义正好：返 false → 踢出 tracker → 下轮自动重试，零新增状态 | 扫描件 OCR 失败/partial → return false，配 PagesOcred 比例分级防低质文件死循环重试 | 新增「待重试」状态字段：过度工程，现有重试机制够用 |
+
+---
+
+### Bug-042：RRF 去重键随机性下沉到 RetrievedChunk 构造函数默认 Id — Bug-001「假修复」复发，混合检索融合率归零、Top-K 重复占位 {#bug-042}
+
+| 字段 | 内容 |
+|------|------|
+| **发现日期** | 2026-07-30 |
+| **严重等级** | 🔴 P0 — 混合检索名义上是 BM25+向量 RRF 融合，实际融合从未发生：两路对同一分块各算各的分、各占一个 Top-K 席位，等价于「两个半残检索拼在一起」，召回质量/去重/排序全部受损；且是已修复过的 Bug-001 换个马甲复发 |
+| **发现场景** | 扫描件 OCR 重灌后跑检索抽查（rag-test）：所有结果 score 全是 `1/(60+rank+1)` 纯值（0.01639=1/61、0.01613=1/62…），无任何两路求和项；Top-5 出现内容逐字相同、id 却是两个不同 GUID 的重复条目。服务重启后复跑现象稳定复现 → 排除瞬时 |
+| **影响模块** | `Agent1/Services/Knowledge/HybridKnowledgeBaseService.cs` L768-816（RRF 融合）、L864-874（`GetDedupKey`）；`Agent1/Services/Knowledge/RetrievedChunk.cs` L16-22（构造函数默认 `Id = Guid.NewGuid().ToString()`） |
+| **根因** | `GetDedupKey`(L864) 第一分支 `if (!IsNullOrWhiteSpace(chunk.Id)) return $"id:{chunk.Id}"` 看似防御，但 `RetrievedChunk` 构造函数(L18)对每个新对象无条件 `Id = Guid.NewGuid().ToString()` → **Id 永不为空**，内容前缀兜底(L870-871)成死代码。BM25 与向量对同一分块各 new 一个 RetrievedChunk，拿到两个不同随机 GUID → dedup key 永不相等 → RRF Step2(L788) 的 `ContainsKey` 恒 false，累加分支(L791)永不触发 → 每条分数停留在单路 `1.0/(rrfK+rank+1)`。这正是 Bug-001 复发：「P0-4 FIX」把随机性从融合代码里的显式 `Guid.NewGuid()` 挪进了构造函数默认值，缺陷藏得更深 |
+| **修复** | ✅ 已修（`GetDedupKey` L867 改为**内容优先**）：血谱勘测(L2/L3)推翻了「填 DB id」的初判 —— BM25 走内存索引(`KnowledgeBaseService`)，其 `RetrievedChunk.Id` 退化到构造函数默认 GUID；向量走 PG(chunk id) 或 `GpuVectorSearch`(rank 序号)，**两路对同一分块的 Id 从不共享同一空间**，「填 DB id」在 BM25 内存路径无从取得 PG id、不可行。唯一跨检索路稳定的分块身份是 **Content 本身**。故 `GetDedupKey` 改为：内容非空 → `$"c:{Content.Trim()}"`（同块两路 → 同键，去掉旧 `Substring(0,200)` 前缀限制以防前缀碰撞）；内容为空才退回 `Id`；再兜底 `rank`。未动 `RetrievedChunk` 构造函数默认值（避免爆炸半径，content-first 已彻底修复融合） |
+| **修复提交** | ✅ 源码 `HybridKnowledgeBaseService.cs` GetDedupKey(L867) + 5 个 xUnit 回归测试（`HybridKnowledgeBaseServiceTests.cs`，含 `GetDedupKey_Bug042_SameContentDifferentNonNullIds_ShouldProduceSameKey` 守卫），本地 build 0 错、5/5 通过 |
+| **关联 Bug** | [Bug-001](#bug-001)（本 Bug 是其复发 — 同一去重键随机化缺陷，修复被构造函数默认值架空）；[Bug-043](#bug-043)（同批检索层缺陷，同一次 rag-test 抽查暴露） |
+| **验证方法** | ① rag-test：融合成功的分块 score 应 ≈ 两路 RRF 之和（明显 > 单路 `1/61`）；② Top-K 不再出现内容相同 id 不同的重复条目；③ xUnit 回归：造 BM25 与向量对同一分块的结果，断言候选池数 < 两路之和且该分块 score = 两路 RRF 之和 —— 测试须走生产真实路径（对象带非空 Id），**不得手工造 `Id=null` 绕过**（Bug-001 单测正是这样漏掉复发的） |
+| **教训** | ① **「封装成方法」≠「修好了」**：Bug-001 把 `Guid.NewGuid()` 收进 `GetDedupKey` 看着规范，但随机源只是搬了家（进构造函数默认值），缺陷仍在 —— 假修复比不修更危险，因为它带着「已修复」标签；② **防御式判空要对着真实数据流验证**：`IsNullOrWhiteSpace(Id)` 兜底在「Id 恒非空」现实下是死代码，写防御分支必须确认另一条路真能走到；③ **幂等/去重标识符禁用随机默认值**：标识符要么来自数据本身稳定身份（DB id、内容哈希），要么显式缺省，绝不用 `Guid.NewGuid()` 兜底 |
+| **追问深度** | 5 层（L1 score 全是 1/(60+r+1) 纯值 → L2 读 RRF 融合码定位 GetDedupKey → L3 追到 RetrievedChunk 构造函数默认随机 Id 使 Id 分支恒真、内容兜底成死代码 → L4 对照 Bug-001 认定假修复复发 → L5 血谱勘测发现两路 Id 不共享空间、「填 DB id」不可行，改用 content-first 键根治，并重写单测走真实非空 Id 路径） |
+
+#### 思维链路（对话复盘）
+
+| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
+|:---:|------|------|------|------|------|
+| N1 | 现象定性 | rag-test 五条 score 为何全是 `1/(60+r+1)` 纯值、且有内容逐字相同 id 不同的重复 | 融合成功的分数应是两路 RRF 之和，纯单项值 = 融合率 0；重复项 = 同块被当两条 | 判定 RRF 融合未发生，读码定位去重键 | 归因「语料本就无重叠」：重复项内容相同证明是同块，非语料问题 |
+| N2 | 代码定罪 | 读 HybridRetrieveAsync L768-816 与 GetDedupKey L864 | Id 分支恒真（构造函数默认随机 Id），Step2 ContainsKey 恒 false，累加永不触发 | 定位根因在 RetrievedChunk 构造函数默认值架空了 GetDedupKey | 只怪 GetDedupKey：它本身逻辑没错，是上游 Id 被随机化 |
+| N3 | 历史对照 | 这缺陷是否眼熟？查 Bug-001 | Bug-001 就是 Guid.NewGuid() 破坏 RRF；本次「P0-4 FIX」把随机源搬进构造函数 → 复发 | 立案 Bug-042（P0），认定为 Bug-001 假修复复发，反推单测漏网原因 | 当作全新 Bug 编号：割裂了「假修复」这条更重要的教训 |
+
+---
+
+### Bug-043：检索元数据键名读写两端错位 — rag-test 读 source/importance，写入只写 SourceFile/Priority，溯源恒「未知」 {#bug-043}
+
+| 字段 | 内容 |
+|------|------|
+| **发现日期** | 2026-07-30 |
+| **严重等级** | 🟡 P1 — 检索结果全部丢失溯源（source）与重要度（importance）展示，前端/评测无法追溯命中出自哪个国标；数据其实都在 DB（存了 SourceFile/Priority），是读取键名对不上导致的**展示性丢失**，非数据丢失 |
+| **发现场景** | 同 Bug-042，rag-test 输出里每条结果都是 `source:未知`、`importance:未标注`，34 个扫描件全部如此 |
+| **影响模块** | 读取方 `Agent1.Api/Controllers/KnowledgeBaseController.cs` L110-111（`Metadata.TryGetValue("source"...)`、`TryGetValue("importance"...)`）；写入方 `Agent1/Services/Dialog/ChemicalRAG.cs` L520-524/L682-686、`Agent1/Services/Knowledge/HybridKnowledgeBaseService.cs` L477-479（一律写 `SourceFile`/`RegulationType`/`Priority`） |
+| **根因** | rag-test 响应用小写 `source`/`importance` 取值，但整条写入链以 PascalCase `SourceFile`/`Priority` 为主产出（`SourceFile` 对应 source、`Priority` 对应 importance）；`importance` 更是从未被任何生产端写入。读取键与写入键无交集 → `TryGetValue` 恒 miss → 恒落默认值。血谱勘测又发现少数生产端 outlier（`GpuVectorSearch`、分块方法）误写小写 `source`，与主流 PascalCase 不一致。深层根因是元数据用无契约的 `Dictionary<string,object>`，键名靠各处字符串字面量手写，无共享常量约束，读写两端各造各的名字 |
+| **修复** | ✅ 已修：新增 `Agent1/Services/Knowledge/MetadataKeys.cs` 常量类（canonical = PascalCase，沿用主流约定、改动面最小）。① 消费端 `KnowledgeBaseController` L110-111：`source` 读 `MetadataKeys.SourceFile`（miss 回退历史小写别名 `LegacySourceLower`），`importance` 改读 `MetadataKeys.Priority`（概念对应）；② 生产端 outlier 对齐：`GpuVectorSearch`(L719-721) 与三个分块方法的小写 `source` → `MetadataKeys.SourceFile`；③ 其他消费端 `ChemicalComplianceTools`（四处读 `source`）→ `SourceFile` 优先 + 小写别名回退。DatabaseService 两条向量路径本就写 `SourceFile`（L879/931），无需改 |
+| **修复提交** | ✅ `MetadataKeys.cs`（新增）+ `KnowledgeBaseController.cs` + `HybridKnowledgeBaseService.cs`（GpuVectorSearch/分块）+ `ChemicalComplianceTools.cs`；本地 build 0 错，检索相关 69 个回归测试全绿 |
+| **关联 Bug** | [Bug-042](#bug-042)（同批检索层缺陷，同一次 rag-test 抽查暴露） |
+| **验证方法** | rag-test 结果 `source` 显示真实国标文件名、`importance`/优先级显示「高」等真实值，不再是「未知」「未标注」；xUnit 断言响应映射能从 `SourceFile` 键取到值 |
+| **教训** | ① **跨层用字典传数据必须有键名契约**：`Dictionary<string,object>` + 字面量键名 = 编译期零校验的定时炸弹，任一端改名/大小写漂移都静默失效，应改用常量类或强类型 DTO；② **「显示为未知」不能想当然归因数据缺失**：数据在 DB 里好好的，是读取键错位 —— 定位要顺数据流两端对齐看，别停在表象 |
+| **追问深度** | 3 层（L1 全部 `source:未知` → L2 grep 读写两端键名，发现 rag-test 读 source/importance 而写入主流写 SourceFile/Priority、无交集 → L3 血谱勘测确认 PascalCase 为事实 canonical、importance 应映射 Priority、且存在少数小写 source outlier 生产端，定 canonical + 抽常量类 + 小写别名回退） |
+
+#### 思维链路（对话复盘）
+
+| # | 节点类型 | 触发问题 / AI 追问 | 关键发现 | 决策 | 否决的路径 |
+|:---:|------|------|------|------|------|
+| N1 | 现象定性 | 为什么所有结果 source 都是「未知」 | 数据落库时写了 SourceFile（DB 查得到），展示却「未知」→ 读取侧问题 | grep 读取方键名 | 归因「OCR 没提取到来源」：DB 里 SourceFile 明明有值 |
+| N2 | 键名对齐 | 读写两端各用什么键？ | 读 `source`/`importance`（Controller L110-111），写 `SourceFile`/`Priority` — 无交集 | 立案 Bug-043（P1），根因归无键名契约 | 只改 Controller 键名收工：治标，字面量漂移隐患仍在（故补根治项②） |
 
 ---
 

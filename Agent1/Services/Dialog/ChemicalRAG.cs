@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Agent1.Services
@@ -206,7 +207,27 @@ namespace Agent1.Services
         /// 更新场景先按相对路径删除旧文档记录（source_path UNIQUE + CASCADE 级联清分块）再重新入库；
         /// 处理失败的文件不写入追踪器，下次增量自动重试。
         /// </summary>
-        public async Task LoadKnowledgeBaseIncrementalAsync()
+        // [Bug-039 FIX ③] 进程内互斥门：增量更新串行化，并发会造成 DELETE/INSERT 交错撞 source_path UNIQUE（见 Bug-038/039）。
+        // WaitAsync(0) 立即失败而非排队 → 调用方据此返回 409。
+        private static readonly SemaphoreSlim _incrementalGate = new SemaphoreSlim(1, 1);
+
+        public async Task LoadKnowledgeBaseIncrementalAsync(CancellationToken cancellationToken = default)
+        {
+            if (!await _incrementalGate.WaitAsync(0, cancellationToken))
+                throw new IncrementalAlreadyRunningException();
+            try
+            {
+                await LoadKnowledgeBaseIncrementalCoreAsync(cancellationToken);
+            }
+            finally
+            {
+                _incrementalGate.Release();
+            }
+        }
+
+        // [Bug-039 FIX ②] 停机取消：cancellationToken 绑定调用方的 ApplicationStopping，
+        // SIGTERM 后在文件边界收手，杠绝“临终遗写僵尸行”（见 Bug-039 根因①）。
+        private async Task LoadKnowledgeBaseIncrementalCoreAsync(CancellationToken cancellationToken)
         {
             LoadFileTracker();
 
@@ -222,6 +243,12 @@ namespace Agent1.Services
             {
                 foreach (var file in files)
                 {
+                    // [Bug-039 FIX ②] 停机信号到达时在文件边界安全收手，不把手头文件跑完
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        Console.WriteLine("   ⏹️ 收到停机信号(ApplicationStopping)，增量在文件边界安全收手");
+                        break;
+                    }
                     var lastWrite = File.GetLastWriteTimeUtc(file);
                     bool isTracked = _fileTracker!.TryGetValue(file, out var tracked);
                     if (isTracked && lastWrite <= tracked)
@@ -230,9 +257,9 @@ namespace Agent1.Services
                         continue; // 未修改
                     }
 
-                    // 更新场景：source_path 有 UNIQUE 约束，必须先删旧记录（CASCADE 清分块）再重插
-                    if (isTracked)
-                        await RemoveFileFromKnowledgeBaseAsync(file);
+                    // [Bug-039 FIX ①] 无条件防御性删除：DB 是否有残留不能由内存 tracker 推断
+                    //（tracker “没追踪” ≠ DB 无行，如临终遗写的僵尸行）。source_path UNIQUE，先删再插保证幂等。
+                    await RemoveFileFromKnowledgeBaseAsync(file);
 
                     Console.WriteLine($"   {(isTracked ? "[更新]" : "[新增]")} {Path.GetFileName(file)}");
                     if (await processor(file))
@@ -275,6 +302,7 @@ namespace Agent1.Services
             var deletedKeys = new List<string>();
             foreach (var trackedFile in _fileTracker!.Keys)
             {
+                if (cancellationToken.IsCancellationRequested) break;
                 if (!File.Exists(trackedFile))
                 {
                     Console.WriteLine($"   [删除] {Path.GetFileName(trackedFile)}");
@@ -458,6 +486,8 @@ namespace Agent1.Services
                 var removed = await _databaseService.DeleteKnowledgeDocumentBySourcePathAsync(GetRelativeSourcePath(filePath));
                 if (removed > 0)
                     Console.WriteLine($"   🗑️ 已删除文档记录及级联分块: {Path.GetFileName(filePath)}");
+                else
+                    Console.WriteLine($"   ℹ️ [DBG] DELETE 0 行(无旧记录): {Path.GetFileName(filePath)}"); // [Bug-039 教训④] 让“扑空”可见
             }
             await _knowledgeBase.RemoveChunksBySourceFileAsync(filePath);
         }
@@ -649,10 +679,23 @@ namespace Agent1.Services
                         pdfResult.ExtractionMethod = "OCR";
                         pdfResult.Quality = PdfOcrService.EvaluateOcrQuality(ocr.FullText, ocr.PagesOcred);
                         Console.WriteLine($"   ✅ OCR 完成: {ocr.PagesOcred}/{ocr.PagesTotal}页成功 → {ocr.FullText.Length}字 (质量:{pdfResult.Quality})");
+
+                        // [Bug-041 FIX] 扫描件质量门：按页成功比例分级。不达标 return false（不入库、不记 tracker，
+                        // 下轮增量自动重试），避免 Bug-040 瞬时故障被固化为永久薄文本降级。
+                        double pageRatio = ocr.PagesTotal > 0 ? (double)ocr.PagesOcred / ocr.PagesTotal : 0;
+                        if (pdfResult.Quality == "failed" || pageRatio < 0.5)
+                        {
+                            Console.WriteLine($"   ✗ [{fileName}]: OCR 质量不达标(质量:{pdfResult.Quality}, 页成功率:{pageRatio:P0} = {ocr.PagesOcred}/{ocr.PagesTotal})，不入库，下轮增量重试");
+                            _failedFiles++; _failedFileList.Add($"{fileName} (OCR质量不足:{pdfResult.Quality} {ocr.PagesOcred}/{ocr.PagesTotal}页)");
+                            return false;
+                        }
                     }
                     else
                     {
-                        Console.WriteLine($"   ⚠️ OCR 未产出有效文本({ocr.ErrorMessage})，沿用原始提取结果");
+                        // [Bug-041 FIX] OCR 彻底失败（服务死亡/0 页）：不沿用触发 OCR 的薄文本入库，return false 触发下轮重试
+                        Console.WriteLine($"   ✗ [{fileName}]: OCR 失败({ocr.ErrorMessage})，不入库(不沿用薄文本)，下轮增量重试");
+                        _failedFiles++; _failedFileList.Add($"{fileName} (OCR失败:{ocr.ErrorMessage})");
+                        return false;
                     }
                 }
                 //解析文件

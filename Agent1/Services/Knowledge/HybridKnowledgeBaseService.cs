@@ -716,9 +716,9 @@ namespace Agent1.Services
                     Rank = idx,
                     Metadata = new Dictionary<string, object>
                     {
-                        ["RegulationType"] = x.doc.RegulationType ?? "通用",
-                        ["Priority"] = x.doc.Priority ?? "中",
-                        ["source"] = x.doc.SourceFile ?? "GPU索引"
+                        [MetadataKeys.RegulationType] = x.doc.RegulationType ?? "通用",
+                        [MetadataKeys.Priority] = x.doc.Priority ?? "中",
+                        [MetadataKeys.SourceFile] = x.doc.SourceFile ?? "GPU索引"
                     },
                     RetrievalMethod = "GPU-Vector"
                 })
@@ -858,17 +858,20 @@ namespace Agent1.Services
         }
 
         /// <summary>
-        /// [P0-4 FIX] RRF 去重键：优先用 Id，无 Id 时用内容前200字符的确定性哈希。
-        /// 避免 Content 为 null 或退化到 Guid.NewGuid() 导致同名文档无法融合。
+        /// [Bug-042 FIX] RRF 去重键：以规范化全文内容为准，不信任 per-object 的 Id。
+        /// 原因：BM25 走内存索引(KnowledgeBaseService)，其 RetrievedChunk.Id 退化到构造函数默认 Guid.NewGuid()；
+        /// 向量走 PG(chunk id) 或 GpuVectorSearch(rank 序号) —— 两路对同一分块的 Id 从不共享。
+        /// 唯一跨检索路稳定的分块身份是 Content 本身。旧实现优先用 Id → 同块两路键永不相等
+        /// → RRF 累加分支恒不触发、融合率归零、Top-K 重复占位(Bug-001「假修复」复发)。
         /// </summary>
         private static string GetDedupKey(RetrievedChunk chunk, int rank)
         {
-            // 有 Id 直接用
+            // 内容是跨检索路的唯一共享身份，优先据此去重（同块两路 → 同键 → RRF 分数正确累加）
+            if (!string.IsNullOrWhiteSpace(chunk.Content))
+                return $"c:{chunk.Content.Trim()}";
+            // 内容为空才退回 Id（仍非空则用之）
             if (!string.IsNullOrWhiteSpace(chunk.Id))
                 return $"id:{chunk.Id}";
-            // 有内容用内容前缀
-            if (!string.IsNullOrWhiteSpace(chunk.Content))
-                return $"c:{chunk.Content.Trim().Substring(0, Math.Min(200, chunk.Content.Length))}";
             // 最后兜底：用 rank，至少保证同排名可以碰撞
             return $"rank:{rank}";
         }
@@ -940,7 +943,7 @@ namespace Agent1.Services
                         ["chunk_index"] = chunkIndex++
                     };
                     if (sourceFile != null)
-                        metadata["source"] = sourceFile;
+                        metadata[MetadataKeys.SourceFile] = sourceFile;
                     chunks.Add((sectionContent, metadata));
                 }
                 else
@@ -958,7 +961,7 @@ namespace Agent1.Services
                             ["sub_chunk"] = j
                         };
                         if (sourceFile != null)
-                            metadata["source"] = sourceFile;
+                            metadata[MetadataKeys.SourceFile] = sourceFile;
                         chunks.Add((subChunks[j], metadata));
                     }
                 }
@@ -1028,7 +1031,7 @@ namespace Agent1.Services
                         ["chunk_index"] = index++
                     };
                     if (sourceFile != null)
-                        metadata["source"] = sourceFile;
+                        metadata[MetadataKeys.SourceFile] = sourceFile;
                     chunks.Add((chunk, metadata));
                 }
                 start = end;

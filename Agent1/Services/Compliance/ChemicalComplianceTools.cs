@@ -345,7 +345,7 @@ namespace Agent1.Services
             var regSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var c in chunks)
             {
-                if (c.Metadata != null && c.Metadata.TryGetValue("source", out var src))
+                if (c.Metadata != null && (c.Metadata.TryGetValue(MetadataKeys.SourceFile, out var src) || c.Metadata.TryGetValue(MetadataKeys.LegacySourceLower, out src)))
                     ExtractRegulationRefs(src.ToString() ?? "", regSet);
                 ExtractRegulationRefs(c.Content, regSet);
             }
@@ -359,7 +359,7 @@ namespace Agent1.Services
             {
                 var chunk = chunks[i];
                 var chunkSource = "未知来源";
-                if (chunk.Metadata != null && chunk.Metadata.TryGetValue("source", out var src))
+                if (chunk.Metadata != null && (chunk.Metadata.TryGetValue(MetadataKeys.SourceFile, out var src) || chunk.Metadata.TryGetValue(MetadataKeys.LegacySourceLower, out src)))
                     chunkSource = src.ToString() ?? "未知来源";
                 sb.AppendLine($"**【检索结果 {i + 1}】** (来源: {chunkSource}, 相关度: {chunk.Score:P0})");
                 sb.AppendLine(TruncateChunk(chunk.Content));
@@ -776,7 +776,7 @@ namespace Agent1.Services
             var regulationSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var chunk in chunks)
             {
-                if (chunk.Metadata != null && chunk.Metadata.TryGetValue("source", out var src))
+                if (chunk.Metadata != null && (chunk.Metadata.TryGetValue(MetadataKeys.SourceFile, out var src) || chunk.Metadata.TryGetValue(MetadataKeys.LegacySourceLower, out src)))
                 {
                     var sourceStr = src.ToString() ?? "";
                     ExtractRegulationRefs(sourceStr, regulationSet);
@@ -792,7 +792,7 @@ namespace Agent1.Services
             {
                 var chunk = chunks[i];
                 var source = "未知来源";
-                if (chunk.Metadata != null && chunk.Metadata.TryGetValue("source", out var src))
+                if (chunk.Metadata != null && (chunk.Metadata.TryGetValue(MetadataKeys.SourceFile, out var src) || chunk.Metadata.TryGetValue(MetadataKeys.LegacySourceLower, out src)))
                     source = src.ToString() ?? "未知来源";
                 sb.AppendLine($"**【检索结果 {i + 1}】** (来源: {source}, 相关度: {chunk.Score:P0})");
                 sb.AppendLine(TruncateChunk(chunk.Content));

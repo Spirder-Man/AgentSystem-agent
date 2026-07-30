@@ -538,10 +538,19 @@ app.MapPost("/alert/test", async (AlertDispatcher dispatcher, ILogger<Program> l
 // ═══════════════════════════════════════════════════
 // [P3] 知识库增量更新端点 — 仅处理新增/修改/删除的文件
 // ═══════════════════════════════════════════════════
-app.MapPost("/knowledgebase/incremental-update", async (ChemicalRAG chemicalRAG, IKnowledgeBaseService kb) =>
+app.MapPost("/knowledgebase/incremental-update", async (ChemicalRAG chemicalRAG, IKnowledgeBaseService kb, IHostApplicationLifetime lifetime) =>
 {
-    await chemicalRAG.LoadKnowledgeBaseIncrementalAsync();
-    return Results.Ok(new { message = "增量更新完成", documentCount = kb.GetDocumentCount() });
+    try
+    {
+        // [Bug-039 FIX ②] 绑定 ApplicationStopping：SIGTERM 后增量在文件边界安全收手，杜绝临终遗写僵尸行。
+        await chemicalRAG.LoadKnowledgeBaseIncrementalAsync(lifetime.ApplicationStopping);
+        return Results.Ok(new { message = "增量更新完成", documentCount = kb.GetDocumentCount() });
+    }
+    // [Bug-039 FIX ③] 已有增量在运行 → 409 Conflict，避免并发撞 source_path UNIQUE。
+    catch (IncrementalAlreadyRunningException ex)
+    {
+        return Results.Conflict(new { error = ex.Message });
+    }
 });
 
 // ═══════════════════════════════════════════════════

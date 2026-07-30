@@ -140,43 +140,61 @@ public class HybridKnowledgeBaseServiceTests
     // ═══════════════════════════════
 
     [Fact]
-    public void GetDedupKey_HasId_ShouldReturnIdPrefixed()
+    public void GetDedupKey_HasContent_ShouldUseContentPrefix_IgnoringId()
     {
+        // [Bug-042] 内容优先：即使 Id 非空也据内容去重（Id 在两路间从不共享，不可信）
         var chunk = new RetrievedChunk { Id = "chunk-42", Content = "test content" };
         var key = InvokeGetDedupKey(chunk, 0);
 
-        key.Should().Be("id:chunk-42");
+        key.Should().Be("c:test content");
     }
 
     [Fact]
-    public void GetDedupKey_NoId_HasContent_ShouldUseContentPrefix()
+    public void GetDedupKey_Bug042_SameContentDifferentNonNullIds_ShouldProduceSameKey()
     {
-        var chunk = new RetrievedChunk { Id = null, Content = "GB 15603 存储要求摘要" };
+        // [Bug-042 回归守卫] 走生产真实路径：两个对象都带非空 Id（模拟 BM25 随机 GUID vs 向量 PG chunk id）
+        // 同一分块被两路检索到 → Id 不同但内容相同 → 必须产生相同 dedup key，RRF 才能正确融合累加。
+        // 严禁手工造 Id=null 绕过（Bug-001 单测正是这样漏掉复发的）。
+        var bm25Chunk = new RetrievedChunk { Id = Guid.NewGuid().ToString(), Content = "GB 15603 危险化学品储存通则" };
+        var vectorChunk = new RetrievedChunk { Id = "1024", Content = "GB 15603 危险化学品储存通则" };
+
+        bm25Chunk.Id.Should().NotBe(vectorChunk.Id, "前提：两路对同一分块的 Id 本就不同");
+
+        var key1 = InvokeGetDedupKey(bm25Chunk, 1);
+        var key2 = InvokeGetDedupKey(vectorChunk, 5);
+
+        key1.Should().Be(key2, "相同内容的分块无论 Id 与 rank 如何都必须同键，否则 RRF 融合率归零");
+    }
+
+    [Fact]
+    public void GetDedupKey_DifferentContent_ShouldProduceDifferentKeys()
+    {
+        var chunk1 = new RetrievedChunk { Id = "same-id", Content = "内容A" };
+        var chunk2 = new RetrievedChunk { Id = "same-id", Content = "内容B" };
+
+        var key1 = InvokeGetDedupKey(chunk1, 0);
+        var key2 = InvokeGetDedupKey(chunk2, 0);
+
+        key1.Should().NotBe(key2, "不同内容必须产生不同键，避免误融合无关分块");
+    }
+
+    [Fact]
+    public void GetDedupKey_NoContent_HasId_ShouldFallbackToId()
+    {
+        // 内容为空才退回 Id
+        var chunk = new RetrievedChunk { Id = "chunk-99", Content = "" };
         var key = InvokeGetDedupKey(chunk, 3);
 
-        key.Should().StartWith("c:");
-        key.Should().Contain("GB 15603");
+        key.Should().Be("id:chunk-99");
     }
 
     [Fact]
-    public void GetDedupKey_NoId_NoContent_ShouldUseRank()
+    public void GetDedupKey_NoContent_NoId_ShouldUseRank()
     {
         var chunk = new RetrievedChunk { Id = null, Content = null };
         var key = InvokeGetDedupKey(chunk, 7);
 
         key.Should().Be("rank:7");
-    }
-
-    [Fact]
-    public void GetDedupKey_SameContent_DifferentRank_ShouldProduceSameKey()
-    {
-        var chunk1 = new RetrievedChunk { Id = null, Content = "相同内容ABC" };
-        var chunk2 = new RetrievedChunk { Id = null, Content = "相同内容ABC" };
-
-        var key1 = InvokeGetDedupKey(chunk1, 1);
-        var key2 = InvokeGetDedupKey(chunk2, 5);
-
-        key1.Should().Be(key2);
     }
 
     // ═══════════════════════════════

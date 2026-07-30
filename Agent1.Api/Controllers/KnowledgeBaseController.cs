@@ -4,6 +4,8 @@ using Agent1.Config;
 using Agent1.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Agent1.Api.Controllers;
 
@@ -107,8 +109,12 @@ public class KnowledgeBaseController : ControllerBase
                     c.Score,
                     c.Rank,
                     c.RetrievalMethod,
-                    source = c.Metadata.TryGetValue("source", out var src) ? src : "未知",
-                    importance = c.Metadata.TryGetValue("importance", out var imp) ? imp : "未标注"
+                    // [Bug-043 FIX] 读规范键 MetadataKeys.SourceFile（miss 时回退历史小写别名）；
+                    // importance 概念映射到 Priority —— 旧代码读从未被写入的 "importance" 恒落默认值
+                    source = c.Metadata.TryGetValue(MetadataKeys.SourceFile, out var src) ? src
+                        : c.Metadata.TryGetValue(MetadataKeys.LegacySourceLower, out var srcLegacy) ? srcLegacy
+                        : "未知",
+                    importance = c.Metadata.TryGetValue(MetadataKeys.Priority, out var imp) ? imp : "未标注"
                 }),
                 summary = chunks.Count > 0
                     ? $"检索到 {chunks.Count} 条相关文档成果，耗时 {sw.ElapsedMilliseconds}ms"
@@ -136,10 +142,13 @@ public class KnowledgeBaseController : ControllerBase
     public async Task<IActionResult> IncrementalLoad()
     {
         var sw = Stopwatch.StartNew();
+        // [Bug-039 FIX ②] 绑定停机信号：SIGTERM 后增量在文件边界安全收手，杜绝临终遗写僵尸行。
+        var lifetime = HttpContext.RequestServices.GetService<IHostApplicationLifetime>();
+        var stopToken = lifetime?.ApplicationStopping ?? HttpContext.RequestAborted;
         try
         {
             var docCountBefore = _knowledgeBase.GetDocumentCount();
-            await _chemicalRAG.LoadKnowledgeBaseIncrementalAsync();
+            await _chemicalRAG.LoadKnowledgeBaseIncrementalAsync(stopToken);
             var docCountAfter = _knowledgeBase.GetDocumentCount();
             sw.Stop();
 
@@ -154,6 +163,13 @@ public class KnowledgeBaseController : ControllerBase
                 elapsedMs = sw.ElapsedMilliseconds,
                 message = $"增量更新完成，文档数 {docCountBefore} → {docCountAfter}"
             });
+        }
+        // [Bug-039 FIX ③] 已有增量在运行 → 409 Conflict，客户端可退避重试，避免并发撞 source_path UNIQUE。
+        catch (IncrementalAlreadyRunningException ex)
+        {
+            sw.Stop();
+            _logger.LogWarning("知识库增量更新被拒绝：已有任务运行中");
+            return Conflict(new { error = ex.Message, elapsedMs = sw.ElapsedMilliseconds });
         }
         catch (Exception ex)
         {
