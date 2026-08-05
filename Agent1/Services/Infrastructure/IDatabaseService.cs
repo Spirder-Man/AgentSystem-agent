@@ -6,10 +6,22 @@ namespace Agent1.Services
     public interface IDatabaseService
     {
         Task<IDbConnection> GetConnectionAsync();
+        //每次调用给你一个全新的已连接数据库的连接。谁要查数据，先来这儿领钥匙。
         Task<bool> TestConnectionAsync();
+        //探探数据库还活着吗？活着→true，死了→打印原因并返回 false。
+        // 注意它绝不抛异常——这正好是你学过的入口原则三的活例：
+        // TestConnection 是预期分支（数据库可能挂），
+        // 所以用 return false 而不是 throw 报警器。启动时调它判断"能不能继续"。
         Task<string> GetDatabaseInfoAsync();
+        //一次 SQL 问三件事：我在哪个库？什么版本？我是谁？ 拼成人类可读的字符串返回——给诊断/启动横幅用的。
         Task<List<string>> GetTableNamesAsync();
+        //问 PostgreSQL 的"元数据字典"（information_schema）：你这个库里有哪些表？返回 List<string>——给"看库结构"的功能用。
         Task InitializeDatabaseAsync();
+        //启动时跑一次"没有就建"仪式——把项目需要的 9 张表全部 CREATE TABLE IF NOT EXISTS。
+        // 这也是为什么注释说"启动加速：检查数据库是否已有文档"（接口 L30）——表建好才能干活。
+        //三板斧骨架：5 个方法全是 CreateConnection → OpenAsync → 执行 SQL → 返回——门面服务的标准样板
+        //TestConnection 的 catch = 你笔记里的"return 管人的问题"：数据库挂了是预期场景，友好返回 false 而不是甩堆栈
+        // Initialize 幂等：IF NOT EXISTS 风格，启动跑 10 次也不会炸——可重入设计（呼应 Fail-Fast 的"早退比晚退好"：它先确保地基存在才让上层跑）
 
         // 文档管理（P0修复：接收完整 ChemicalDocumentRecord，承载全链路元数据）
         Task AddChemicalDocumentAsync(ChemicalDocumentRecord record);

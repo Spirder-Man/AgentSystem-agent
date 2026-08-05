@@ -291,10 +291,33 @@ namespace Agent1
             // 【生产维度】DI 容器使得每个服务可以被独立单元测试：
             //   测试中注入 Mock<ILlmService> 即可隔离外部 AI 服务依赖。
             // ================================================================
+            //
+            // 【学习笔记·容器本质】ServiceCollection 本质上是一本 Dictionary<类型, 配方>。
+            //   key = 类型（如 ILlmService、AppConfig），value = "怎么造出这个对象"的配方。
+            //   容器的唯一工作：有人通过 sp.GetRequiredService<T>() 或构造器注入要 T
+            //   → 翻字典找 key=T → 找到就按配方 new 出来给 → 找不到就报错。
+            //
+            // 【学习笔记·三要素框架】理解任何一行 AddSingleton，都可以拆成三维：
+            //   ① 登记的：字典里多了什么 key→value
+            //   ② 容器构造的：容器怎么 new 出对象（自动 new / 执行 lambda）
+            //   ③ 方向盘参数：有没有容器翻字典找不到、必须你亲手填的缺口
+            //
+            // 【学习笔记·自动注册 vs 工厂注册·唯一判据】
+            //   看这个类的构造器——所有参数的类型，都在容器字典里存在吗？
+            //   全有 → 自动注册（AddSingleton<I, C>()，容器自己翻字典拿参数、自己 new）
+            //   缺一个 → 工厂注册（sp => { ... }，你亲手 new）
+            //   构造完还需要调方法装配 → 工厂注册（容器只会调构造器，不会"new 完再调方法"）
+            // ================================================================
             var services = new ServiceCollection();
 
             // 【架构】注册配置单例——整个程序共享同一个 AppConfig 实例
             //   AddSingleton(obj) 注册已创建实例（而非每次 new）
+            //
+            // 【学习笔记·字典第一条记录】这一行让 key=AppConfig 进入容器字典。
+            //   从此所有构造器参数类型为 AppConfig 的服务（DatabaseService 等）都能自动解析。
+            //   但 AppConfig 内部的子属性（Llm、Database、ChemicalTool 等）对容器不可见——
+            //   字典的 key 是"类型"，不是"属性名"。List<ToolDefinition> 没有登记，
+            //   所以 ToolService 的第三个参数容器查不到 → 只能工厂注册。
             services.AddSingleton(AppConfig.Instance);
 
             // 【框架】注册日志基础设施
@@ -305,6 +328,16 @@ namespace Agent1
 
             // 【架构】核心服务注册——数据库、会话、记忆三大基础设施
             //   都是接口→实现的映射，方便未来替换底层实现
+            //
+            // 【学习笔记·自动注册范例】这三行是"全自动注册"的标准模板：
+            //   ① SessionService()：零参数 → 零个缺零个 → 容器闭眼 new ✅
+            //   ② DatabaseService(AppConfig)：参数类型 AppConfig → L321 已登记 → 容器自己翻字典拿到 ✅
+            //   ③ MemoryService(ILogger, AppConfig)：两个参数都在字典里 ✅
+            //   判据验证：所有构造参数的类型都作为 key 在字典里存在 → 全自动！
+            //
+            // 【学习笔记·规则四·接口登记】这三个都以接口为 key（IDatabaseService 而非 DatabaseService）。
+            //   判据：它们会被其他服务当依赖注入 → 用接口登记。
+            //   对比：AgentDialog、ModuleDispatcher 是编排终点，不被别人依赖 → 裸类登记。
             services.AddSingleton<IDatabaseService, DatabaseService>();
             services.AddSingleton<ISessionService, SessionService>();
             services.AddSingleton<IMemoryService, MemoryService>();
@@ -327,54 +360,116 @@ namespace Agent1
             // ================================================================
             services.AddSingleton<LlmService>(sp => new LlmService(
                 new Lazy<IKnowledgeBaseService>(() => sp.GetRequiredService<IKnowledgeBaseService>())));
+                //这行是关键：它只是把"到时候去容器拿"的配方装进盒子里，现在不执行（不触发解析）。sp = 容器自己——闭包把它抓住，等以后用。
+                //
+                // 【学习笔记·工厂注册案例1】LlmService 必须工厂注册——不是参数不在字典里，
+                //   而是"Lazy<T> 延迟解析"这种特殊装配步骤，容器不会。
+                //   这里 sp => new(...) 中的 sp 就是容器本人——你从它肚子里拿已登记的东西，
+                //   再结合自己的装配逻辑（Lazy 盒子），造出最终对象。
             services.AddSingleton<ILlmService>(sp => sp.GetRequiredService<LlmService>());
+                // 【学习笔记·规则三·一个类一个身份】LlmService 以 LlmService 和 ILlmService 两个 key 登记？
+                //   不是——这里不是两个独立单例。ILlmService 的配方只是转发到 LlmService 单例
+                //   （sp.GetRequiredService<LlmService>() 返回的是上面那行的同一个实例），
+                //   本质是"别名转发"，不是"两次构造"。规则三说的是不能两个 key 各自 new 一次。
 
             // 【架构】ToolService 是"门面"（Facade）——聚合 LLM + 知识库的能力暴露给外部
+            //
+            // 【学习笔记·工厂注册案例2】ToolService 必须工厂注册——判据验证：
+            //   构造器参数: (ILlmService, IKnowledgeBaseService, List<ToolDefinition>)
+            //   字典里:     ✅ ILlmService        ✅ IKnowledgeBaseService     ❌ List<ToolDefinition>
+            //   缺一个 → 必须工厂注册！
+            //   原因：容器字典里没有 key=List<ToolDefinition>——如果登记了它，
+            //   全系统只能有一个工具列表，另一个服务（如命令注册表）也是 List<ToolDefinition> 会拿错。
+            //   泛型基础类型没有"唯一身份"，这是字典撰写规则一的体现。
             services.AddSingleton<IToolService>(sp =>
             {
-                var llm = sp.GetRequiredService<ILlmService>();
-                var kb = sp.GetRequiredService<IKnowledgeBaseService>();
+                var llm = sp.GetRequiredService<ILlmService>(); //拿大模型
+                var kb = sp.GetRequiredService<IKnowledgeBaseService>(); //拿知识库
                 return new ToolService(llm, kb, AppConfig.Instance.ChemicalTool?.Tools);
+                //现在看这个类型名：List<ToolDefinition>——它太泛了。
+                // ILlmService 自带标签"我是大模型服务"，IDatabaseService 
+                // 自带标签"我是数据库门面"。但 List<ToolDefinition> 
+                // 说出来只是"一个工具定义列表"——万一将来某个服务需要另一个工具列表
+                // （比如命令注册表）也是 List<ToolDefinition> 类型呢？容器分不清，会给同一个。
             });
             services.AddSingleton<AgentDialog>();
+                // 【学习笔记·规则四·裸类登记】AgentDialog 是编辑核心/被测对象，
+                //   不被其他服务当依赖注入 → 裸类登记（不带接口）。
+                //   它构造器的 7 个参数（ILlmService, IToolService 等）全在字典里 → 自动注册。
 
             // 【架构】这里注册 IKnowledgeBaseService → HybridKnowledgeBaseService
             //   而非注册为具体 KnowledgeBaseService（纯内存 BM25 版）
             //   HybridKnowledgeBaseService 是"门面 + 协调者"：
             //   内部组合了 KnowledgeBaseService（BM25 关键词检索）
             //   和 GpuVectorIndexService（向量语义检索），通过 RRF 算法融合结果
+            //
+            // 【学习笔记·工厂注册案例3】HybridKnowledgeBaseService 的构造器参数
+            //   (IDatabaseService, ILlmService, AppConfig) 全在字典里——技术上可以自动注册。
+            //   但选择了手动——因为构造器内部 new 了 KnowledgeBaseService 和 QueryCacheService，
+            //   这两个子对象不走容器，由你亲手控制构造过程。
+            //   → "能自动但选了手动"：方向盘交给容器也能开，但你知道更精确的路线。
             services.AddSingleton<IKnowledgeBaseService>(sp =>
             {
                 var db = sp.GetRequiredService<IDatabaseService>();
                 var llm = sp.GetRequiredService<ILlmService>();
                 return new HybridKnowledgeBaseService(db, llm, AppConfig.Instance);
             });
+            //精修为："语法没有限制（都能写），但选择自动还是手动，取决于你愿不愿意把方向盘交给容器。"
+            // 自动传 = "容器，你比我清楚，全交给你"
+            // 手动传 = "谢谢，我知道你都能拿到，但这辆车我自己开"
+            // ToolService 是你被迫手动（有一个参数不支持自动），HybridKnowledgeBaseService 是你选择手动（能自动但我更清楚怎么造）。
             services.AddSingleton<IIntegrationService, IntegrationService>();
+            //化工园区系统桥接器
+            //对接 ERP/WMS/EHS 外部系统——查仓储台账（危化品）、查工单、同步数据
+            //   【学习笔记·自动注册】构造参数 IDatabaseService + AppConfig 全在字典里 → 自动注册。
+            //   【学习笔记·规则四·接口登记】它是 IIntegrationService——会被其他服务注入 → 用接口。
             services.AddSingleton<IAuditService, AuditService>();
+            //审计门面
+            //调用 DatabaseService.AddAuditLogAsync 记操作日志（之前数据库那 25 个方法里有它），含 SHA256 哈希链防篡改
+            //   【学习笔记·自动注册】同 IntegrationService——参数全在字典里。
             services.AddSingleton<IModuleFactory, ModuleFactory>();
+            //模块工厂
+            // 根据命令类型（ModuleType 枚举）造对应的执行模块——工厂模式，11 行接口只两个方法
             services.AddSingleton<ModuleDispatcher>();
+            //模块调度器
+            // 持有一个工厂 + 已创建模块的字典缓存，ExecuteModuleAsync(type) 派发执行——命令模式的调度中枢
+            //   【学习笔记·规则四·裸类登记】ModuleDispatcher 是调度中枢，不被其他服务注入 → 裸类。
             services.AddSingleton<ResponseCacheService>();
+            //响应缓存
+            //ConcurrentDictionary 内存缓存，用查询文本哈希当 key，默认 60 分钟过期，每 5 分钟清一次——重复问题秒回，不烧 GPU
+            //   【学习笔记·规则四·裸类登记】内部缓存——不暴露给外部依赖 → 裸类。
 
             // [Phase 1 编排层] 巡检编排器 — 将原子能力编排为业务工作流
-            services.AddSingleton<InspectionOrchestrator>();
+            //
+            // 【学习笔记·三层架构·第三层起点】从这里开始进入"编排与规则引擎层"。
+            //   第一层（L329-333）：基础设施——DatabaseService, SessionService, MemoryService
+            //   第二层（L361-435）：核心业务能力——LlmService, ToolService, AuditService 等
+            //   第三层（本段开始）：编排与规则——把第二层的原子能力串成工作流
+            //   第三层全部裸类登记——它们是编排终点/被测对象，不被别人注入。
+            services.AddSingleton<InspectionOrchestrator>();//巡检编排器：把"查库存→查工单→查合规"串成完整巡检报告
 
             // [铁律核心] 确定性规则引擎 — 传统化工安全系统核心范式
-            services.AddSingleton<DeterministicRuleEngine>();
+            services.AddSingleton<DeterministicRuleEngine>();//确定性规则引擎：硬编码化工安全规则（如"苯存储温度≤40°C"），不靠 AI，纯 if/else，100% 可审计
 
             // [Phase 1 编排层] 合规规则引擎 — 对标 Dependency-Track 的漏洞匹配引擎
-            services.AddSingleton<ComplianceRuleEngine>();
+            services.AddSingleton<ComplianceRuleEngine>();//合规规则引擎：对标行业漏洞匹配框架，把法规要求映射到你的化工数据上做合规判断
 
             // [P0 持久化] 巡检数据仓储
-            services.AddSingleton<InspectionRepository>();
+            services.AddSingleton<InspectionRepository>();//巡检数据仓储：巡检结果的持久化存取（你可能发现它肚子里有个 DatabaseService）
 
             // [P1 定时扫描] 自动合规监控
-            services.AddSingleton<ScheduledScanService>();
+            services.AddSingleton<ScheduledScanService>();//定时扫描：自动定期跑合规检查，不需要人点按钮——类似 SessionCleanupHostedService 那种后台工作
 
             // [Phase 1 编排层] 能力注册表 — 范式 4 动态路由
-            services.AddSingleton<CapabilityRegistry>();
+            services.AddSingleton<CapabilityRegistry>();//能力注册表：用"动态路由"把命令分发到对应模块——配合 ModuleDispatcher 做命令→动作的映射
 
             // [Phase 1 编排层] 事件动作订阅器 — 范式 3 事件驱动
             // [P2] 事件订阅生效 — FindingCreated/ScheduledScanCompleted → 审计日志
+            //
+            // 【学习笔记·工厂注册变体·"装配不止构造器"】EventActionDispatcher 的构造器无参数，
+            //   按理能自动注册。但 new 完之后还要调 Subscribe 绑定事件处理——
+            //   容器只会调构造器，不会"构造完再调方法"。所以必须先 new，再 Subscribe，再登记。
+            //   这种"构造 + 方法调用"的两步装配，是工厂注册的第二种触发条件。
             var eventDispatcher = new EventActionDispatcher();
             services.AddSingleton(eventDispatcher);
             eventDispatcher.Subscribe("FindingCreated", async evt =>
@@ -389,13 +484,28 @@ namespace Agent1
             });
 
             // [P1] 告警系统 — 控制台测试通道
-            services.AddSingleton<AlertDispatcher>(sp =>
+            // AlertDispatcher（分发器）           ← 程序入口：只有一个 SendAlertAsync 方法
+            // ├─ ConsoleAlertService（控制台）  ← 最低保障通道：红色高亮输出，始终启用
+            // └─ EmailAlertService（邮件）     ← 可选通道：走 MailKit + SMTP，需配置
+            // 调用方式（任何服务里都可以调）：
+            //await alertDispatcher.SendAlertAsync("LLM熔断", "连续3次失败", AlertLevel.Critical);
+            //                                   ───标题──  ───内容──      ──级别──
+            // 效果：控制台打红色字 + 发邮件给安全员（如果邮件通道启用了）
+            //
+            // 【学习笔记·工厂注册案例4·"装配不止构造器"】AlertDispatcher 构造器零参数，
+            //   但需要两步装配：① new 空壳 ② Register 通道。构造器只做①，②是额外步骤——
+            //   容器只会调构造器，不会"构造完再调方法"，所以必须工厂注册。
+            //   判据验证：构造完还需要调方法装配 → 工厂注册！
+            //   EmailAlertService 需要 7 个配置参数（SmtpHost/密码/收件人等），
+            //   这些全是 string/int，字典里都没有——如果换成自动注册，容器一个都找不到。
+            services.AddSingleton<AlertDispatcher>(sp =>//// 工厂注册，不是业务逻辑
             {
                 var d = new AlertDispatcher();
-                d.Register(new ConsoleAlertService());
+                d.Register(new ConsoleAlertService());// 通道1：控制台（无条件启用）
                 var emailCfg = AppConfig.Instance.Alerting.Email;
                 if (emailCfg.Enabled && !string.IsNullOrWhiteSpace(emailCfg.SmtpHost) && emailCfg.RecipientEmails.Count > 0)
                 {
+                    //// 参数全是配置，容器不认识
                     d.Register(new EmailAlertService(
                         emailCfg.SmtpHost, emailCfg.SmtpPort,
                         emailCfg.SenderEmail, emailCfg.SenderPassword,
@@ -405,6 +515,8 @@ namespace Agent1
             });
 
             // 【架构】Phase 2: 长期记忆——短期会话记忆 + 长期持久化记忆双层体系
+            //   【学习笔记·工厂注册案例5】同 HybridKnowledgeBaseService——参数全在字典里（能自动），
+            //   但选了手动（构造器内部装配可控）。
             services.AddSingleton<ILongTermMemoryService>(sp =>
             {
                 var db = sp.GetRequiredService<IDatabaseService>();
@@ -427,6 +539,33 @@ namespace Agent1
             // [知识图谱] 化工知识图谱服务 — 替代硬编码 ChemicalSubstanceDatabase
             services.AddSingleton<IChemicalKnowledgeGraph, ChemicalKnowledgeGraph>();
             services.AddSingleton<ChemicalNamingInference>();
+
+            // ================================================================
+            // 【学习笔记·容器字典撰写五条规则·全注册表收束】
+            //   以下五条规则从上方全部 AddSingleton 反推得出，每一条都对应"不遵守会怎样"：
+            //
+            //   规则一·强语义身份：进字典的类型必须能唯一标识系统中那个东西。
+            //     ✅ ILlmService（唯一的大模型服务）  ❌ List<ToolDefinition>（哪个列表？）
+            //     自检：类型名说出去，同事能立刻知道是系统中哪个唯一东西吗？
+            //
+            //   规则二·配置走 AppConfig：只登记 AppConfig 整体，子属性不拆开登记。
+            //     ✅ AppConfig.Instance                          ❌ AppConfig.Instance.Database
+            //     谁需要配置就注入 AppConfig，自己在构造器里取 config.Database。
+            //
+            //   规则三·一个类一个身份：绝不以多个 key 登记同一个实现类（会造出两个独立单例）。
+            //     ✅ IDatabaseService → DatabaseService（仅此一个）
+            //     例外：LlmService/ILlmService 是"别名转发"（ILlmService 配方返回同一实例），非两次 new。
+            //
+            //   规则四·接口 vs 裸类：被其他服务依赖的用接口，编排终点/被测对象的用裸类。
+            //     接口登记：IDatabaseService, ILlmService, IAuditService, IToolService...
+            //     裸类登记：AgentDialog, InspectionOrchestrator, DeterministicRuleEngine...
+            //
+            //   规则五·自动 vs 工厂：构造参数全在字典里 → 自动；缺一个/需要方法装配 → 工厂。
+            //     自动注册约占 70%（DatabaseService, SessionService, AuditService...）
+            //     工厂注册约占 30%（LlmService, ToolService, HybridKnowledgeBaseService, AlertDispatcher...）
+            //
+            //   五条规则互为约束，每一行 AddSingleton 都是五条规则同时审过的结果。
+            // ================================================================
 
             // 【框架】BuildServiceProvider() 是 DI 容器的"编译"步骤：
             //   验证所有依赖关系——如果有无法解析的依赖，这里会抛异常。

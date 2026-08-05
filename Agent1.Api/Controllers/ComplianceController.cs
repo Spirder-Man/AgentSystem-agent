@@ -14,18 +14,36 @@ namespace Agent1.Api.Controllers;
 [Authorize(Policy = "Viewer")]
 public class ComplianceController : ControllerBase
 {
-    private readonly AgentDialog _agentDialog;
-    private readonly ILlmService _llmService;
-    private readonly IKnowledgeBaseService _knowledgeBaseService;
-    private readonly IAuditService _auditService;
-    private readonly IIntegrationService _integrationService;
-    private readonly ResponseCacheService _cache;
-    private readonly ILogger<ComplianceController> _logger;
-    private readonly SemaphoreSlim _llmGate;
-    private readonly InspectionRepository _inspectionRepo;
-    private readonly ComplianceRuleEngine _ruleEngine;
 
-    public ComplianceController(
+    //推理编排组
+    private readonly AgentDialog _agentDialog;
+    //对话编排核心--创建会话、执行合规审核/危化品查询/储存兼容性三条业务链路
+    private readonly ILlmService _llmService;
+    //LLM调用门面--这里只用于取
+    private readonly IKnowledgeBaseService _knowledgeBaseService;
+    //知识库检索--作为核验器
+
+    //安全与合规组
+    private readonly IAuditService _auditService;
+    //审计日志|每次查询落一条敏感操作记录（用户名+查询+工具+核验结果）
+    private readonly ILogger<ComplianceController> _logger;
+    //结构化日志
+    private readonly SemaphoreSlim _llmGate;
+    //LLM并发闸门--GPU推理限制并发数2，超限503
+    private readonly InspectionRepository _inspectionRepo;
+    // 巡检数据仓库——提供资产/发现项/最近扫描时间
+    private readonly ComplianceRuleEngine _ruleEngine;
+    //确定性合规规则引擎，汇总巡检数据生成合规态势总览
+
+
+    // 集成与缓存组
+    private readonly IIntegrationService _integrationService;
+    // 工业集成--查库存台账+EHS工单
+    private readonly ResponseCacheService _cache;
+    //响应缓存--三个端点统一“先Get命中直返--处理完Set落缓存”模式，Key各自带前缀
+    public ComplianceController
+    //
+    (
         AgentDialog agentDialog,
         ILlmService llmService,
         IKnowledgeBaseService knowledgeBaseService,
@@ -43,8 +61,9 @@ public class ComplianceController : ControllerBase
         _auditService = auditService;
         _integrationService = integrationService;
         _cache = cache;
-        _logger = logger;
-        _llmGate = llmGate;
+        //横切组
+        _logger = logger;//结构化日志
+        _llmGate = llmGate;//LLM并发闸门--GPU推理限制2并发超限返回503
         _inspectionRepo = inspectionRepo;
         _ruleEngine = ruleEngine;
     }
