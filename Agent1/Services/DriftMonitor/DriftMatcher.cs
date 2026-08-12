@@ -29,6 +29,13 @@ public static class DriftMatcher
     // 下划线标识符（snake_case 表名/字段名，如 audit_logs、chain_hash——含下划线才算，避免误抓普通词）
     private static readonly Regex SnakeToken = new(@"\b[a-z][a-z0-9]*_[a-z0-9_]{2,}\b", RegexOptions.Compiled);
 
+    // 驼峰代码符号（类名/方法名，如 GarbledTextDetector、FactAssembler）
+    // 规则：首字母大写 + 至少一个小写 + 再一个大写 + 任意字母数字后缀。
+    // 排除场景：全大写前缀（SQLite/SHA256——由 UpperToken 管）、无第二大写（Vite/Level1）、
+    // 数字嵌首（Agent1.Api）——避免产品名/通用词/版本号误伤。
+    private static readonly Regex CamelToken = new(
+        @"\b[A-Z][a-z]+[A-Z][A-Za-z0-9]*\b", RegexOptions.Compiled);
+
     /// <summary>
     /// 文本规范化：全角→半角、大写→小写、去空白。
     /// 比对前双方都必须经过本规范化（大小写/全半角/空格差异不算漂移）。
@@ -72,6 +79,8 @@ public static class DriftMatcher
             tokens.Add(Normalize(m.Value)); // 统一小写——文本侧已规范化，Ordinal 比对必须同侧
         foreach (Match m in SnakeToken.Matches(canonicalValue))
             tokens.Add(m.Value);
+        foreach (Match m in CamelToken.Matches(canonicalValue))
+            tokens.Add(Normalize(m.Value)); // 与 UpperToken 同侧小写化，Ordinal 比对必须同侧
         return tokens.Distinct().ToList();
     }
 

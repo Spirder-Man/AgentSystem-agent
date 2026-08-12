@@ -113,6 +113,59 @@ public class DriftPhase2LogicTests
         score.Should().Be(1.0);
     }
 
+    [Fact]
+    public void ExtractStrongTokens_CamelCaseCodeSymbol_Extracted()
+    {
+        // 驼峰类名（代码符号）成为强标记——乱码闸门锚点因此可证伪
+        var tokens = DriftMatcher.ExtractStrongTokens(
+            "GarbledTextDetector 三规则确定性拒收, 乱码块不准入库");
+
+        tokens.Should().Contain("garbledtextdetector");
+    }
+
+    [Fact]
+    public void ExtractStrongTokens_ProductNames_NotExtracted()
+    {
+        // 产品名/通用词/版本号不算代码符号——防误伤契约：
+        // SQLite（全大写前缀）/ Vite（无第二大写）/ Level1（无第二大写）/ Agent1.Api（数字嵌首）
+        DriftMatcher.ExtractStrongTokens("SQLite 排 Level1, Vite 开发, Agent1.Api 启动")
+            .Should().NotContain("sqlite")
+            .And.NotContain("vite")
+            .And.NotContain("level1")
+            .And.NotContain("agent1.api");
+    }
+
+    [Fact]
+    public void IsFalsifiable_GarbledGateAnchor_ReturnsTrue()
+    {
+        // 004 迁移真实锚点：乱码闸门——升级后从不可证伪变为可证伪
+        var anchor = new DriftAnchor { CanonicalValue = "GarbledTextDetector 三规则确定性拒收, 乱码块不准入库" };
+
+        DriftMatcher.IsFalsifiable(anchor).Should().BeTrue();
+    }
+
+    [Fact]
+    public void MatchScore_GarbledGate_CorrectAnswer_Returns1()
+    {
+        // 答对（提到类名）→ 一致
+        var score = DriftMatcher.MatchScore(
+            "乱码文本块在入库前由 GarbledTextDetector 拦截",
+            "GarbledTextDetector 三规则确定性拒收, 乱码块不准入库");
+
+        score.Should().Be(1.0);
+    }
+
+    [Fact]
+    public void MatchScore_GarbledGate_WrongAnswer_Returns0()
+    {
+        // 答错（未提类名）→ 全漂移——修复前这条永远判 1.0
+        var score = DriftMatcher.MatchScore(
+            "乱码文本块在入库前由正则表达式拦截",
+            "GarbledTextDetector 三规则确定性拒收, 乱码块不准入库");
+
+        score.Should().Be(0.0);
+    }
+
     // ═══════════════════════════════════════════
     // DriftClaimExtractor — 断言抽取
     // ═══════════════════════════════════════════
