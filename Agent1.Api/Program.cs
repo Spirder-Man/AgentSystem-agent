@@ -4,6 +4,7 @@ using Agent1.Services;
 using Agent1.Services.Orchestration;
 using Agent1.Services.Logging;
 using Agent1.Services.Logging.Sinks;
+using Agent1.Services.DriftMonitor;
 using Agent1.Services.Monitoring;
 using Agent1.Services.Security;
 using Agent1.Api.Middleware;
@@ -154,6 +155,25 @@ builder.Services.AddSingleton<TokenBlacklistService>();
 
 // [P0-3] 会话清理后台服务 — 每10分钟清理超过30分钟的过期会话，防止内存泄漏
 builder.Services.AddHostedService<SessionCleanupHostedService>();
+
+// [认知漂移监测] 锚点注册表 — 测量仪器的基准电压源（表由 db/migrations/004 创建）
+builder.Services.AddSingleton<DriftAnchorRegistry>(sp =>
+    new DriftAnchorRegistry(sp.GetRequiredService<IDatabaseService>()));
+
+// [认知漂移监测] 测量链路 — 抽取器 + 度量器 + 门面（表由 005 迁移创建）
+builder.Services.AddSingleton<DriftClaimExtractor>();
+builder.Services.AddSingleton<DriftMetricsService>();
+builder.Services.AddSingleton<DriftMonitor>(sp => new DriftMonitor(
+    sp.GetRequiredService<IDatabaseService>(),
+    sp.GetRequiredService<DriftAnchorRegistry>(),
+    sp.GetRequiredService<DriftClaimExtractor>(),
+    sp.GetRequiredService<DriftMetricsService>()));
+
+// [认知漂移监测 Phase 3] 探针调度器 — 定期把黄金问题喂给被测 LLM（表由 006 迁移创建）
+// 单例注册供 [FromServices] 注入（POST /api/drift/probes/run 手动触发），托管引用同一实例
+builder.Services.AddSingleton(AppConfig.Instance.DriftMonitor);
+builder.Services.AddSingleton<DriftProbeScheduler>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<DriftProbeScheduler>());
 
 // [P1] 告警系统 — 注册提前创建的 AlertDispatcher（已含 ConsoleAlertService）
 // 补充注册邮件通道（需在 AppConfig.Load 之后，配置已就绪）
@@ -342,6 +362,8 @@ using (var scope = app.Services.CreateScope())
     {
         logger.LogInformation("数据库连接成功");
         await databaseService.InitializeDatabaseAsync();
+        // [认知漂移监测] 锚点表就绪性检查（缺失仅警告，不阻塞启动）
+        await sp.GetRequiredService<DriftAnchorRegistry>().EnsureInitializedAsync();
     }
     else
     {

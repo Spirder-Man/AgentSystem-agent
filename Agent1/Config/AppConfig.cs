@@ -49,6 +49,9 @@ namespace Agent1.Config
         // Prompt 模板配置
         public PromptTemplateConfig PromptTemplates { get; set; } = new();
 
+        // [认知漂移监测 Phase 3] 探针调度配置
+        public DriftMonitorConfig DriftMonitor { get; set; } = new();
+
         // ── 单例 ──
         private static AppConfig? _instance;
 
@@ -466,6 +469,29 @@ namespace Agent1.Config
             "【专业解读】基于已知事实给出专业分析\n" +
             "【操作建议】具体的行动建议（如有）\n" +
             "【注意事项】需要人工关注的风险点";
+    }
+
+    // [认知漂移监测 Phase 3] 探针调度配置 — 定期把黄金问题喂给被测 LLM
+    // 默认 Enabled=false：未显式开启时不打扰运行（需 006 迁移 + LLM 可用）
+    public class DriftMonitorConfig
+    {
+        /// <summary>总开关：false 时调度器启动即退出，不轮询</summary>
+        public bool Enabled { get; set; } = false;
+
+        /// <summary>轮询间隔（分钟）</summary>
+        public int IntervalMinutes { get; set; } = 60;
+
+        /// <summary>每轮最多测量条数（防止一轮拖太久占用 LLM）</summary>
+        public int MaxPerRun { get; set; } = 5;
+
+        /// <summary>启动后首轮延迟（分钟，等 LLM / DB 就绪）</summary>
+        public int StartupDelayMinutes { get; set; } = 1;
+
+        /// <summary>回答最大 token（轻量生成，够写黄金问题答案）</summary>
+        public int MaxAnswerTokens { get; set; } = 300;
+
+        /// <summary>连续失败多少次后退避（间隔 ×3）</summary>
+        public int MaxConsecutiveFailures { get; set; } = 3;
     }
 
     // [P1] 告警配置

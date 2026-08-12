@@ -1,6 +1,9 @@
 # 敏感配置文件（本地环境变量，禁止提交）
 .env
 
+# 守护进程 PID 文件（运行时动态生成）
+.bloodmap_guard.pid
+
 # .NET
 bin/
 obj/
@@ -125,3 +128,7 @@ _to_delete/
 # 测试控制台输出转储
 logs/*.txt
 logs/E2E-*
+
+# AI 对话日志（不纳入版本控制）
+chatlog/
+.chatlog/

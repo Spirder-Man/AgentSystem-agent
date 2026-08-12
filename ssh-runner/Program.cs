@@ -43,7 +43,7 @@ var password = args[argOffset + 3];
 // ═══════════════════════════════════════════════════════════
 const int CONNECTION_TIMEOUT_SEC = 30;
 const int KEEPALIVE_INTERVAL_SEC = 15;
-const int COMMAND_TIMEOUT_SEC = 30;
+const int COMMAND_TIMEOUT_SEC = 300; // 300s：支持 base64 传输大文件（pg_dump 4.5MB ≈ 6MB 文本）
 const int MAX_CONNECTION_RETRIES = 3;
 
 // ── 上传模式：本地路径 + 远程路径 ──
