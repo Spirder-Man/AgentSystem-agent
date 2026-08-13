@@ -391,14 +391,31 @@ public class LongTermMemoryServiceTests
             .ReturnsAsync(factsJson);
         llmMock.Setup(l => l.GetEmbeddingAsync(It.IsAny<string>()))
             .ReturnsAsync(new float[] { 0.1f, 0.2f, 0.3f });
-        dbMock.Setup(d => d.DeactivateConflictingMemoriesAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
-            .Returns(Task.CompletedTask);
-        dbMock.Setup(d => d.AddLongTermMemoryAsync(It.IsAny<LongTermMemoryRecord>()))
+        dbMock.Setup(d => d.UpsertLongTermMemoryAsync(It.IsAny<LongTermMemoryRecord>()))
             .Returns(Task.CompletedTask);
 
         var svc = new LongTermMemoryService(dbMock.Object, llmMock.Object);
         var records = await svc.RecordAsync("user1", "测试查询", "测试响应");
         records.Should().HaveCount(1);
+        dbMock.Verify(d => d.UpsertLongTermMemoryAsync(It.IsAny<LongTermMemoryRecord>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task RecordAsync_ShortFragment_ShouldSkip()
+    {
+        var dbMock = new Mock<IDatabaseService>();
+        var llmMock = new Mock<ILlmService>();
+        // 纯法规编号等 <16 字符碎片不得入长期记忆（#20）
+        var fact = new ExtractedFact { Type = "regulation_ref", Content = "GB 50140-2005", Importance = 0.9f };
+        var factsJson = JsonSerializer.Serialize(new List<ExtractedFact> { fact });
+        llmMock.Setup(l => l.GenerateSimpleResponseAsync(It.IsAny<string>(), It.IsAny<int>()))
+            .ReturnsAsync(factsJson);
+
+        var svc = new LongTermMemoryService(dbMock.Object, llmMock.Object);
+        var records = await svc.RecordAsync("user1", "查询", "回答");
+
+        records.Should().BeEmpty();
+        dbMock.Verify(d => d.UpsertLongTermMemoryAsync(It.IsAny<LongTermMemoryRecord>()), Times.Never);
     }
 
     [Fact]

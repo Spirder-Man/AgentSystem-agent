@@ -68,10 +68,13 @@ namespace Agent1.Services
         Task<int> GetKnowledgeChunkCountAsync();
 
         // ── 审计日志持久化（生产安全加固）──
-        // [P3 哈希链] chainHash: SHA256 链式哈希，用于检测日志篡改
+        // [P3 哈希链] chainHash: SHA256 链式哈希，用于检测日志篡改；传 null 时内部读链尾强制补算，不再写入 NULL 空洞
         // [P3 哈希链] createTime: 由调用方提供（UTC），确保参与哈希的时间与入库时间一致
         Task AddAuditLogAsync(string userId, string operation, string details, string? ipAddress = null, string? chainHash = null, DateTime? createTime = null);
         Task<List<AuditLog>> GetAuditLogsAsync(DateTime? startTime, DateTime? endTime, string? userId = null);
+        // [P3 哈希链] 全量读回（无 LIMIT 1000），供 VerifyIntegrityAsync / RepairChainAsync 覆盖全链，
+        // 避免验证/修复被截断在最近 1000 条窗口内
+        Task<List<AuditLog>> GetAllAuditLogsAsync();
         // [P3 哈希链] 取尾条 chain_hash，供服务重启后恢复链头，避免断链
         Task<string?> GetLastAuditChainHashAsync();
         // [P3 哈希链修复] 批量回写重算后的 chain_hash（用于一键修复历史断链）
@@ -87,6 +90,9 @@ namespace Agent1.Services
         // Phase 2.1: 长期记忆存储
         // ═══════════════════════════════════════════
         Task AddLongTermMemoryAsync(LongTermMemoryRecord record);
+        // [P2 #17/#18] 幂等写入：同用户+同类型下，先按归一化内容/向量相似度找活跃旧记忆，
+        // 命中则更新旧记忆（不新增、不整组停用），未命中才 INSERT——修复重复泛滥与冲突级联清空
+        Task UpsertLongTermMemoryAsync(LongTermMemoryRecord record);
         Task<List<LongTermMemoryRecord>> SearchLongTermMemoriesAsync(string userId, float[] queryEmbedding, int topK = 5, string? memoryTypeFilter = null);
         Task<List<LongTermMemoryRecord>> SearchLongTermMemoriesByKeywordAsync(string userId, string keyword, int topK = 10);
         Task UpdateMemoryHitAsync(Guid memoryId);

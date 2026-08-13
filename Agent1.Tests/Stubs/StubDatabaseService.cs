@@ -109,6 +109,9 @@ public class StubDatabaseService : IDatabaseService
     public Task<List<AuditLog>> GetAuditLogsAsync(DateTime? startTime, DateTime? endTime, string? userId = null)
         => Task.FromResult(new List<AuditLog>());
 
+    public Task<List<AuditLog>> GetAllAuditLogsAsync()
+        => Task.FromResult(new List<AuditLog>());
+
     // ═══════════════════════════════════════
     // Refresh Token 持久化（内存存储，供 AuthController 使用）
     // ═══════════════════════════════════════
@@ -139,6 +142,9 @@ public class StubDatabaseService : IDatabaseService
     // ═══════════════════════════════════════
 
     public Task AddLongTermMemoryAsync(LongTermMemoryRecord record)
+        => Task.CompletedTask;
+
+    public Task UpsertLongTermMemoryAsync(LongTermMemoryRecord record)
         => Task.CompletedTask;
 
     public Task<List<LongTermMemoryRecord>> SearchLongTermMemoriesAsync(

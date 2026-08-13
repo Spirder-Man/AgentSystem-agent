@@ -197,27 +197,38 @@ namespace Agent1.Tests
         [Fact]
         public void Validate_BadEndpointFormat_ShouldReportError()
         {
-            var config = new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["Llm:ModelId"] = "test-model",
-                    ["Llm:Endpoint"] = "not-an-url",
-                    ["Database:Host"] = "localhost",
-                    ["Database:Port"] = "5432",
-                    ["Database:DatabaseName"] = "testdb",
-                    ["Database:Password"] = "test-password",
-                    ["VectorSearch:EmbeddingModelId"] = "test-embed",
-                    ["PromptTemplates:SystemRole"] = "test-role",
-                    ["PromptTemplates:EvalFastPrompt"] = "test-prompt {SystemRole} {UserInput}",
-                    ["PromptTemplates:EvalFastQueryPrompt"] = "test-query {SystemRole} {UserInput}"
-                })
-                .Build();
-            AppConfig.Load(config);
+            // 清空 LLM_ENDPOINT：AppConfig.Load 会优先读环境变量覆盖 Endpoint，
+            // 若 .env 已注入 LLM_ENDPOINT 将掩盖非法配置，导致断言失败
+            var savedLlmEndpoint = Environment.GetEnvironmentVariable("LLM_ENDPOINT");
+            Environment.SetEnvironmentVariable("LLM_ENDPOINT", null);
+            try
+            {
+                var config = new ConfigurationBuilder()
+                    .AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["Llm:ModelId"] = "test-model",
+                        ["Llm:Endpoint"] = "not-an-url",
+                        ["Database:Host"] = "localhost",
+                        ["Database:Port"] = "5432",
+                        ["Database:DatabaseName"] = "testdb",
+                        ["Database:Password"] = "test-password",
+                        ["VectorSearch:EmbeddingModelId"] = "test-embed",
+                        ["PromptTemplates:SystemRole"] = "test-role",
+                        ["PromptTemplates:EvalFastPrompt"] = "test-prompt {SystemRole} {UserInput}",
+                        ["PromptTemplates:EvalFastQueryPrompt"] = "test-query {SystemRole} {UserInput}"
+                    })
+                    .Build();
+                AppConfig.Load(config);
 
-            var errors = AppConfig.Instance.Validate();
+                var errors = AppConfig.Instance.Validate();
 
-            errors.Should().Contain(e => e.Contains("http"),
-                "非 http 开头的 Endpoint 应报告格式错误");
+                errors.Should().Contain(e => e.Contains("http"),
+                    "非 http 开头的 Endpoint 应报告格式错误");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("LLM_ENDPOINT", savedLlmEndpoint);
+            }
         }
 
         [Fact]
@@ -339,6 +350,7 @@ namespace Agent1.Tests
         [Fact]
         public void Load_WithDbPasswordEnvVar_ShouldOverrideConfig()
         {
+            var savedDbPassword = Environment.GetEnvironmentVariable("DB_PASSWORD");
             try
             {
                 Environment.SetEnvironmentVariable("DB_PASSWORD", "env-secret-pwd");
@@ -350,13 +362,16 @@ namespace Agent1.Tests
             }
             finally
             {
-                Environment.SetEnvironmentVariable("DB_PASSWORD", null);
+                // 恢复原值而非删除 — 删除会污染后续测试（CustomApiWebApplicationFactory
+                // 在 DB_PASSWORD 为空时会注入错误密码 test_pwd_7758521，导致全量测试失败）
+                Environment.SetEnvironmentVariable("DB_PASSWORD", savedDbPassword);
             }
         }
 
         [Fact]
         public void Load_WithLlmEndpointEnvVar_ShouldOverrideConfig()
         {
+            var savedLlmEndpoint = Environment.GetEnvironmentVariable("LLM_ENDPOINT");
             try
             {
                 Environment.SetEnvironmentVariable("LLM_ENDPOINT", "http://gpu-server:8080/v1");
@@ -368,13 +383,14 @@ namespace Agent1.Tests
             }
             finally
             {
-                Environment.SetEnvironmentVariable("LLM_ENDPOINT", null);
+                Environment.SetEnvironmentVariable("LLM_ENDPOINT", savedLlmEndpoint);
             }
         }
 
         [Fact]
         public void Load_WithKbPathEnvVar_ShouldOverrideConfig()
         {
+            var savedKbPath = Environment.GetEnvironmentVariable("KNOWLEDGE_BASE_PATH");
             try
             {
                 Environment.SetEnvironmentVariable("KNOWLEDGE_BASE_PATH", "/app/knowledgebase");
@@ -386,13 +402,14 @@ namespace Agent1.Tests
             }
             finally
             {
-                Environment.SetEnvironmentVariable("KNOWLEDGE_BASE_PATH", null);
+                Environment.SetEnvironmentVariable("KNOWLEDGE_BASE_PATH", savedKbPath);
             }
         }
 
         [Fact]
         public void Load_WithAlertRecipientsEnvVar_ShouldParseCsv()
         {
+            var savedRecipients = Environment.GetEnvironmentVariable("ALERT_RECIPIENT_EMAILS");
             try
             {
                 Environment.SetEnvironmentVariable("ALERT_RECIPIENT_EMAILS", "a@test.com,b@test.com,c@test.com");
@@ -407,7 +424,7 @@ namespace Agent1.Tests
             }
             finally
             {
-                Environment.SetEnvironmentVariable("ALERT_RECIPIENT_EMAILS", null);
+                Environment.SetEnvironmentVariable("ALERT_RECIPIENT_EMAILS", savedRecipients);
             }
         }
 

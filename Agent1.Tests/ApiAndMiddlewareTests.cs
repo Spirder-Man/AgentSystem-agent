@@ -712,7 +712,9 @@ public class ComplianceControllerTests
     [Fact]
     public void GetComplianceSummary_WithAssets_ShouldReturnData()
     {
-        var repo = new InspectionRepository();
+        // 隔离存储路径：无参构造读工作目录 inspection-store.json，
+        // 会被历史测试残留文件污染（TotalFindings 变多）
+        var repo = new InspectionRepository(Path.Combine(Path.GetTempPath(), $"inspection-test-{Guid.NewGuid():N}.json"));
         repo.SaveAssets(ChemicalAsset.CreateDemoInventory());
         var controller = CreateController(repo: repo);
 
@@ -732,7 +734,9 @@ public class ComplianceControllerTests
     [Fact]
     public void GetComplianceSummary_WithFindings_ShouldShowSeverityDistribution()
     {
-        var repo = new InspectionRepository();
+        // 隔离存储路径：无参构造读工作目录 inspection-store.json，
+        // 会被历史测试残留文件污染（TotalFindings 3→57）
+        var repo = new InspectionRepository(Path.Combine(Path.GetTempPath(), $"inspection-test-{Guid.NewGuid():N}.json"));
         repo.SaveAssets(new List<ChemicalAsset>
         {
             ChemicalAsset.FromSubstance("苯", "71-43-2", "甲类仓库", 15, "张三"),

@@ -48,8 +48,19 @@ public class AuditServiceHashChainTests
         db.Setup(x => x.GetAuditLogsAsync(It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>()))
             .Returns(() => Task.FromResult(store.OrderByDescending(l => l.CreateTime).ToList()));
 
+        db.Setup(x => x.GetAllAuditLogsAsync())
+            .Returns(() => Task.FromResult(store.OrderBy(l => l.Id).ToList()));
+
         db.Setup(x => x.GetLastAuditChainHashAsync())
             .Returns(() => Task.FromResult(store.OrderByDescending(l => l.Id).FirstOrDefault()?.ChainHash));
+
+        db.Setup(x => x.UpdateAuditChainHashAsync(It.IsAny<long>(), It.IsAny<string>()))
+            .Returns((long id, string ch) =>
+            {
+                var log = store.First(l => l.Id == id);
+                log.ChainHash = ch;
+                return Task.CompletedTask;
+            });
 
         return db;
     }
@@ -130,5 +141,59 @@ public class AuditServiceHashChainTests
         // 验证通过说明参与哈希的时间与入库时间一致
         var (intact, _, detail) = await audit.VerifyIntegrityAsync();
         intact.Should().BeTrue(detail);
+    }
+
+    [Fact]
+    public async Task NullChainHashRecord_AlarmsInsteadOfSilentSkip()
+    {
+        var store = new List<AuditLog>();
+        var db = BuildInMemoryDb(store);
+        var audit = new AuditService(db.Object);
+
+        await audit.LogOperationAsync("admin", "合规审核", "查询A");
+
+        // 模拟历史旁路直插：链上出现 NULL 哈希空洞
+        store.Add(new AuditLog
+        {
+            Id = store.Count + 1,
+            UserId = "legacy",
+            Operation = "旁路直插",
+            Details = "历史未覆盖链哈希",
+            ChainHash = null,
+            CreateTime = DateTime.UtcNow.AddSeconds(1)
+        });
+
+        var (intact, brokenAtId, detail) = await audit.VerifyIntegrityAsync();
+
+        intact.Should().BeFalse("NULL 哈希是旁路/篡改信号，必须报警而非静默跳过");
+        brokenAtId.Should().NotBeNull();
+        detail.Should().Contain("chain_hash 为空");
+    }
+
+    [Fact]
+    public async Task RepairChain_FillsNullChainHashHole()
+    {
+        var store = new List<AuditLog>();
+        var db = BuildInMemoryDb(store);
+        var audit = new AuditService(db.Object);
+
+        await audit.LogOperationAsync("admin", "合规审核", "查询A");
+
+        // 模拟历史旁路直插：链上出现 NULL 哈希空洞
+        store.Add(new AuditLog
+        {
+            Id = store.Count + 1,
+            UserId = "legacy",
+            Operation = "旁路直插",
+            Details = "历史未覆盖链哈希",
+            ChainHash = null,
+            CreateTime = DateTime.UtcNow.AddSeconds(1)
+        });
+
+        var (repaired, repairDetail) = await audit.RepairChainAsync();
+        repaired.Should().BeGreaterOrEqualTo(1, "应至少修复 NULL 空洞记录: " + repairDetail);
+
+        var (intact, _, verifyDetail) = await audit.VerifyIntegrityAsync();
+        intact.Should().BeTrue("修复后哈希链应完整: " + verifyDetail);
     }
 }

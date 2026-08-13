@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text;
 
 namespace Agent1.Services
@@ -17,30 +16,6 @@ namespace Agent1.Services
         public AuditService(IDatabaseService? db = null)
         {
             _db = db;
-        }
-
-        // [P3 哈希链] 统一归一为 UTC 微秒精度，确保写入时与读回重算时的时间戳一致
-        // - PostgreSQL timestamptz 为微秒精度，C# tick 为 100ns，故截断到 10 tick(=1微秒)的倍数
-        // - Unspecified 视为 UTC，避免 DB 读回时区不确定导致漂移
-        private static DateTime NormalizeToMicroseconds(DateTime dt)
-        {
-            var utc = dt.Kind switch
-            {
-                DateTimeKind.Utc => dt,
-                DateTimeKind.Local => dt.ToUniversalTime(),
-                _ => DateTime.SpecifyKind(dt, DateTimeKind.Utc)
-            };
-            return new DateTime(utc.Ticks - (utc.Ticks % 10), DateTimeKind.Utc);
-        }
-
-        // [P1] 计算哈希链值：SHA256(前一条ChainHash + "|" + 本条内容)
-        private static string ComputeChainHash(string? prevHash, string userId, string operation, string details, DateTime createTime)
-        {
-            // [P3 哈希链] 固定 UTC/微秒格式，避免 :O(100ns) 与 DB 微秒精度不匹配
-            var ts = NormalizeToMicroseconds(createTime).ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ", System.Globalization.CultureInfo.InvariantCulture);
-            var input = $"{prevHash ?? "GENESIS"}|{userId}|{operation}|{details}|{ts}";
-            var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
-            return Convert.ToHexString(hashBytes).ToLowerInvariant();
         }
 
         // [P3 哈希链] 首次写入前从 DB 尾条恢复链头，确保跨重启链连续
@@ -67,10 +42,10 @@ namespace Agent1.Services
             // Task 3: 敏感信息脱敏 — 审计日志写入前对 details 进行脱敏
             var maskedDetails = isSensitive ? SensitiveDataMasker.Mask(details) : details;
             // [P3 哈希链] 使用 UTC/微秒归一时间，同一值既算哈希又写入 DB
-            var createTime = NormalizeToMicroseconds(DateTime.UtcNow);
+            var createTime = AuditChainHash.NormalizeToMicroseconds(DateTime.UtcNow);
 
             // [P1] 计算哈希链
-            var chainHash = ComputeChainHash(_lastChainHash, userId, operation, maskedDetails, createTime);
+            var chainHash = AuditChainHash.ComputeChainHash(_lastChainHash, userId, operation, maskedDetails, createTime);
 
             // 确定 IP（从 HttpContext 获取，此处由调用方通过 details 传递）
             string? ipAddress = null;
@@ -141,6 +116,36 @@ namespace Agent1.Services
             return query.OrderByDescending(l => l.CreateTime).ToList();
         }
 
+        // [P3 哈希链] 全量读回辅助：DB 可用时走 GetAllAuditLogsAsync（无 LIMIT 1000 截断），
+        // 失败降级到窗口查询；无 DB 时走内存快照
+        private async Task<List<AuditLog>> GetFullAuditLogsAsync()
+        {
+            if (_db != null)
+            {
+                try
+                {
+                    return await _db.GetAllAuditLogsAsync();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"   ⚠️ 审计日志全量读回失败，降级到窗口查询: {ex.Message}");
+                    try
+                    {
+                        return await _db.GetAuditLogsAsync(null, null);
+                    }
+                    catch (Exception ex2)
+                    {
+                        Console.WriteLine($"   ⚠️ 审计日志 DB 查询失败，降级到内存: {ex2.Message}");
+                    }
+                }
+            }
+
+            lock (_lock)
+            {
+                return _auditLogs.ToList();
+            }
+        }
+
         public Task<string> ExportAuditReportAsync(DateTime startTime, DateTime endTime)
         {
             List<AuditLog> snapshot;
@@ -178,7 +183,8 @@ namespace Agent1.Services
         // [P1] 验证哈希链完整性：从头逐条重算，检测任何篡改
         public async Task<(bool intact, long? brokenAtId, string detail)> VerifyIntegrityAsync()
         {
-            var logs = await GetAuditLogsAsync(null, null);  // [P3] 此时返回的 AuditLog 含 ChainHash（从 DB 读取）
+            // [P3 哈希链] 全量读回（GetAuditLogsAsync 有 LIMIT 1000，会截断链验证窗口）
+            var logs = await GetFullAuditLogsAsync();
             logs = logs.OrderBy(l => l.Id).ToList();
 
             if (logs.Count == 0)
@@ -187,13 +193,20 @@ namespace Agent1.Services
             string? expectedHash = null;
             foreach (var log in logs)
             {
-                var computed = ComputeChainHash(expectedHash, log.UserId, log.Operation, log.Details, log.CreateTime);
-                if (log.ChainHash != null && !string.Equals(computed, log.ChainHash, StringComparison.OrdinalIgnoreCase))
+                var computed = AuditChainHash.ComputeChainHash(expectedHash, log.UserId, log.Operation, log.Details, log.CreateTime);
+                if (log.ChainHash == null)
+                {
+                    // 历史旁路直插记录（AddAuditLogAsync 未传 chainHash 时）链上出现空哈希，
+                    // 属篡改/旁路信号，必须报警而非静默跳过（可用 RepairChainAsync 回填修复）
+                    return (false, log.Id,
+                        $"哈希链断裂于 ID={log.Id}: 该记录未覆盖哈希链（chain_hash 为空）");
+                }
+                if (!string.Equals(computed, log.ChainHash, StringComparison.OrdinalIgnoreCase))
                 {
                     return (false, log.Id,
                         $"哈希链断裂于 ID={log.Id}: 期望 {computed[..16]}..., 实际 {(log.ChainHash.Length >= 16 ? log.ChainHash[..16] : log.ChainHash)}...");
                 }
-                expectedHash = log.ChainHash ?? computed;
+                expectedHash = log.ChainHash;
             }
 
             return (true, null, $"哈希链完整，共 {logs.Count} 条记录");
@@ -205,7 +218,8 @@ namespace Agent1.Services
             if (_db == null)
                 return (0, "数据库不可用，无法执行修复");
 
-            var logs = await _db.GetAuditLogsAsync(null, null);
+            // [P3 哈希链] 全量读回（GetAuditLogsAsync 有 LIMIT 1000，会截断链修复窗口）
+            var logs = await GetFullAuditLogsAsync();
             logs = logs.OrderBy(l => l.Id).ToList();
 
             if (logs.Count == 0)
@@ -216,7 +230,7 @@ namespace Agent1.Services
 
             foreach (var log in logs)
             {
-                var computed = ComputeChainHash(prevHash, log.UserId, log.Operation, log.Details, log.CreateTime);
+                var computed = AuditChainHash.ComputeChainHash(prevHash, log.UserId, log.Operation, log.Details, log.CreateTime);
 
                 // 仅当哈希不匹配时才回写（避免无意义 UPDATE）
                 if (log.ChainHash == null || !string.Equals(computed, log.ChainHash, StringComparison.OrdinalIgnoreCase))

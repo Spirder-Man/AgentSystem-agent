@@ -83,7 +83,8 @@ namespace Agent1.Tests
             result.StructuredResult.Should().BeOfType<PipelineMetrics>("应包含结构化性能指标");
             var metrics = result.StructuredResult as PipelineMetrics;
             metrics!.TraceId.Should().NotBeNullOrEmpty("每次请求应有唯一 TraceId");
-            metrics.TotalMs.Should().BeGreaterThan(0, "总耗时 > 0");
+            // 全 mock 流水线极快时 ElapsedMilliseconds 可为 0（<1ms），不强制 >0 避免 flaky
+            metrics.TotalMs.Should().BeGreaterThanOrEqualTo(0, "总耗时被采集且非负");
         }
 
         [Fact]

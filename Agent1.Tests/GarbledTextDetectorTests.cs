@@ -74,6 +74,19 @@ public class GarbledTextDetectorTests
         GarbledTextDetector.IsGarbled("   \n\t  ", out _).Should().BeTrue();
     }
 
+    [Fact]
+    public void IsGarbled_WatermarkBlock_Rule4_ReturnsTrue()
+    {
+        // 规则④：扫描版 PDF 水印块——中文占比正常、无连续重复、无异常字符，
+        // 规则①②③全放行，只有黑名单能拦截
+        var sample = "本文档由标准分享网 www.bzfxw.com 免费下载，仅供学习参考使用";
+
+        var garbled = GarbledTextDetector.IsGarbled(sample, out var reason);
+
+        garbled.Should().BeTrue();
+        reason.Should().Contain("水印");
+    }
+
     // ── 反例：正常法规文本不得误杀 ──
 
     [Fact]
@@ -117,5 +130,17 @@ public class GarbledTextDetectorTests
         var garbled = GarbledTextDetector.IsGarbled("氢气储罐与办公楼的安全距离要求", out _);
 
         garbled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsGarbled_NormalTextWithDownloadWord_ReturnsFalse()
+    {
+        // 反例④：法规正文含“下载”但无水印域名/站点名，不得被黑名单误杀
+        var text = "电子档案可按规定程序下载存档，下载记录应保存备查。";
+
+        var garbled = GarbledTextDetector.IsGarbled(text, out var reason);
+
+        garbled.Should().BeFalse();
+        reason.Should().BeEmpty();
     }
 }

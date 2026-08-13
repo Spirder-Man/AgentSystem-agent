@@ -27,6 +27,8 @@ namespace Agent1.Services
             Guid? sourceSessionId = null, int sourceTurnIndex = 0,
             IReadOnlyDictionary<string, string>? toolResults = null)
         {
+            // [#20] 写入前强制归一化 user_id，避免空值/空白导致多用户串扰
+            userId = string.IsNullOrWhiteSpace(userId) ? "default" : userId.Trim();
             var facts = await _extractor.ExtractFactsAsync(userInput, assistantResponse, toolResults);
             var records = new List<LongTermMemoryRecord>();
 
@@ -34,24 +36,30 @@ namespace Agent1.Services
             {
                 try
                 {
-                    // 生成向量嵌入
-                    var embedding = await GenerateEmbeddingAsync(fact.Content);
+                    // [#20] 过滤碎片记忆：纯法规编号/短碎片（<16 字符）检索价值低且易串扰
+                    var content = fact.Content?.Trim() ?? "";
+                    if (content.Length < 16)
+                    {
+                        Console.WriteLine($"   ⚠️ 记忆记录跳过（碎片化内容 {content.Length} 字符）: {content}");
+                        continue;
+                    }
 
-                    // 冲突解决：停用旧版本
-                    await _db.DeactivateConflictingMemoriesAsync(userId, fact.Type, fact.Content);
+                    // 生成向量嵌入
+                    var embedding = await GenerateEmbeddingAsync(content);
 
                     var record = new LongTermMemoryRecord
                     {
                         UserId = userId,
                         MemoryType = fact.Type,
-                        Content = fact.Content,
+                        Content = content,
                         Embedding = embedding,
                         SourceSessionId = sourceSessionId,
                         SourceTurnIndex = sourceTurnIndex,
                         Importance = Math.Clamp(fact.Importance, 0f, 1f),
                     };
 
-                    await _db.AddLongTermMemoryAsync(record);
+                    // [#17/#18] 幂等写入：命中活跃旧记忆则更新，不新增重复、不整组停用
+                    await _db.UpsertLongTermMemoryAsync(record);
                     records.Add(record);
                 }
                 catch (Exception ex)

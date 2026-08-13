@@ -324,13 +324,31 @@ public class ChemicalKnowledgeGraph : IChemicalKnowledgeGraph
             if (_incompatEdges.TryGetValue((bId, aId), out var exactRev)) return exactRev;
         }
 
-        // 类别级判定：检查禁忌类别交叉
+        // [#27/#30 FIX] 类别级判定：既支持“GHS 类别词”，也支持“具体物质名”作为禁忌对象；
+        // 匹配前统一同义词（氨水→氨、氯气→氯、铝粉→铝、氢气→氢、强碱→碱、强酸→酸）
         foreach (var incat in a.IncompatibleWith)
         {
+            var incatNorm = NormalizeCategoryTerm(incat);
+
+            // 具体物质名/别名直接命中 → 禁忌（此前只对 GHS 类别做 contains，导致 82% 死规则）
+            if (string.Equals(b.Name, incatNorm, StringComparison.OrdinalIgnoreCase)
+                || b.Aliases.Any(alias =>
+                    string.Equals(NormalizeCategoryTerm(alias), incatNorm, StringComparison.OrdinalIgnoreCase)))
+            {
+                return new StorageIncompatibilityRule
+                {
+                    SubstanceA = a.Name, SubstanceB = b.Name,
+                    IsCompatible = false,
+                    Reason = $"{a.Name}与{b.Name}存在配伍禁忌（{incat}）",
+                    RegulationRef = "GB 15603"
+                };
+            }
+
             foreach (var hc in b.HazardCategories)
             {
-                if (hc.Category.Contains(incat, StringComparison.OrdinalIgnoreCase)
-                    || incat.Contains(hc.Category, StringComparison.OrdinalIgnoreCase))
+                var hcNorm = NormalizeCategoryTerm(hc.Category);
+                if (hcNorm.Contains(incatNorm, StringComparison.OrdinalIgnoreCase)
+                    || incatNorm.Contains(hcNorm, StringComparison.OrdinalIgnoreCase))
                 {
                     return new StorageIncompatibilityRule
                     {
@@ -340,6 +358,24 @@ public class ChemicalKnowledgeGraph : IChemicalKnowledgeGraph
                         RegulationRef = "GB 15603"
                     };
                 }
+            }
+        }
+
+        // 反向检查：b 的禁忌列表也可能直接命中 a（禁忌关系不依赖表方向）
+        foreach (var incat in b.IncompatibleWith)
+        {
+            var incatNorm = NormalizeCategoryTerm(incat);
+            if (string.Equals(a.Name, incatNorm, StringComparison.OrdinalIgnoreCase)
+                || a.Aliases.Any(alias =>
+                    string.Equals(NormalizeCategoryTerm(alias), incatNorm, StringComparison.OrdinalIgnoreCase)))
+            {
+                return new StorageIncompatibilityRule
+                {
+                    SubstanceA = a.Name, SubstanceB = b.Name,
+                    IsCompatible = false,
+                    Reason = $"{a.Name}与{b.Name}存在配伍禁忌（{incat}）",
+                    RegulationRef = "GB 15603"
+                };
             }
         }
 
@@ -368,10 +404,22 @@ public class ChemicalKnowledgeGraph : IChemicalKnowledgeGraph
     {
         EnsureInitialized();
         var key = facilityPair.Trim();
+        var normalizedKey = NormalizePair(key);
         lock (_lock)
-            return _safetyDistances.FirstOrDefault(s =>
-                s.FacilityPair.Contains(key, StringComparison.OrdinalIgnoreCase)
-                || key.Contains(s.FacilityPair, StringComparison.OrdinalIgnoreCase));
+        {
+            // [#31 FIX] 精确匹配优先；模糊命中按“条目长度倒序”取最特化条目，
+            // 避免泛化条目（储罐-建筑 25m）遮蔽特化条目（液化烃储罐-办公楼 35m）
+            var exact = _safetyDistances.FirstOrDefault(s =>
+                string.Equals(NormalizePair(s.FacilityPair), normalizedKey, StringComparison.OrdinalIgnoreCase));
+            if (exact != null) return exact;
+
+            return _safetyDistances
+                .Where(s =>
+                    normalizedKey.Contains(NormalizePair(s.FacilityPair), StringComparison.OrdinalIgnoreCase)
+                    || NormalizePair(s.FacilityPair).Contains(normalizedKey, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(s => NormalizePair(s.FacilityPair).Length)
+                .FirstOrDefault();
+        }
     }
 
     public IReadOnlyList<SafetyDistanceRule> GetAllSafetyDistances()
@@ -389,12 +437,49 @@ public class ChemicalKnowledgeGraph : IChemicalKnowledgeGraph
         EnsureInitialized();
         var normalizedQuery = KnowledgeBaseService.NormalizeGbNumbers(number);
         lock (_lock)
-            return _regulationVersions.FirstOrDefault(r =>
-                KnowledgeBaseService.NormalizeGbNumbers(r.RegulationNumber)
-                    .Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase)
-                || normalizedQuery.Contains(
+        {
+            // [#36 FIX] 精确匹配优先；否则取“最长编号”的模糊命中，
+            // 避免 GB 30000 总纲遮蔽 GB 30000.1-2024
+            var exact = _regulationVersions.FirstOrDefault(r =>
+                string.Equals(
                     KnowledgeBaseService.NormalizeGbNumbers(r.RegulationNumber),
+                    normalizedQuery,
                     StringComparison.OrdinalIgnoreCase));
+            if (exact != null) return exact;
+
+            return _regulationVersions
+                .Where(r =>
+                    KnowledgeBaseService.NormalizeGbNumbers(r.RegulationNumber)
+                        .Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase)
+                    || normalizedQuery.Contains(
+                        KnowledgeBaseService.NormalizeGbNumbers(r.RegulationNumber),
+                        StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(r => KnowledgeBaseService.NormalizeGbNumbers(r.RegulationNumber).Length)
+                .FirstOrDefault();
+        }
+    }
+
+    /// <summary>设施对归一化：去空白、转小写，用于精确/最长匹配</summary>
+    private static string NormalizePair(string value)
+        => string.Concat(value.Where(c => !char.IsWhiteSpace(c))).ToLowerInvariant();
+
+    /// <summary>
+    /// 禁忌词规范化：把同义不同写的常见词折叠到统一词根，
+    /// 使种子里的“氨水/氨、氯气/氯、铝粉/铝、氢气/氢、强碱/碱、强酸/酸”不再各写一套。
+    /// </summary>
+    private static string NormalizeCategoryTerm(string term)
+    {
+        var trimmed = term.Trim();
+        return trimmed.ToLowerInvariant() switch
+        {
+            "氨水" => "氨",
+            "氯气" => "氯",
+            "铝粉" => "铝",
+            "氢气" => "氢",
+            "强碱" => "碱",
+            "强酸" => "酸",
+            _ => trimmed
+        };
     }
 
     public IReadOnlyList<RegulationVersion> GetAllRegulationVersions()

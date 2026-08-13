@@ -102,8 +102,19 @@ namespace Agent1.Tests
         [Fact]
         public void ChemicalKnowledgeBasePath_ShouldReturnConfiguredValue()
         {
-            AppConfig.Load(BuildConfig("kb-test", kbPath: "/custom/kb/path"));
-            ModelConfig.ChemicalKnowledgeBasePath.Should().Be("/custom/kb/path");
+            // 清空 KNOWLEDGE_BASE_PATH：AppConfig.Load 会优先读环境变量覆盖 BasePath，
+            // 若 .env 已注入 KNOWLEDGE_BASE_PATH 将掩盖测试配置，导致断言失败
+            var savedKbPath = Environment.GetEnvironmentVariable("KNOWLEDGE_BASE_PATH");
+            Environment.SetEnvironmentVariable("KNOWLEDGE_BASE_PATH", null);
+            try
+            {
+                AppConfig.Load(BuildConfig("kb-test", kbPath: "/custom/kb/path"));
+                ModelConfig.ChemicalKnowledgeBasePath.Should().Be("/custom/kb/path");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("KNOWLEDGE_BASE_PATH", savedKbPath);
+            }
         }
     }
 }

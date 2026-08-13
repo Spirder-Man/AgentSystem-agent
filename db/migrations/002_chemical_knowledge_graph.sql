@@ -345,7 +345,7 @@ INSERT INTO chemical_incompatible_categories (substance_id, incompatible_with)
 SELECT id, '氧化剂'   FROM chemical_substances WHERE name='硫化氢' UNION ALL
 SELECT id, '硝酸'     FROM chemical_substances WHERE name='硫化氢' UNION ALL
 SELECT id, '过氧化氢' FROM chemical_substances WHERE name='硫化氢' UNION ALL
-SELECT id, '氯气'     FROM chemical_substances WHERE name='硫化氢';
+SELECT id, '氯'       FROM chemical_substances WHERE name='硫化氢';
 
 -- ▸ 17. 乙炔
 INSERT INTO chemical_substances (name, name_en, cas_number, un_number, formula, physical_state, flash_point_c, boiling_point_c, explosive_lower, explosive_upper, auto_ignition_c, relative_density, vapor_density, major_hazard_threshold_tons)
@@ -454,7 +454,6 @@ SELECT id, '金属腐蚀物',       'GB 30000.17', '类别1'         FROM chemic
 INSERT INTO chemical_incompatible_categories (substance_id, incompatible_with)
 SELECT id, '碱'     FROM chemical_substances WHERE name='氢氟酸' UNION ALL
 SELECT id, '氨'     FROM chemical_substances WHERE name='氢氟酸' UNION ALL
-SELECT id, '氨水'   FROM chemical_substances WHERE name='氢氟酸' UNION ALL
 SELECT id, '玻璃'   FROM chemical_substances WHERE name='氢氟酸' UNION ALL
 SELECT id, '硅酸盐' FROM chemical_substances WHERE name='氢氟酸' UNION ALL
 SELECT id, '金属'   FROM chemical_substances WHERE name='氢氟酸';
@@ -536,7 +535,7 @@ SELECT id, '严重眼损伤/刺激',  'GB 30000.20', '类别2'              FROM
 SELECT id, '致癌性',           'GB 30000.23', '类别2'              FROM chemical_substances WHERE name='三氯甲烷' UNION ALL
 SELECT id, '特异性靶器官毒性 反复接触', 'GB 30000.26', '类别1'     FROM chemical_substances WHERE name='三氯甲烷';
 INSERT INTO chemical_incompatible_categories (substance_id, incompatible_with)
-SELECT id, '强碱'   FROM chemical_substances WHERE name='三氯甲烷' UNION ALL
+SELECT id, '碱'     FROM chemical_substances WHERE name='三氯甲烷' UNION ALL
 SELECT id, '碱金属' FROM chemical_substances WHERE name='三氯甲烷' UNION ALL
 SELECT id, '铝'     FROM chemical_substances WHERE name='三氯甲烷';
 
@@ -593,7 +592,7 @@ SELECT id, '易燃物' FROM chemical_substances WHERE name='氧气' UNION ALL
 SELECT id, '还原剂' FROM chemical_substances WHERE name='氧气' UNION ALL
 SELECT id, '油类'   FROM chemical_substances WHERE name='氧气' UNION ALL
 SELECT id, '乙炔'   FROM chemical_substances WHERE name='氧气' UNION ALL
-SELECT id, '氢气'   FROM chemical_substances WHERE name='氧气';
+SELECT id, '氢'     FROM chemical_substances WHERE name='氧气';
 
 -- ▸ 33. 硫磺
 INSERT INTO chemical_substances (name, name_en, cas_number, un_number, formula, physical_state, flash_point_c, boiling_point_c, explosive_lower, explosive_upper, auto_ignition_c, relative_density, vapor_density, major_hazard_threshold_tons)
@@ -664,7 +663,7 @@ UNION ALL SELECT a.id, b.id, FALSE, '酸碱中和放热，产生有毒氟化铵�
 UNION ALL SELECT a.id, b.id, FALSE, '过氧化物可引发苯乙烯剧烈聚合放热，存在爆炸风险', ''        FROM chemical_substances a, chemical_substances b WHERE a.name='苯乙烯' AND b.name='过氧化氢'
 UNION ALL SELECT a.id, b.id, TRUE,  '同属酸性气体(还原性)，可同库但需有效隔离和通风', ''        FROM chemical_substances a, chemical_substances b WHERE a.name='硫化氢' AND b.name='二氧化硫'
 UNION ALL SELECT a.id, b.id, FALSE, '易燃气体与助燃气体严禁同库，乙炔遇氧爆炸极限极宽(2.5-82%)', 'GB 15603' FROM chemical_substances a, chemical_substances b WHERE a.name='乙炔' AND b.name='氧气'
-UNION ALL SELECT a.id, b.id, TRUE,  '两种强酸可同库分区存放，但需注意硝酸为氧化性需防腐蚀隔离', '' FROM chemical_substances a, chemical_substances b WHERE a.name='硝酸' AND b.name='盐酸'
+UNION ALL SELECT a.id, b.id, FALSE, '硝酸+盐酸=王水，混合放热并产生氯气/亚硝酰氯剧毒气体，严禁同库混存', 'GB 15603' FROM chemical_substances a, chemical_substances b WHERE a.name='硝酸' AND b.name='盐酸'
 UNION ALL SELECT a.id, b.id, FALSE, '氰化钠遇酸产生剧毒氰化氢(HCN)气体，严禁共库',   ''        FROM chemical_substances a, chemical_substances b WHERE a.name='氰化钠' AND b.name='盐酸'
 UNION ALL SELECT a.id, b.id, FALSE, '金属粉末与氧化剂混合可形成爆炸性混合物，严禁混存', ''      FROM chemical_substances a, chemical_substances b WHERE a.name='铝粉' AND b.name='硝酸铵'
 UNION ALL SELECT a.id, b.id, TRUE,  '无明确配伍禁忌，可同库分区存放',                 ''        FROM chemical_substances a, chemical_substances b WHERE a.name='三氯甲烷' AND b.name='丙酮';

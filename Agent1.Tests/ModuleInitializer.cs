@@ -87,7 +87,9 @@ internal static class ModuleInitializer
     /// </summary>
     private static string? FindEnvFile()
     {
-        var dir = AppContext.BaseDirectory;
+        // 先去掉尾部分隔符：GetDirectoryName 对 "...\net8.0\" 只返回 "...\net8.0"，
+        // 若不去尾，首轮迭代会浪费一层，导致 5 层上限够不到项目根 .env。
+        var dir = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
 
         // 向上最多 5 层查找 .env
         for (int i = 0; i < 5; i++)

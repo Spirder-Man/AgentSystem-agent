@@ -1245,7 +1245,15 @@ namespace Agent1.Services
                 await connection.OpenAsync();
 
                 // [P3 哈希链] 显式写入 created_at，使入库时间与参与哈希计算的时间一致（避免 DB 默认 CURRENT_TIMESTAMP 与 C# 时钟不一致）
-                var createdAtUtc = (createTime ?? DateTime.UtcNow).ToUniversalTime();
+                var createdAtUtc = AuditChainHash.NormalizeToMicroseconds(createTime ?? DateTime.UtcNow);
+
+                // [P3 哈希链] 旁路直插兜底：调用方未传 chainHash 时，内部读链尾并强制补算，
+                // 杜绝链上出现 NULL 空洞（历史直插产生过断链，见 VerifyIntegrityAsync 报警分支）
+                if (chainHash == null)
+                {
+                    var prevHash = await GetLastAuditChainHashAsync();
+                    chainHash = AuditChainHash.ComputeChainHash(prevHash, userId, operation, details ?? "", createdAtUtc);
+                }
 
                 var sql = @"
                     INSERT INTO audit_logs (user_id, action, detail, ip_address, chain_hash, created_at)
@@ -1355,6 +1363,39 @@ namespace Agent1.Services
             catch (Exception ex)
             {
                 Console.WriteLine($"   ⚠️ 审计日志查询失败: {ex.Message}");
+            }
+            return results;
+        }
+
+        // [P3 哈希链] 全量读回（无 LIMIT 1000），供 VerifyIntegrityAsync / RepairChainAsync 覆盖全链
+        public async Task<List<AuditLog>> GetAllAuditLogsAsync()
+        {
+            var results = new List<AuditLog>();
+            try
+            {
+                using var connection = CreateConnection();
+                await connection.OpenAsync();
+
+                const string sql = "SELECT id, user_id, action, detail, ip_address, COALESCE(chain_hash, '') as chain_hash, created_at FROM audit_logs ORDER BY id;";
+
+                using var command = new NpgsqlCommand(sql, connection);
+                using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    results.Add(new AuditLog
+                    {
+                        Id = Convert.ToInt64(reader["id"]),
+                        UserId = reader["user_id"]?.ToString() ?? "",
+                        Operation = reader["action"]?.ToString() ?? "",
+                        Details = reader["detail"]?.ToString() ?? "",
+                        CreateTime = reader["created_at"] is DBNull ? DateTime.MinValue : Convert.ToDateTime(reader["created_at"]),
+                        ChainHash = reader["chain_hash"]?.ToString()
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ⚠️ 审计日志全量查询失败: {ex.Message}");
             }
             return results;
         }
@@ -1546,6 +1587,128 @@ namespace Agent1.Services
             }
         }
 
+        public async Task UpsertLongTermMemoryAsync(LongTermMemoryRecord record)
+        {
+            try
+            {
+                using var connection = CreateConnection();
+                await connection.OpenAsync();
+                await using var tx = await connection.BeginTransactionAsync();
+
+                var normalizedSql = @"regexp_replace(lower(content), '[\s\u3000]+', '', 'g')
+                                      = regexp_replace(lower(@content), '[\s\u3000]+', '', 'g')";
+                var similarityClause = "";
+                if (record.Embedding != null)
+                {
+                    // 向量相似度 ≥ 0.92 视为同一事实的不同表述，避免同义重复写入
+                    similarityClause = " OR (embedding IS NOT NULL AND 1 - (embedding <=> @embedding::vector) >= 0.92)";
+                }
+
+                // 第一步：找活跃候选（同用户 + 同类型 + 归一化内容相等或向量近似）
+                var candidateSql = $@"
+                    SELECT id
+                    FROM long_term_memories
+                    WHERE user_id = @userId
+                      AND memory_type = @memoryType
+                      AND is_active = true
+                      AND ({normalizedSql}{similarityClause})
+                    ORDER BY
+                      CASE WHEN {normalizedSql} THEN 0 ELSE 1 END,
+                      created_at DESC
+                    LIMIT 1;
+                ";
+
+                Guid? existingId = null;
+                using (var candidateCmd = new NpgsqlCommand(candidateSql, connection, tx))
+                {
+                    candidateCmd.Parameters.AddWithValue("@userId", record.UserId);
+                    candidateCmd.Parameters.AddWithValue("@memoryType", record.MemoryType);
+                    candidateCmd.Parameters.AddWithValue("@content", record.Content);
+                    if (record.Embedding != null)
+                    {
+                        var vectorString = "[" + string.Join(",", record.Embedding.Select(x => x.ToString("G", System.Globalization.CultureInfo.InvariantCulture))) + "]";
+                        candidateCmd.Parameters.AddWithValue("@embedding", vectorString);
+                    }
+
+                    var result = await candidateCmd.ExecuteScalarAsync();
+                    if (result != null && result != DBNull.Value)
+                        existingId = (Guid)result;
+                }
+
+                if (existingId.HasValue)
+                {
+                    // 命中：更新旧记忆（保留 created_at / hit_count / last_hit_at，避免新事实覆盖历史统计）
+                    var updateSql = @"
+                        UPDATE long_term_memories
+                        SET content = @content,
+                            embedding = @embedding,
+                            source_session_id = @sourceSessionId,
+                            source_turn_index = @sourceTurnIndex,
+                            importance = @importance,
+                            is_active = true,
+                            updated_at = @updatedAt
+                        WHERE id = @id;
+                    ";
+                    using var updateCmd = new NpgsqlCommand(updateSql, connection, tx);
+                    updateCmd.Parameters.AddWithValue("@id", existingId.Value);
+                    updateCmd.Parameters.AddWithValue("@content", record.Content);
+                    if (record.Embedding != null)
+                    {
+                        var vectorString = "[" + string.Join(",", record.Embedding.Select(x => x.ToString("G", System.Globalization.CultureInfo.InvariantCulture))) + "]";
+                        updateCmd.Parameters.AddWithValue("@embedding", vectorString);
+                    }
+                    else
+                    {
+                        updateCmd.Parameters.AddWithValue("@embedding", DBNull.Value);
+                    }
+                    updateCmd.Parameters.AddWithValue("@sourceSessionId", record.SourceSessionId ?? (object)DBNull.Value);
+                    updateCmd.Parameters.AddWithValue("@sourceTurnIndex", record.SourceTurnIndex);
+                    updateCmd.Parameters.AddWithValue("@importance", record.Importance);
+                    updateCmd.Parameters.AddWithValue("@updatedAt", record.UpdatedAt);
+                    await updateCmd.ExecuteNonQueryAsync();
+                }
+                else
+                {
+                    // 未命中：INSERT 新记忆
+                    var insertSql = @"
+                        INSERT INTO long_term_memories (id, user_id, memory_type, content, embedding,
+                            source_session_id, source_turn_index, importance, hit_count, last_hit_at, is_active, created_at, updated_at)
+                        VALUES (@id, @userId, @memoryType, @content, @embedding::vector,
+                            @sourceSessionId, @sourceTurnIndex, @importance, @hitCount, @lastHitAt, @isActive, @createdAt, @updatedAt);
+                    ";
+                    using var insertCmd = new NpgsqlCommand(insertSql, connection, tx);
+                    insertCmd.Parameters.AddWithValue("@id", record.Id);
+                    insertCmd.Parameters.AddWithValue("@userId", record.UserId);
+                    insertCmd.Parameters.AddWithValue("@memoryType", record.MemoryType);
+                    insertCmd.Parameters.AddWithValue("@content", record.Content);
+                    if (record.Embedding != null)
+                    {
+                        var vectorString = "[" + string.Join(",", record.Embedding.Select(x => x.ToString("G", System.Globalization.CultureInfo.InvariantCulture))) + "]";
+                        insertCmd.Parameters.AddWithValue("@embedding", vectorString);
+                    }
+                    else
+                    {
+                        insertCmd.Parameters.AddWithValue("@embedding", DBNull.Value);
+                    }
+                    insertCmd.Parameters.AddWithValue("@sourceSessionId", record.SourceSessionId ?? (object)DBNull.Value);
+                    insertCmd.Parameters.AddWithValue("@sourceTurnIndex", record.SourceTurnIndex);
+                    insertCmd.Parameters.AddWithValue("@importance", record.Importance);
+                    insertCmd.Parameters.AddWithValue("@hitCount", record.HitCount);
+                    insertCmd.Parameters.AddWithValue("@lastHitAt", record.LastHitAt ?? (object)DBNull.Value);
+                    insertCmd.Parameters.AddWithValue("@isActive", record.IsActive);
+                    insertCmd.Parameters.AddWithValue("@createdAt", record.CreatedAt);
+                    insertCmd.Parameters.AddWithValue("@updatedAt", record.UpdatedAt);
+                    await insertCmd.ExecuteNonQueryAsync();
+                }
+
+                await tx.CommitAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"   ⚠️ 长期记忆幂等写入失败: {ex.Message}");
+            }
+        }
+
         public async Task<List<LongTermMemoryRecord>> SearchLongTermMemoriesAsync(string userId, float[] queryEmbedding, int topK = 5, string? memoryTypeFilter = null)
         {
             var results = new List<LongTermMemoryRecord>();
@@ -1681,16 +1844,23 @@ namespace Agent1.Services
                 using var connection = CreateConnection();
                 await connection.OpenAsync();
 
-                // 简单冲突检测：同一用户+同一类型+内容相似（超过50%重叠）即为冲突
+                // [#18 FIX] 冲突检测收窄为“归一化内容完全相同”的重复版本：
+                // 旧实现按 memory_type 整组停用，是 1157→43 记忆空心化的根因。
                 var sql = @"
                     UPDATE long_term_memories
                     SET is_active = false, updated_at = CURRENT_TIMESTAMP
                     WHERE user_id = @userId
                       AND memory_type = @memoryType
                       AND is_active = true
+                      AND regexp_replace(lower(content), '[\s\u3000]+', '', 'g')
+                          = regexp_replace(lower(@content), '[\s\u3000]+', '', 'g')
                       AND id != (
                           SELECT id FROM long_term_memories
-                          WHERE user_id = @userId AND memory_type = @memoryType AND content = @content AND is_active = true
+                          WHERE user_id = @userId
+                            AND memory_type = @memoryType
+                            AND regexp_replace(lower(content), '[\s\u3000]+', '', 'g')
+                                = regexp_replace(lower(@content), '[\s\u3000]+', '', 'g')
+                            AND is_active = true
                           ORDER BY created_at DESC LIMIT 1
                       );
                 ";

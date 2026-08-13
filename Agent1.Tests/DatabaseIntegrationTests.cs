@@ -25,6 +25,10 @@ namespace Agent1.Tests;
 [Trait("Category", "Integration")]
 public class DatabaseIntegrationTests : IAsyncLifetime
 {
+    // 所有本类写入的业务数据必须携带该标记；Dispose 只按标记清理，
+    // 严禁 DELETE 整表，避免集成测试误删本地/开发库的真实知识数据。
+    private const string TestMarker = "codex-itest-20260813";
+
     private DatabaseService _db = null!;
     private AppConfig _config = null!;
 
@@ -56,15 +60,30 @@ public class DatabaseIntegrationTests : IAsyncLifetime
         await _db.InitializeDatabaseAsync();
     }
 
-    /// <summary>测试后: 清理测试数据（双层表 + 旧表）</summary>
+    /// <summary>测试后: 只清理本测试类写入的标记数据（双层表 + 旧表）</summary>
     public async Task DisposeAsync()
     {
-        try { await _db.ClearChemicalDocumentsAsync(); } catch { /* 静默清理 */ }
         try
         {
             using var conn = await _db.GetConnectionAsync();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "DELETE FROM knowledge_chunks; DELETE FROM knowledge_documents;";
+            cmd.CommandText = @"
+                DELETE FROM knowledge_documents
+                WHERE source_path LIKE '%' || @marker || '%'
+                   OR file_name LIKE '%' || @marker || '%';
+
+                DELETE FROM chemical_documents
+                WHERE source_file LIKE '%' || @marker || '%'
+                   OR content LIKE '%' || @marker || '%';
+
+                DELETE FROM long_term_memories
+                WHERE user_id LIKE '%' || @marker || '%'
+                   OR content LIKE '%' || @marker || '%';
+            ";
+            var markerParam = cmd.CreateParameter();
+            markerParam.ParameterName = "marker";
+            markerParam.Value = TestMarker;
+            cmd.Parameters.Add(markerParam);
             cmd.ExecuteNonQuery();
         }
         catch { /* 静默清理 */ }
@@ -114,10 +133,10 @@ public class DatabaseIntegrationTests : IAsyncLifetime
 
         var record = new ChemicalDocumentRecord
         {
-            Content = "GB 30000.7-2013 易燃液体: 闪点 ≤ 60°C 的液体",
+            Content = $"{TestMarker} GB 30000.7-2013 易燃液体: 闪点 ≤ 60°C 的液体",
             RegulationType = "国标",
             Priority = "高",
-            SourceFile = "GB30000.7-2013.pdf",
+            SourceFile = $"{TestMarker}-GB30000.7-2013.pdf",
             PageNumber = 1,
             Embedding = null // 集成测试不测向量检索
         };
@@ -132,9 +151,9 @@ public class DatabaseIntegrationTests : IAsyncLifetime
     {
         var batch = new List<ChemicalDocumentRecord>
         {
-            new() { Content = "GB 30000.2-2013 爆炸物分类与标签规范", RegulationType = "国标", Priority = "高", PageNumber = 1 },
-            new() { Content = "GB 30000.3-2013 易燃气体储存安全要求", RegulationType = "国标", Priority = "高", PageNumber = 1 },
-            new() { Content = "GB 30000.7-2013 易燃液体运输管理规定", RegulationType = "国标", Priority = "高", PageNumber = 1 }
+            new() { Content = $"{TestMarker} GB 30000.2-2013 爆炸物分类与标签规范", RegulationType = "国标", Priority = "高", PageNumber = 1, SourceFile = $"{TestMarker}-gb30000.2.pdf" },
+            new() { Content = $"{TestMarker} GB 30000.3-2013 易燃气体储存安全要求", RegulationType = "国标", Priority = "高", PageNumber = 1, SourceFile = $"{TestMarker}-gb30000.3.pdf" },
+            new() { Content = $"{TestMarker} GB 30000.7-2013 易燃液体运输管理规定", RegulationType = "国标", Priority = "高", PageNumber = 1, SourceFile = $"{TestMarker}-gb30000.7.pdf" }
         };
 
         await _db.AddChemicalDocumentsBatchAsync(batch);
@@ -149,7 +168,8 @@ public class DatabaseIntegrationTests : IAsyncLifetime
         // 先插入
         await _db.AddChemicalDocumentAsync(new ChemicalDocumentRecord
         {
-            Content = "测试数据-待清理", RegulationType = "测试", Priority = "低", PageNumber = 1
+            Content = $"{TestMarker} 测试数据-待清理", RegulationType = "测试", Priority = "低", PageNumber = 1,
+            SourceFile = $"{TestMarker}-to-clear.pdf"
         });
 
         // 清空
@@ -165,21 +185,21 @@ public class DatabaseIntegrationTests : IAsyncLifetime
         // 使用双层表新 API：先插入文档记录，再插入分块
         var docId = await _db.InsertDocumentAsync(new KnowledgeDocumentRecord
         {
-            FileName = "test-benzene.pdf",
-            SourcePath = "test-benzene.pdf",
+            FileName = $"{TestMarker}-benzene.pdf",
+            SourcePath = $"{TestMarker}-benzene.pdf",
             FileFormat = "pdf",
             RegulationType = "国标",
             Priority = "高",
             RegulationNumber = "GB-TEST-001",
-            ContentHash = "test-hash-benzene"
+            ContentHash = $"{TestMarker}-hash-benzene"
         });
 
         await _db.InsertChunkAsync(new ChemicalDocumentRecord
         {
-            Content = "苯 CAS:71-43-2 闪点:-11°C",
+            Content = $"{TestMarker} 苯 CAS:71-43-2 闪点:-11°C",
             RegulationType = "国标",
             Priority = "高",
-            SourceFile = "test-benzene.pdf",
+            SourceFile = $"{TestMarker}-benzene.pdf",
             PageNumber = 5
         }, docId);
 
@@ -192,7 +212,7 @@ public class DatabaseIntegrationTests : IAsyncLifetime
             d.Content.Contains("苯") &&
             d.RegulationType == "国标" &&
             d.Priority == "高" &&
-            d.SourceFile == "test-benzene.pdf");
+            d.SourceFile == $"{TestMarker}-benzene.pdf");
     }
 
     [Fact]
@@ -201,18 +221,18 @@ public class DatabaseIntegrationTests : IAsyncLifetime
         // P2-5 回归: 验证 PageNumber 正确写入双层表
         var docId = await _db.InsertDocumentAsync(new KnowledgeDocumentRecord
         {
-            FileName = "GB 50160-2008.pdf",
-            SourcePath = "GB 50160-2008.pdf",
+            FileName = $"{TestMarker}-GB 50160-2008.pdf",
+            SourcePath = $"{TestMarker}-GB 50160-2008.pdf",
             FileFormat = "pdf",
             RegulationType = "国标",
             Priority = "高",
             RegulationNumber = "GB 50160-2008",
-            ContentHash = "test-hash-gb50160"
+            ContentHash = $"{TestMarker}-hash-gb50160"
         });
 
         await _db.InsertChunkAsync(new ChemicalDocumentRecord
         {
-            Content = "GB 50160-2008 石油化工企业设计防火标准 第3章 防火间距",
+            Content = $"{TestMarker} GB 50160-2008 石油化工企业设计防火标准 第3章 防火间距",
             RegulationType = "国标",
             Priority = "高",
             PageNumber = 42
@@ -234,11 +254,9 @@ public class DatabaseIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task AddAuditLog_PersistsCorrectly()
     {
-        await _db.AddAuditLogAsync(
-            userId: "test-user",
-            operation: "IntegrationTest",
-            details: "集成测试审计日志",
-            ipAddress: "127.0.0.1");
+        // [#5 FIX] 走 AuditService 写入：哈希链由服务自动计算，不再直插 AddAuditLogAsync 旁路
+        var audit = new AuditService(_db);
+        await audit.LogOperationAsync("test-user", "IntegrationTest", "集成测试审计日志");
 
         var logs = await _db.GetAuditLogsAsync(
             startTime: DateTime.UtcNow.AddMinutes(-5),
@@ -250,6 +268,75 @@ public class DatabaseIntegrationTests : IAsyncLifetime
             l.UserId == "test-user" &&
             l.Operation == "IntegrationTest" &&
             l.Details.Contains("集成测试审计日志"));
+    }
+
+    [Fact]
+    public async Task AddAuditLog_DirectInsertWithoutChainHash_InternallyFillsHash()
+    {
+        // [#5 FIX] 直插兜底验证：底层 AddAuditLogAsync 未传 chainHash 时，
+        // 内部读链尾强制补算，链上不得出现 NULL 空洞
+        await _db.AddAuditLogAsync(
+            userId: "test-user",
+            operation: "IntegrationTest",
+            details: "直插兜底哈希补算验证",
+            ipAddress: "127.0.0.1");
+
+        var logs = await _db.GetAuditLogsAsync(
+            startTime: DateTime.UtcNow.AddMinutes(-5),
+            endTime: DateTime.UtcNow.AddMinutes(1),
+            userId: "test-user");
+
+        var direct = logs.FirstOrDefault(l => l.Details.Contains("直插兜底哈希补算验证"));
+        direct.Should().NotBeNull("直插记录应能查到");
+        direct!.ChainHash.Should().NotBeNullOrEmpty("底层直插必须强制补算哈希，不得写入 NULL");
+    }
+
+    [Fact]
+    public async Task UpsertLongTermMemory_RepeatedWrite_UpdatesInsteadOfDuplicating()
+    {
+        // [#17/#18 FIX] 幂等写入：同用户+同类型+归一化内容相同 → 更新旧记忆，不新增重复、不整组停用
+        var marker = $"{TestMarker}-memory-{Guid.NewGuid():N}";
+        var content = $"{marker} 甲类仓库应设独立库房并保持通风";
+
+        await _db.UpsertLongTermMemoryAsync(new LongTermMemoryRecord
+        {
+            UserId = marker,
+            MemoryType = "chemical_fact",
+            Content = content,
+            Importance = 0.5f,
+            Embedding = null
+        });
+
+        await _db.UpsertLongTermMemoryAsync(new LongTermMemoryRecord
+        {
+            UserId = marker,
+            MemoryType = "chemical_fact",
+            Content = content + "  ", // 仅空白差异，归一化后视为同一事实
+            Importance = 0.9f,
+            Embedding = null
+        });
+
+        var stats = await _db.GetLongTermMemoryStatsAsync(marker);
+        stats.TotalCount.Should().Be(1, "重复写入必须折叠为一条，而不是产生两条重复记忆");
+        stats.ActiveCount.Should().Be(1);
+
+        var hits = await _db.SearchLongTermMemoriesByKeywordAsync(marker, marker, 10);
+        hits.Should().HaveCount(1);
+        hits[0].Importance.Should().Be(0.9f, "更新应保留最新重要性");
+    }
+
+    [Fact]
+    public async Task RepairHistoricalChainHashes_ChainBecomesIntact()
+    {
+        // [#5 FIX] 历史断链一键修复（幂等）：逐条按现行算法重算回写，
+        // 覆盖历史 NULL 空洞与旧算法断链记录，修复后 VerifyIntegrity 必须通过
+        var audit = new AuditService(_db);
+
+        var (repaired, repairDetail) = await audit.RepairChainAsync();
+
+        var (intact, brokenAtId, verifyDetail) = await audit.VerifyIntegrityAsync();
+        intact.Should().BeTrue($"RepairChainAsync（修复 {repaired} 条）后哈希链应完整: {verifyDetail}");
+        brokenAtId.Should().BeNull();
     }
 
     // ═══════════════════════════════════════
@@ -267,10 +354,11 @@ public class DatabaseIntegrationTests : IAsyncLifetime
             {
                 await _db.AddChemicalDocumentAsync(new ChemicalDocumentRecord
                 {
-                    Content = $"并发测试文档数据 #{idx:D2} - 化工园区危化品合规审查",
+                    Content = $"{TestMarker} 并发测试文档数据 #{idx:D2} - 化工园区危化品合规审查",
                     RegulationType = "并发测试",
                     Priority = "低",
-                    PageNumber = idx
+                    PageNumber = idx,
+                    SourceFile = $"{TestMarker}-concurrent-{idx:D2}.pdf"
                 });
             });
         }

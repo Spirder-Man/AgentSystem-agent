@@ -10,11 +10,13 @@ namespace Agent1.Services
     /// "书书书!!!!!"#$%&amp;'(..." 形态的乱码块，污染 BM25/向量检索
     /// （日志中此类块以高分挤占正常法规条文的召回位）。
     ///
-    /// 三条纯确定性规则（无概率判断），命中任一即拒收：
+    /// 四条纯确定性规则（无概率判断），命中任一即拒收：
     ///   ① 同一非数字字符连续重复 ≥4 次（"书书书书"、"!!!!"；
     ///      数字豁免，避免 "10000m³" 这类合法容积值误杀）
     ///   ② 非中文/字母/数字/常用标点字符占比 &gt; 40%
     ///   ③ 有效中文字符占比 &lt; 20%（本知识库全部为中文法规文本）
+    ///   ④ 扫描版 PDF 水印特征黑名单（"标准分享网 www.bzfxw.com 免费下载"形态；
+    ///      此类块中文占比正常可绕过规则③，需子串精确匹配兜底）
     /// </summary>
     public static class GarbledTextDetector
     {
@@ -26,6 +28,12 @@ namespace Agent1.Services
             ',', '.', ';', ':', '!', '?', '(', ')', '[', ']', '<', '>',
             '"', '\'', '-', '_', '/', '\\', '%', '‰', '℃', '°', '§',
             '～', '~', '＝', '=', '＋', '+', '×', '÷', '≤', '≥', '≠', '&',
+        };
+
+        // 规则④：扫描版 PDF 水印特征黑名单（子串匹配，命中即拒收）
+        private static readonly string[] WatermarkMarkers =
+        {
+            "标准分享网", "www.bzfxw.com", "免费下载",
         };
 
         /// <summary>
@@ -41,6 +49,16 @@ namespace Agent1.Services
             {
                 reason = "空白块";
                 return true;
+            }
+
+            // ── 规则④：水印特征黑名单（先于统计规则——水印块中文占比可正常）──
+            foreach (var marker in WatermarkMarkers)
+            {
+                if (text.Contains(marker, StringComparison.OrdinalIgnoreCase))
+                {
+                    reason = $"水印特征('{marker}')";
+                    return true;
+                }
             }
 
             // ── 规则①：同一非数字字符连续重复 ≥4 ──
